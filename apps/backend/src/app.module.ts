@@ -19,17 +19,28 @@ import { QuotasModule } from './quotas/quotas.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '../../.env',
+      expandVariables: true,
     }),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        url: config.get('DATABASE_URL'),
-        autoLoadEntities: true,
-        synchronize: false,
-      }),
+      useFactory: (config: ConfigService) => {
+        
+        const databaseUrl = config.get<string>('DATABASE_URL');
+        
+        console.log('🔍 DATABASE_URL loaded:', databaseUrl ? '✅ Oui' : '❌ NON TROUVÉ');
+        console.log('🔍 DATABASE_URL value:', databaseUrl);
+
+        return {
+          type: 'postgres',
+          url: databaseUrl,
+          autoLoadEntities: true,
+          synchronize: false,
+          logging: true,           // Active les logs SQL
+        };
+      },
     }),
 
     AuthModule,

@@ -1,7 +1,9 @@
 version: "3.9"
+
 services:
   postgres:
     image: postgres:16
+    container_name: tarhib-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: tarhib
@@ -14,9 +16,14 @@ services:
 
   redis:
     image: redis:7
+    container_name: tarhib-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
+    # Optionnel : persistance Redis
+    # volumes:
+    #   - tarhib_redis_data:/data
 
 volumes:
   tarhib_pg_data:
+  # tarhib_redis_data:   # décommente si tu veux persister Redis

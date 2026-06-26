@@ -1,3 +1,4 @@
+cat > .gitignore << 'EOF'
 # Dependencies
 node_modules/
 .pnp
@@ -7,7 +8,6 @@ node_modules/
 dist/
 build/
 .next/
-.expo/
 .turbo/
 
 # Env
@@ -27,10 +27,19 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+*.iml
 
 # Tests
 coverage/
 
-# Mobile
+# Mobile — Flutter / Dart (apps/mobile)
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache/
+**/.pub/
 ios/Pods/
+ios/.symlinks/
 android/.gradle/
+EOF
