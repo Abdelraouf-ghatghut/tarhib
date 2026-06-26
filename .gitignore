@@ -42,4 +42,8 @@ coverage/
 ios/Pods/
 ios/.symlinks/
 android/.gradle/
+
+# Client Dart généré depuis OpenAPI
+# apps/backend/openapi/openapi.json est intentionnellement committé (contrat d'API lisible dans les diffs)
+apps/mobile/packages/tarhib_api_client/
 EOF
