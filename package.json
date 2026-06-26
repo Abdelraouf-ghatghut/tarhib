@@ -12,9 +12,17 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
-    "generate:mobile-api": "npm run export:openapi -w apps/backend && docker run --rm -v \"%CD%:/local\" openapitools/openapi-generator-cli generate -i /local/apps/backend/openapi/openapi.json -g dart-dio -o /local/apps/mobile/packages/tarhib_api_client --additional-properties=pubName=tarhib_api_client,nullSafe=true,pubAuthor=Tarhib && cd apps/mobile && flutter pub get"
+    "generate:mobile-api": "npm run export:openapi -w apps/backend && docker run --rm -v \"%CD%:/local\" openapitools/openapi-generator-cli generate -i /local/apps/backend/openapi/openapi.json -g dart-dio -o /local/apps/mobile/packages/tarhib_api_client --additional-properties=pubName=tarhib_api_client,nullSafe=true,pubAuthor=Tarhib && cd apps/mobile && flutter pub get",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
+    "eslint": "^10.6.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.5",
     "turbo": "^2.10.0"
   },
   "description": "Plateforme de gestion de l'hospitalité corporate (commandes, stock, quotas).",
@@ -24,5 +32,14 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  }
 }
