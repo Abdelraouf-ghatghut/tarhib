@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
+import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { CompaniesModule } from './companies/companies.module';
 import { BranchesModule } from './branches/branches.module';
@@ -27,10 +28,12 @@ import { QuotasModule } from './quotas/quotas.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        
         const databaseUrl = config.get<string>('DATABASE_URL');
-        
-        console.log('🔍 DATABASE_URL loaded:', databaseUrl ? '✅ Oui' : '❌ NON TROUVÉ');
+
+        console.log(
+          '🔍 DATABASE_URL loaded:',
+          databaseUrl ? '✅ Oui' : '❌ NON TROUVÉ',
+        );
         console.log('🔍 DATABASE_URL value:', databaseUrl);
 
         return {
@@ -38,11 +41,12 @@ import { QuotasModule } from './quotas/quotas.module';
           url: databaseUrl,
           autoLoadEntities: true,
           synchronize: false,
-          logging: true,           // Active les logs SQL
+          logging: true, // Active les logs SQL
         };
       },
     }),
 
+    RedisModule,
     AuthModule,
     CompaniesModule,
     BranchesModule,
