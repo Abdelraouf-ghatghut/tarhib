@@ -11,6 +11,8 @@ import 'screens/employee/history_screen.dart';
 import 'screens/employee/order_tracking_screen.dart';
 import 'screens/agent/queue_screen.dart';
 import 'screens/agent/order_detail_screen.dart';
+import 'screens/manager/manager_orders_screen.dart';
+import 'screens/manager/manager_order_detail_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -23,7 +25,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       if (!loggedIn && !onLogin) return '/login';
       if (loggedIn && onLogin) {
-        return authState.isAgent ? '/agent/queue' : '/employee';
+        if (authState.isAgent) return '/agent/queue';
+        if (authState.isManager) return '/manager/orders';
+        return '/employee';
       }
       return null;
     },
@@ -51,6 +55,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/agent/orders/:id',
         builder: (_, state) =>
             AgentOrderDetailScreen(orderId: state.pathParameters['id']!),
+      ),
+
+      // ── Department manager (TARHIB-20) ──────────────────────────────────
+      GoRoute(path: '/manager/orders', builder: (_, __) => const ManagerOrdersScreen()),
+      GoRoute(
+        path: '/manager/orders/:id',
+        builder: (_, state) =>
+            ManagerOrderDetailScreen(orderId: state.pathParameters['id']!),
       ),
     ],
   );

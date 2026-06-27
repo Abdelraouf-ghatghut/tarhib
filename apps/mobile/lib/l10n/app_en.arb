@@ -51,5 +51,8 @@
   "category": "Category",
   "orderDetail": "Order detail",
   "validationResult": "Validation result",
-  "partiallyRejected": "Some lines were rejected"
+  "partiallyRejected": "Some lines were rejected",
+  "pendingApproval": "Pending approval",
+  "approve": "Approve",
+  "reject": "Reject"
 }

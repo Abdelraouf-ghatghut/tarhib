@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -108,16 +110,87 @@ export class OrdersService {
     return this.toDto(saved);
   }
 
-  async findAll(companyId?: string, employeeId?: string): Promise<OrderDto[]> {
+  async findAll(
+    companyId?: string,
+    employeeId?: string,
+    status?: string,
+  ): Promise<OrderDto[]> {
     const where: Partial<Order> = {};
     if (companyId) where.companyId = companyId;
     if (employeeId) where.employeeId = employeeId;
+    if (status) where.status = status as OrderStatus;
     const orders = await this.orderRepo.find({
       where,
       order: { createdAt: 'DESC' },
       relations: ['lines'],
     });
     return orders.map((o) => this.toDto(o));
+  }
+
+  async updateStatus(
+    id: string,
+    status: OrderStatus,
+    caller: JwtPayload,
+  ): Promise<OrderDto> {
+    const order = await this.orderRepo.findOne({
+      where: { id },
+      relations: ['lines'],
+    });
+    if (!order) throw new NotFoundException(`Order ${id} not found`);
+
+    const allowed = this.allowedTransitions(caller.role, order.status);
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(
+        `Role ${caller.role} cannot transition ${order.status} → ${status}`,
+      );
+    }
+    if (order.companyId !== caller.companyId) {
+      throw new ForbiddenException('Cross-tenant access denied');
+    }
+
+    order.status = status;
+    const saved = await this.orderRepo.save(order);
+    return this.toDto(saved);
+  }
+
+  private allowedTransitions(
+    role: string,
+    current: OrderStatus,
+  ): OrderStatus[] {
+    const map: Record<string, Record<OrderStatus, OrderStatus[]>> = {
+      HOSPITALITY_AGENT: {
+        [OrderStatus.PENDING]: [OrderStatus.IN_PROGRESS],
+        [OrderStatus.APPROVED]: [OrderStatus.IN_PROGRESS],
+        [OrderStatus.IN_PROGRESS]: [
+          OrderStatus.DELIVERED,
+          OrderStatus.REJECTED,
+        ],
+        [OrderStatus.DELIVERED]: [],
+        [OrderStatus.REJECTED]: [],
+      },
+      DEPARTMENT_MANAGER: {
+        [OrderStatus.PENDING]: [OrderStatus.APPROVED, OrderStatus.REJECTED],
+        [OrderStatus.APPROVED]: [OrderStatus.REJECTED],
+        [OrderStatus.IN_PROGRESS]: [],
+        [OrderStatus.DELIVERED]: [],
+        [OrderStatus.REJECTED]: [],
+      },
+      ADMIN: {
+        [OrderStatus.PENDING]: [
+          OrderStatus.APPROVED,
+          OrderStatus.IN_PROGRESS,
+          OrderStatus.REJECTED,
+        ],
+        [OrderStatus.APPROVED]: [OrderStatus.IN_PROGRESS, OrderStatus.REJECTED],
+        [OrderStatus.IN_PROGRESS]: [
+          OrderStatus.DELIVERED,
+          OrderStatus.REJECTED,
+        ],
+        [OrderStatus.DELIVERED]: [],
+        [OrderStatus.REJECTED]: [],
+      },
+    };
+    return map[role]?.[current] ?? [];
   }
 
   async findOne(id: string): Promise<OrderDto> {
