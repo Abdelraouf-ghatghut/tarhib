@@ -15,8 +15,8 @@ import {
 } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { EditOutlined, SlidersOutlined, WarningOutlined } from "@ant-design/icons";
-import { inventoryApi } from "../../lib/api";
+import { EditOutlined, PlusOutlined, SlidersOutlined, WarningOutlined } from "@ant-design/icons";
+import { inventoryApi, companiesApi, branchesApi, productsApi } from "../../lib/api";
 
 const { Title } = Typography;
 
@@ -24,6 +24,7 @@ interface InventoryItem {
   id: string;
   productId: string;
   branchId: string;
+  companyId: string;
   quantity: number;
   minThreshold: number;
   maxThreshold: number | null;
@@ -36,16 +37,32 @@ interface AlertItem {
   minThreshold: number;
 }
 
+interface NamedEntity {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+}
+
+interface Product {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+}
+
 export function InventoryPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const qc = useQueryClient();
+  const isAr = i18n.language === "ar";
   const [editForm] = Form.useForm();
   const [adjustForm] = Form.useForm();
+  const [createForm] = Form.useForm();
 
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [adjustSaving, setAdjustSaving] = useState(false);
+  const [createSaving, setCreateSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("stock");
 
   const { data: stockData, isPending: stockPending } = useQuery({
@@ -58,6 +75,26 @@ export function InventoryPage() {
     queryFn: () => inventoryApi.alerts().then((r) => r.data as AlertItem[]),
     enabled: activeTab === "alerts",
   });
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ["companies"],
+    queryFn: () => companiesApi.list().then((r) => r.data as NamedEntity[]),
+    enabled: createOpen,
+  });
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => branchesApi.list().then((r) => r.data as NamedEntity[]),
+    enabled: createOpen,
+  });
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: () => productsApi.list().then((r) => r.data as Product[]),
+    enabled: createOpen,
+  });
+
+  const label = (e: NamedEntity | Product) => (isAr ? e.nameAr : e.nameEn);
 
   async function handleEditSave() {
     if (!editingItem) return;
@@ -91,6 +128,24 @@ export function InventoryPage() {
       }
     } finally {
       setAdjustSaving(false);
+    }
+  }
+
+  async function handleCreateSave() {
+    setCreateSaving(true);
+    try {
+      const values = await createForm.validateFields();
+      await inventoryApi.create(values);
+      void qc.invalidateQueries({ queryKey: ["inventory"] });
+      void message.success(t("createStockSuccess"));
+      setCreateOpen(false);
+      createForm.resetFields();
+    } catch (err) {
+      if (!(err as { errorFields?: unknown }).errorFields) {
+        void message.error(String(err));
+      }
+    } finally {
+      setCreateSaving(false);
     }
   }
 
@@ -184,7 +239,14 @@ export function InventoryPage() {
 
   return (
     <>
-      <Title level={4}>{t("inventory")}</Title>
+      <Space style={{ width: "100%", justifyContent: "space-between", marginBlockEnd: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>
+          {t("inventory")}
+        </Title>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          {t("newStockEntry")}
+        </Button>
+      </Space>
 
       <Tabs
         activeKey={activeTab}
@@ -222,6 +284,76 @@ export function InventoryPage() {
           },
         ]}
       />
+
+      {/* New stock entry modal — TARHIB-41 */}
+      <Modal
+        open={createOpen}
+        title={t("newStockEntry")}
+        onOk={handleCreateSave}
+        onCancel={() => {
+          setCreateOpen(false);
+          createForm.resetFields();
+        }}
+        confirmLoading={createSaving}
+        okText={t("save")}
+        cancelText={t("cancel")}
+        destroyOnClose
+      >
+        <Form form={createForm} layout="vertical" style={{ marginBlockStart: 16 }}>
+          <Form.Item name="companyId" label={t("company")} rules={[{ required: true }]}>
+            <Select
+              options={companies.map((c) => ({ value: c.id, label: label(c) }))}
+              showSearch
+              filterOption={(input, opt) =>
+                String(opt?.label ?? "")
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
+            />
+          </Form.Item>
+          <Form.Item name="branchId" label={t("branch")} rules={[{ required: true }]}>
+            <Select
+              options={branches.map((b) => ({ value: b.id, label: label(b) }))}
+              showSearch
+              filterOption={(input, opt) =>
+                String(opt?.label ?? "")
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
+            />
+          </Form.Item>
+          <Form.Item name="productId" label={t("products")} rules={[{ required: true }]}>
+            <Select
+              options={products.map((p) => ({ value: p.id, label: label(p) }))}
+              showSearch
+              filterOption={(input, opt) =>
+                String(opt?.label ?? "")
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
+            />
+          </Form.Item>
+          <Form.Item
+            name="quantity"
+            label={t("quantity")}
+            rules={[{ required: true }]}
+            initialValue={0}
+          >
+            <InputNumber min={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            name="minThreshold"
+            label={t("minLevel")}
+            rules={[{ required: true }]}
+            initialValue={0}
+          >
+            <InputNumber min={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="maxThreshold" label={t("maxLevel")}>
+            <InputNumber min={1} style={{ width: "100%" }} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* Edit thresholds modal */}
       <Modal

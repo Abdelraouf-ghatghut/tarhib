@@ -98,5 +98,7 @@
   "deactivate": "Deactivate",
   "deactivateConfirm": "This will revoke all active sessions. Confirm?",
   "totalItems": "Total items",
-  "filters": "Filters"
+  "filters": "Filters",
+  "newStockEntry": "New stock entry",
+  "createStockSuccess": "Stock entry created"
 }

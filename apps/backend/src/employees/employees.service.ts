@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Employee } from './entities/employee.entity.js';
@@ -7,12 +7,16 @@ import {
   EmployeeDto,
   EmployeeRole,
 } from './dto/employee.dto.js';
+import { KeycloakService } from '../auth/keycloak/keycloak.service.js';
 
 @Injectable()
 export class EmployeesService {
+  private readonly logger = new Logger(EmployeesService.name);
+
   constructor(
     @InjectRepository(Employee)
     private readonly repo: Repository<Employee>,
+    private readonly keycloakService: KeycloakService,
   ) {}
 
   async create(dto: CreateEmployeeDto): Promise<EmployeeDto> {
@@ -89,6 +93,16 @@ export class EmployeesService {
     if (!entity) throw new NotFoundException(`Employee ${id} not found`);
     entity.active = false;
     const saved = await this.repo.save(entity);
+
+    // TARHIB-32: révocation des sessions Keycloak — fire-and-forget, non-fatal
+    this.keycloakService
+      .revokeUserSessions(entity.email)
+      .catch((err: unknown) =>
+        this.logger.error(
+          `Session revocation failed for ${entity.email}: ${String(err)}`,
+        ),
+      );
+
     return this.toDto(saved);
   }
 
