@@ -14,12 +14,13 @@
 import { INestApplication, Controller, Get, UseGuards } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { type SuperTest, type Test as SuperTestRequest } from 'supertest';
-import supertest from 'supertest';
+import supertest, { type Agent } from 'supertest';
 import jwt from 'jsonwebtoken';
 import { EmployeeRole } from '../employees/dto/employee.dto';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import { AuthModule } from './auth.module';
+import { AuthService } from './auth.service';
+import { OtpService } from './otp/otp.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
@@ -62,7 +63,7 @@ class TestAuthController {
 
 describe('Auth guards (integration)', () => {
   let app: INestApplication;
-  let agent: SuperTest<SuperTestRequest>;
+  let agent: Agent;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -74,7 +75,13 @@ describe('Auth guards (integration)', () => {
         AuthModule,
       ],
       controllers: [TestAuthController],
-    }).compile();
+    })
+      // Mock service-layer deps so tests run without Redis/Keycloak/Twilio
+      .overrideProvider(AuthService)
+      .useValue({ getCurrentUser: (p: JwtPayload) => p })
+      .overrideProvider(OtpService)
+      .useValue({})
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
