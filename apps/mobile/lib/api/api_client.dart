@@ -2,15 +2,13 @@ import 'package:dio/dio.dart';
 import 'package:tarhib_api_client/tarhib_api_client.dart';
 
 class ApiClient {
-  /// JWT token injecté dans chaque requête si non vide.
-  /// Appeler [ApiClient.setToken] après connexion Keycloak/OTP.
   static String _jwtToken = '';
 
   static final Dio _dio = _buildDio();
 
   static Dio _buildDio() {
     final dio = Dio(BaseOptions(
-      baseUrl: 'http://localhost:3000',
+      baseUrl: 'http://10.0.2.2:3000', // Android emulator → localhost
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
     ));
@@ -29,6 +27,9 @@ class ApiClient {
 
   static void setToken(String token) => _jwtToken = token;
   static void clearToken() => _jwtToken = '';
+
+  /// Raw Dio for endpoints not in the generated client (status patch, login)
+  static Dio get rawDio => _dio;
 
   static ProductsApi get products => ProductsApi(_dio, standardSerializers);
   static OrdersApi get orders => OrdersApi(_dio, standardSerializers);

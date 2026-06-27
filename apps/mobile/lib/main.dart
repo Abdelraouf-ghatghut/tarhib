@@ -1,94 +1,56 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'l10n/app_localizations.dart';
+import 'providers/auth_provider.dart';
+import 'router.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: TarhibApp()));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class TarhibApp extends ConsumerWidget {
+  const TarhibApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-        ),
-        useMaterial3: true,
-      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(routerProvider);
+    final locale = ref.watch(localeProvider);
 
-      // Langue par défaut
-      locale: const Locale('ar'),
+    return MaterialApp.router(
+      title: 'Tarhib',
+      debugShowCheckedModeBanner: false,
 
-      // Langues supportées
-      supportedLocales: const [
-        Locale('ar'),
-        Locale('en'),
-      ],
-
-      // Délégués de localisation
+      // ── Localisation (TARHIB-47, 48, 49) ──────────────────────────────
+      locale: locale,
+      supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
+        AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
 
-      home: const MyHomePage(
-        title: 'Flutter Demo Home Page',
-      ),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({
-    super.key,
-    required this.title,
-  });
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+      // ── Thème ──────────────────────────────────────────────────────────
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1B5E20), // vert Tarhib
+          brightness: Brightness.light,
         ),
+        useMaterial3: true,
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1B5E20),
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
       ),
+      themeMode: ThemeMode.system,
+
+      // ── Routing ────────────────────────────────────────────────────────
+      routerConfig: router,
     );
   }
 }
