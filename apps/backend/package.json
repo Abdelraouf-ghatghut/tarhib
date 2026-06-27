@@ -18,7 +18,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "export:openapi": "ts-node -r tsconfig-paths/register scripts/export-openapi-spec.ts"
+    "export:openapi": "ts-node -r tsconfig-paths/register scripts/export-openapi-spec.ts",
+    "migration:run": "typeorm-ts-node-commonjs -d src/data-source.ts migration:run",
+    "migration:revert": "typeorm-ts-node-commonjs -d src/data-source.ts migration:revert"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",

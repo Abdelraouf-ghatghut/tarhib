@@ -17,7 +17,12 @@ export class Employee {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'keycloak_id', unique: true, nullable: true })
+  @Column({
+    name: 'keycloak_id',
+    type: 'varchar',
+    unique: true,
+    nullable: true,
+  })
   keycloakId!: string | null;
 
   @Column({ name: 'company_id' })
