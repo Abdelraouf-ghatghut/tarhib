@@ -120,3 +120,50 @@ Toujours couvert par validation-engine.spec.ts.
 ### Bilingue obligatoire
 
 Chaque entité avec un nom visible a nameAr ET nameEn. Jamais l'un sans l'autre.
+
+---
+
+## 8. État d'avancement et prochaines tâches (mis à jour le 2026-06-27)
+
+### Ce qui est implémenté (branch `feature/TARHIB-1-auth-rbac`)
+
+| Ticket    | Statut    | Ce qui existe                                                                              |
+| --------- | --------- | ------------------------------------------------------------------------------------------ |
+| TARHIB-1  | In Review | Epic AUTH — JWT guard, RolesGuard, @Roles, @CurrentUser, GET /auth/me                      |
+| TARHIB-21 | In Review | POST /auth/login — Keycloak password grant + brute-force Redis                             |
+| TARHIB-22 | In Review | POST /auth/otp/request + /verify — OTP Redis 5min + Twilio                                 |
+| TARHIB-23 | In Review | POST /auth/password/reset-request + /reset — token Redis 1h + révocation sessions Keycloak |
+| TARHIB-24 | In Review | POST /auth/refresh + /logout — délégation Keycloak                                         |
+| TARHIB-25 | In Review | RolesGuard matrice complète — 11 cas unit + 8 tests intégration HTTP                       |
+
+Infrastructure posée : `RedisModule` (global), `KeycloakService`, `SmsService`, `EmailService`.
+Variables d'environnement : **configurées** (JWT*SECRET, KEYCLOAK*_, REDIS*URL, TWILIO*_, APP_URL, LOGIN_LOCK_DURATION_SECONDS).
+
+### À faire avant de merger la PR AUTH
+
+- [ ] Configurer le **realm Keycloak** `tarhib` : créer le client `tarhib-backend`, ajouter les mappers de claims (`companyId`, `branchId`, `role`) dans le token JWT
+- [ ] Remplir les **migrations TypeORM vides** dans `src/migrations/` (tables companies, branches, departments, employees — les stubs sont créés mais sans SQL)
+- [ ] Câbler **SendGrid/SES** dans `EmailService` (`src/auth/email/email.service.ts`) dès que la clé API est disponible
+
+### Prochains tickets à implémenter (dans l'ordre recommandé)
+
+1. **TARHIB-[ORG]** — Modules Companies / Branches / Departments / Employees (CRUD, entités TypeORM, migrations)
+   - Dépendance : `AuthModule` exporté ✅ — les futurs modules importent `JwtAuthGuard` + `RolesGuard` depuis `AuthModule`
+   - Rappel : injecter `companyId` depuis `JwtPayload` dans chaque requête TypeORM (`WHERE company_id = :companyId`)
+
+2. **TARHIB-[PROD]** — Module Products (catalogue, type `commandable`/`libre_service_vip`, filtrage backend par rôle)
+   - Règle §3 : le filtrage `type=COMMANDABLE` se fait dans le service, jamais seulement dans l'UI
+
+3. **TARHIB-[STOCK]** — Module Inventory (stock par branche, seuils, alertes)
+
+4. **TARHIB-[ORDER]** — Module Orders + `src/orders/validation-engine/` (moteur rôle→stock→quota)
+   - Les stubs `validation-engine.service.ts` et `validation-engine.spec.ts` sont vides — à implémenter en priorité
+
+5. **TARHIB-[QUOTA]** — Module Quotas (config par société/période/produit/rôle)
+
+### Rappels techniques permanents issus de l'implémentation AUTH
+
+- `KeycloakService.loginWithPhoneOtp()` utilise un grant `password` avec marqueur interne — à remplacer par un **custom Keycloak authenticator** ou un **direct grant OTP** en V2 si Keycloak le supporte nativement
+- Le middleware **tenant isolation** (injection `WHERE company_id`) n'est pas encore posé — à ajouter dans chaque module métier lors de son implémentation, en lisant `request.user.companyId` (disponible via `JwtPayload`)
+- `EmailService` est un **stub logger** — brancher SendGrid/SES avant la mise en prod (variable `SENDGRID_API_KEY`)
+- `SmsService` passe en mode mock si `TWILIO_ACCOUNT_SID` est absent — comportement normal en dev/test
