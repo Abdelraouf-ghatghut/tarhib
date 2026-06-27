@@ -1,10 +1,27 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CreateQuotaDto, QuotaDto } from './dto/quota.dto';
-import { QuotasService } from './quotas.service';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { CreateQuotaDto, QuotaDto } from './dto/quota.dto.js';
+import { QuotasService } from './quotas.service.js';
 
 @ApiTags('quotas')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('quotas')
 export class QuotasController {
   constructor(private readonly quotasService: QuotasService) {}
@@ -17,10 +34,17 @@ export class QuotasController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Lister les quotas' })
+  @ApiOperation({
+    summary: 'Lister les quotas (filtrable par companyId / employeeId)',
+  })
+  @ApiQuery({ name: 'companyId', required: false })
+  @ApiQuery({ name: 'employeeId', required: false })
   @ApiResponse({ status: 200, type: [QuotaDto] })
-  findAll(): Promise<QuotaDto[]> {
-    return this.quotasService.findAll();
+  findAll(
+    @Query('companyId') companyId?: string,
+    @Query('employeeId') employeeId?: string,
+  ): Promise<QuotaDto[]> {
+    return this.quotasService.findAll(companyId, employeeId);
   }
 
   @Get(':id')
