@@ -11,6 +11,7 @@ import {
   InboxOutlined,
   FileTextOutlined,
   PercentageOutlined,
+  BarChartOutlined,
   LogoutOutlined,
   GlobalOutlined,
   MenuFoldOutlined,
@@ -40,6 +41,7 @@ export function AdminLayout() {
     { key: "/inventory", icon: <InboxOutlined />, label: t("inventory") },
     { key: "/orders", icon: <FileTextOutlined />, label: t("orders") },
     { key: "/quotas", icon: <PercentageOutlined />, label: t("quotas") },
+    { key: "/reports", icon: <BarChartOutlined />, label: t("reports") },
   ];
 
   const langItems: MenuProps["items"] = [

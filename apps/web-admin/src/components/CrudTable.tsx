@@ -11,6 +11,7 @@ export interface CrudTableProps<T extends { id: string }> {
   formContent: (record: T | null) => React.ReactNode;
   onSave: (values: Record<string, unknown>, id?: string) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
+  extraActions?: (record: T) => React.ReactNode;
   rowKey?: string;
 }
 
@@ -21,6 +22,7 @@ export function CrudTable<T extends { id: string }>({
   formContent,
   onSave,
   onDelete,
+  extraActions,
   rowKey = "id",
 }: CrudTableProps<T>) {
   const { t } = useTranslation();
@@ -68,7 +70,7 @@ export function CrudTable<T extends { id: string }>({
   const actionCol: TableColumnType<T> = {
     title: t("actions"),
     key: "_actions",
-    width: 120,
+    width: 140,
     render: (_: unknown, record: T) => (
       <Space>
         <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} />
@@ -82,6 +84,7 @@ export function CrudTable<T extends { id: string }>({
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         )}
+        {extraActions?.(record)}
       </Space>
     ),
   };

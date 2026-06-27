@@ -1,22 +1,32 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { InventoryItem } from './entities/inventory-item.entity.js';
 import {
   CreateInventoryItemDto,
   InventoryItemDto,
   UpdateInventoryItemDto,
 } from './dto/inventory.dto.js';
+import {
+  AdjustmentType,
+  InventoryAdjustmentDto,
+} from './dto/inventory-adjustment.dto.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 @Injectable()
 export class InventoryService {
+  private readonly logger = new Logger(InventoryService.name);
+
   constructor(
     @InjectRepository(InventoryItem)
     private readonly repo: Repository<InventoryItem>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateInventoryItemDto): Promise<InventoryItemDto> {
@@ -48,7 +58,7 @@ export class InventoryService {
     companyId?: string,
     branchId?: string,
   ): Promise<InventoryItemDto[]> {
-    const where: Partial<InventoryItem> = {};
+    const where: FindOptionsWhere<InventoryItem> = {};
     if (companyId) where.companyId = companyId;
     if (branchId) where.branchId = branchId;
     const entities = await this.repo.find({ where });
@@ -84,6 +94,40 @@ export class InventoryService {
     if (dto.minThreshold !== undefined) entity.minThreshold = dto.minThreshold;
     if (dto.maxThreshold !== undefined) entity.maxThreshold = dto.maxThreshold;
     const saved = await this.repo.save(entity);
+    return this.toDto(saved);
+  }
+
+  async adjust(
+    id: string,
+    dto: InventoryAdjustmentDto,
+  ): Promise<InventoryItemDto> {
+    const entity = await this.repo.findOne({ where: { id } });
+    if (!entity) throw new NotFoundException(`InventoryItem ${id} not found`);
+
+    if (dto.type === AdjustmentType.SORTIE) {
+      const newQuantity = entity.quantity - dto.quantity;
+      if (newQuantity < 0) {
+        throw new BadRequestException(
+          `Stock insuffisant : impossible de retirer ${dto.quantity} unités (stock actuel : ${entity.quantity})`,
+        );
+      }
+      entity.quantity = newQuantity;
+    } else {
+      // AJUSTEMENT : fixe la valeur absolue (peut être 0)
+      entity.quantity = dto.quantity;
+    }
+
+    const saved = await this.repo.save(entity);
+
+    // Alerte seuil minimum — TARHIB-42, fire-and-forget
+    if (saved.quantity <= saved.minThreshold) {
+      this.notificationsService
+        .notifyLowStock(saved.productId, saved.branchId, saved.quantity)
+        .catch((err: unknown) =>
+          this.logger.error(`Low-stock notification failed: ${String(err)}`),
+        );
+    }
+
     return this.toDto(saved);
   }
 

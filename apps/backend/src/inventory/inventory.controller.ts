@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { InventoryAdjustmentDto } from './dto/inventory-adjustment.dto.js';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -82,5 +83,17 @@ export class InventoryController {
     @Body() dto: UpdateInventoryItemDto,
   ): Promise<InventoryItemDto> {
     return this.inventoryService.update(id, dto);
+  }
+
+  @Post(':id/adjust')
+  @ApiOperation({
+    summary: 'Ajustement de stock : sortie ou correction absolue (TARHIB-41)',
+  })
+  @ApiResponse({ status: 201, type: InventoryItemDto })
+  adjust(
+    @Param('id') id: string,
+    @Body() dto: InventoryAdjustmentDto,
+  ): Promise<InventoryItemDto> {
+    return this.inventoryService.adjust(id, dto);
   }
 }

@@ -36,16 +36,37 @@ export class EmployeesController {
 
   @Get()
   @ApiOperation({
-    summary: 'Lister les employés (filtrable par companyId / branchId)',
+    summary:
+      'Lister les employés (filtrable par companyId, branchId, departmentId, role, active)',
   })
   @ApiQuery({ name: 'companyId', required: false })
   @ApiQuery({ name: 'branchId', required: false })
+  @ApiQuery({ name: 'departmentId', required: false })
+  @ApiQuery({
+    name: 'role',
+    required: false,
+    description: 'Filtrer par rôle (ex. EMPLOYEE, DEPARTMENT_MANAGER)',
+  })
+  @ApiQuery({
+    name: 'active',
+    required: false,
+    description: 'Filtrer par statut actif: true ou false',
+  })
   @ApiResponse({ status: 200, type: [EmployeeDto] })
   findAll(
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('role') role?: string,
+    @Query('active') active?: string,
   ): Promise<EmployeeDto[]> {
-    return this.employeesService.findAll(companyId, branchId);
+    return this.employeesService.findAll(
+      companyId,
+      branchId,
+      departmentId,
+      role,
+      active,
+    );
   }
 
   @Get(':id')
@@ -70,5 +91,15 @@ export class EmployeesController {
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string): Promise<void> {
     return this.employeesService.remove(id);
+  }
+
+  @Patch(':id/deactivate')
+  @ApiOperation({
+    summary:
+      'Désactiver un compte employé (soft delete, révocation sessions) (TARHIB-32)',
+  })
+  @ApiResponse({ status: 200, type: EmployeeDto })
+  deactivate(@Param('id') id: string): Promise<EmployeeDto> {
+    return this.employeesService.deactivate(id);
   }
 }

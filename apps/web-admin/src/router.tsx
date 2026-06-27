@@ -11,6 +11,7 @@ import { ProductsPage } from "./pages/products/ProductsPage";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
 import { OrdersPage } from "./pages/orders/OrdersPage";
 import { QuotasPage } from "./pages/quotas/QuotasPage";
+import { ReportsPage } from "./pages/reports/ReportsPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: "inventory", element: <InventoryPage /> },
       { path: "orders", element: <OrdersPage /> },
       { path: "quotas", element: <QuotasPage /> },
+      { path: "reports", element: <ReportsPage /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

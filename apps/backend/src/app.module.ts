@@ -15,6 +15,8 @@ import { ProductsModule } from './products/products.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
 import { QuotasModule } from './quotas/quotas.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { ReportingModule } from './reporting/reporting.module';
 
 @Module({
   imports: [
@@ -56,6 +58,8 @@ import { QuotasModule } from './quotas/quotas.module';
     InventoryModule,
     OrdersModule,
     QuotasModule,
+    NotificationsModule,
+    ReportingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -40,6 +40,7 @@ export const employeesApi = {
   create: (d: unknown) => api.post("/employees", d),
   update: (id: string, d: unknown) => api.patch(`/employees/${id}`, d),
   remove: (id: string) => api.delete(`/employees/${id}`),
+  deactivate: (id: string) => api.patch(`/employees/${id}/deactivate`),
 };
 
 export const productsApi = {
@@ -52,6 +53,8 @@ export const productsApi = {
 export const inventoryApi = {
   list: (branchId?: string) => api.get("/inventory", { params: branchId ? { branchId } : {} }),
   update: (id: string, d: unknown) => api.patch(`/inventory/${id}`, d),
+  adjust: (id: string, d: unknown) => api.post(`/inventory/${id}/adjust`, d),
+  alerts: () => api.get("/inventory/alerts/below-threshold"),
 };
 
 export const ordersApi = {
@@ -65,4 +68,12 @@ export const quotasApi = {
   create: (d: unknown) => api.post("/quotas", d),
   update: (id: string, d: unknown) => api.patch(`/quotas/${id}`, d),
   remove: (id: string) => api.delete(`/quotas/${id}`),
+};
+
+export const reportingApi = {
+  orders: (companyId?: string) =>
+    api.get("/reports/orders", { params: companyId ? { companyId } : {} }),
+  inventory: (companyId?: string) =>
+    api.get("/reports/inventory", { params: companyId ? { companyId } : {} }),
+  sla: (companyId?: string) => api.get("/reports/sla", { params: companyId ? { companyId } : {} }),
 };
