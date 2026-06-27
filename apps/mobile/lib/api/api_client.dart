@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:tarhib_api_client/tarhib_api_client.dart';
 
 class ApiClient {
@@ -8,7 +9,7 @@ class ApiClient {
 
   static Dio _buildDio() {
     final dio = Dio(BaseOptions(
-      baseUrl: 'http://10.0.2.2:3000', // Android emulator → localhost
+      baseUrl: kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000',
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
     ));
