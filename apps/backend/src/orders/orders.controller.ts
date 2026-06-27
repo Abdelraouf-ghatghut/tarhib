@@ -17,7 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
-import { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import { CreateOrderDto, OrderDto } from './dto/order.dto.js';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto.js';
 import { OrdersService } from './orders.service.js';

@@ -1,8 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { Employee } from './entities/employee.entity.js';
-import { CreateEmployeeDto, EmployeeDto } from './dto/employee.dto.js';
+import {
+  CreateEmployeeDto,
+  EmployeeDto,
+  EmployeeRole,
+} from './dto/employee.dto.js';
 
 @Injectable()
 export class EmployeesService {
@@ -28,10 +32,19 @@ export class EmployeesService {
     return this.toDto(saved);
   }
 
-  async findAll(companyId?: string, branchId?: string): Promise<EmployeeDto[]> {
-    const where: Partial<Employee> = {};
+  async findAll(
+    companyId?: string,
+    branchId?: string,
+    departmentId?: string,
+    role?: string,
+    active?: string,
+  ): Promise<EmployeeDto[]> {
+    const where: FindOptionsWhere<Employee> = {};
     if (companyId) where.companyId = companyId;
     if (branchId) where.branchId = branchId;
+    if (departmentId) where.departmentId = departmentId;
+    if (role) where.role = role as EmployeeRole;
+    if (active !== undefined && active !== '') where.active = active === 'true';
     const entities = await this.repo.find({
       where,
       order: { lastNameEn: 'ASC' },
@@ -69,6 +82,14 @@ export class EmployeesService {
     if (!entity) throw new NotFoundException(`Employee ${id} not found`);
     entity.active = false;
     await this.repo.save(entity);
+  }
+
+  async deactivate(id: string): Promise<EmployeeDto> {
+    const entity = await this.repo.findOne({ where: { id } });
+    if (!entity) throw new NotFoundException(`Employee ${id} not found`);
+    entity.active = false;
+    const saved = await this.repo.save(entity);
+    return this.toDto(saved);
   }
 
   private toDto(e: Employee): EmployeeDto {

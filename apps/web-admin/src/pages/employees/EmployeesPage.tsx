@@ -1,4 +1,17 @@
-import { Form, Input, Select, Switch, Tag, Typography } from "antd";
+import { useState } from "react";
+import {
+  Button,
+  Form,
+  Input,
+  Popconfirm,
+  Select,
+  Space,
+  Switch,
+  Tag,
+  Typography,
+  message,
+} from "antd";
+import { StopOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CrudTable } from "../../components/CrudTable";
@@ -10,9 +23,12 @@ const ROLES = ["ADMIN", "DEPARTMENT_MANAGER", "INVENTORY_MANAGER", "HOSPITALITY_
 
 interface Employee {
   id: string;
-  firstName: string;
-  lastName: string;
+  firstNameAr: string;
+  firstNameEn: string;
+  lastNameAr: string;
+  lastNameEn: string;
   email: string;
+  phoneNumber: string;
   role: string;
   companyId: string;
   branchId: string;
@@ -31,9 +47,18 @@ export function EmployeesPage() {
   const qc = useQueryClient();
   const isAr = i18n.language === "ar";
 
+  const [filterRole, setFilterRole] = useState<string | undefined>();
+  const [filterDept, setFilterDept] = useState<string | undefined>();
+  const [filterActive, setFilterActive] = useState<boolean | undefined>();
+
+  const queryParams: Record<string, string> = {};
+  if (filterRole) queryParams.role = filterRole;
+  if (filterDept) queryParams.departmentId = filterDept;
+  if (filterActive !== undefined) queryParams.active = String(filterActive);
+
   const { data, isPending } = useQuery({
-    queryKey: ["employees"],
-    queryFn: () => employeesApi.list().then((r) => r.data as Employee[]),
+    queryKey: ["employees", queryParams],
+    queryFn: () => employeesApi.list(queryParams).then((r) => r.data as Employee[]),
   });
 
   const { data: companies = [] } = useQuery({
@@ -62,20 +87,81 @@ export function EmployeesPage() {
     void qc.invalidateQueries({ queryKey: ["employees"] });
   }
 
+  async function onDeactivate(id: string) {
+    try {
+      await employeesApi.deactivate(id);
+      void qc.invalidateQueries({ queryKey: ["employees"] });
+    } catch (err) {
+      void message.error(String(err));
+    }
+  }
+
   const label = (e: NamedEntity) => (isAr ? e.nameAr : e.nameEn);
+  const fullName = (e: Employee) =>
+    isAr ? `${e.firstNameAr} ${e.lastNameAr}` : `${e.firstNameEn} ${e.lastNameEn}`;
 
   return (
     <>
       <Title level={4}>{t("employees")}</Title>
+
+      <Space wrap style={{ marginBlockEnd: 16 }}>
+        <Select
+          allowClear
+          placeholder={t("role")}
+          style={{ width: 220 }}
+          options={ROLES.map((r) => ({ value: r, label: r }))}
+          value={filterRole}
+          onChange={setFilterRole}
+        />
+        <Select
+          allowClear
+          placeholder={t("department")}
+          style={{ width: 220 }}
+          options={departments.map((d) => ({ value: d.id, label: label(d) }))}
+          value={filterDept}
+          onChange={setFilterDept}
+        />
+        <Space size="small">
+          <span style={{ fontSize: 14 }}>{t("active")}</span>
+          <Switch
+            checked={filterActive === true}
+            onChange={(checked) => setFilterActive(checked ? true : undefined)}
+          />
+        </Space>
+      </Space>
+
       <CrudTable<Employee>
         data={data}
         isPending={isPending}
         onSave={onSave}
         onDelete={onDelete}
+        extraActions={(rec) => (
+          <Popconfirm
+            title={t("deactivateConfirm")}
+            onConfirm={() => {
+              void onDeactivate(rec.id);
+            }}
+            okText={t("confirm")}
+            cancelText={t("cancel")}
+            disabled={!rec.active}
+          >
+            <Button
+              size="small"
+              danger
+              icon={<StopOutlined />}
+              disabled={!rec.active}
+              title={t("deactivate")}
+            />
+          </Popconfirm>
+        )}
         columns={[
-          { title: t("firstName"), dataIndex: "firstName" },
-          { title: t("lastName"), dataIndex: "lastName" },
+          {
+            title: t("name"),
+            key: "name",
+            render: (_: unknown, rec: Employee) => fullName(rec),
+          },
           { title: t("email"), dataIndex: "email" },
+          { title: t("phone"), dataIndex: "phoneNumber" },
           { title: t("role"), dataIndex: "role", render: (v: string) => <Tag>{v}</Tag> },
           {
             title: t("active"),
@@ -86,14 +172,27 @@ export function EmployeesPage() {
         ]}
         formContent={(rec) => (
           <>
-            <Form.Item name="firstName" label={t("firstName")} rules={[{ required: true }]}>
+            <Form.Item name="firstNameAr" label={t("firstNameAr")} rules={[{ required: true }]}>
+              <Input dir="rtl" />
+            </Form.Item>
+            <Form.Item name="lastNameAr" label={t("lastNameAr")} rules={[{ required: true }]}>
+              <Input dir="rtl" />
+            </Form.Item>
+            <Form.Item name="firstNameEn" label={t("firstNameEn")} rules={[{ required: true }]}>
               <Input />
             </Form.Item>
-            <Form.Item name="lastName" label={t("lastName")} rules={[{ required: true }]}>
+            <Form.Item name="lastNameEn" label={t("lastNameEn")} rules={[{ required: true }]}>
               <Input />
             </Form.Item>
             <Form.Item name="email" label={t("email")} rules={[{ required: true, type: "email" }]}>
               <Input />
+            </Form.Item>
+            <Form.Item
+              name="phoneNumber"
+              label={t("phone")}
+              rules={[{ required: true, pattern: /^\+[1-9]\d{7,14}$/, message: t("phoneFormat") }]}
+            >
+              <Input placeholder="+213555000000" />
             </Form.Item>
             {!rec && (
               <Form.Item name="password" label={t("password")} rules={[{ required: true, min: 8 }]}>

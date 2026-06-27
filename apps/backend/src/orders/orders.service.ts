@@ -2,11 +2,12 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { Order } from './entities/order.entity.js';
 import {
   OrderLine,
@@ -23,6 +24,8 @@ import {
   ValidationContext,
 } from './validation-engine/validation-engine.service.js';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import { Employee } from '../employees/entities/employee.entity.js';
 
 const PRIORITY_SLA_MINUTES: Record<OrderPriority, number> = {
   [OrderPriority.P1]: 10,
@@ -42,12 +45,17 @@ const ROLE_PRIORITY: Record<string, OrderPriority> = {
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(OrderLine)
     private readonly lineRepo: Repository<OrderLine>,
+    @InjectRepository(Employee)
+    private readonly employeeRepo: Repository<Employee>,
     private readonly validationEngine: ValidationEngineService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateOrderDto, caller: JwtPayload): Promise<OrderDto> {
@@ -115,7 +123,7 @@ export class OrdersService {
     employeeId?: string,
     status?: string,
   ): Promise<OrderDto[]> {
-    const where: Partial<Order> = {};
+    const where: FindOptionsWhere<Order> = {};
     if (companyId) where.companyId = companyId;
     if (employeeId) where.employeeId = employeeId;
     if (status) where.status = status as OrderStatus;
@@ -150,6 +158,25 @@ export class OrdersService {
 
     order.status = status;
     const saved = await this.orderRepo.save(order);
+
+    // Notify employee via SMS (TARHIB-9) — fire-and-forget, don't block the response
+    this.employeeRepo
+      .findOne({ where: { id: order.employeeId } })
+      .then((employee) => {
+        if (employee?.phoneNumber) {
+          return this.notificationsService.notifyOrderStatusChanged(
+            order.id,
+            status,
+            employee.phoneNumber,
+          );
+        }
+      })
+      .catch((err: unknown) =>
+        this.logger.error(
+          `Notification failed for order ${order.id}: ${String(err)}`,
+        ),
+      );
+
     return this.toDto(saved);
   }
 
