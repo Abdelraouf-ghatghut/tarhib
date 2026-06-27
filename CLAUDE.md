@@ -15,19 +15,19 @@ Ce fichier donne à Claude Code (et à tout agent IA travaillant sur ce repo) le
 
 ## 2. Stack technique (à respecter, ne pas dévier sans discussion)
 
-| Couche | Techno | Notes |
-|---|---|---|
-| Mobile | Flutter (Dart) | Support RTL natif (widgets `Directionality`/`MaterialApp` localisés), mode offline (Drift/SQLite ou Hive) pour les Agents d'Hospitalité sur le terrain. Une seule base de code pour iOS/Android. |
-| Web Admin | React + TypeScript, Ant Design ou MUI | RTL natif |
-| Backend | NestJS (Node.js/TypeScript) | Modulaire, un module Nest = un module métier (voir §4) |
-| DB principale | PostgreSQL | Schéma multi-tenant via `tenant_id` (company_id) sur les tables concernées |
-| Cache / Files | Redis | File de la cuisine, sessions, rate limiting |
-| Temps réel | Socket.io | Statuts de commande, alertes SLA, dashboard cuisine |
-| Auth | Keycloak | RBAC, OTP via Twilio, SSO Azure AD/Google (futur) |
-| Notifications | FCM (push), SendGrid/SES (email), Twilio (SMS) | |
-| Stockage fichiers | S3 / MinIO | Images produits |
-| i18n | i18next (Web Admin) / `flutter_localizations` + `intl` (Mobile) | + CSS logical properties pour le RTL côté web (jamais `left`/`right` en dur dans le CSS) ; côté Flutter, RTL géré nativement par le framework (`Directionality`), jamais de `EdgeInsets`/`Alignment` non-directionnels en dur |
-| Infra | Docker + Kubernetes | CI/CD via GitHub Actions |
+| Couche            | Techno                                                          | Notes                                                                                                                                                                                                                         |
+| ----------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mobile            | Flutter (Dart)                                                  | Support RTL natif (widgets `Directionality`/`MaterialApp` localisés), mode offline (Drift/SQLite ou Hive) pour les Agents d'Hospitalité sur le terrain. Une seule base de code pour iOS/Android.                              |
+| Web Admin         | React + TypeScript, Ant Design ou MUI                           | RTL natif                                                                                                                                                                                                                     |
+| Backend           | NestJS (Node.js/TypeScript)                                     | Modulaire, un module Nest = un module métier (voir §4)                                                                                                                                                                        |
+| DB principale     | PostgreSQL                                                      | Schéma multi-tenant via `tenant_id` (company_id) sur les tables concernées                                                                                                                                                    |
+| Cache / Files     | Redis                                                           | File de la cuisine, sessions, rate limiting                                                                                                                                                                                   |
+| Temps réel        | Socket.io                                                       | Statuts de commande, alertes SLA, dashboard cuisine                                                                                                                                                                           |
+| Auth              | Keycloak                                                        | RBAC, OTP via Twilio, SSO Azure AD/Google (futur)                                                                                                                                                                             |
+| Notifications     | FCM (push), SendGrid/SES (email), Twilio (SMS)                  |                                                                                                                                                                                                                               |
+| Stockage fichiers | S3 / MinIO                                                      | Images produits                                                                                                                                                                                                               |
+| i18n              | i18next (Web Admin) / `flutter_localizations` + `intl` (Mobile) | + CSS logical properties pour le RTL côté web (jamais `left`/`right` en dur dans le CSS) ; côté Flutter, RTL géré nativement par le framework (`Directionality`), jamais de `EdgeInsets`/`Alignment` non-directionnels en dur |
+| Infra             | Docker + Kubernetes                                             | CI/CD via GitHub Actions                                                                                                                                                                                                      |
 
 ## 3. Règles métier critiques — à NE JAMAIS casser
 
@@ -99,3 +99,24 @@ Guide complet : `Guide_Git_CICD.md`. Résumé opérationnel pour toute tâche de
 - Pas de paiement en ligne dans l'app employé (l'hospitalité est un service interne, pas un e-commerce payant)
 - Pas de commande pour les produits VIP libre-service
 - Pas de panier partagé entre plusieurs employés (les commandes groupées restent rattachées à un seul créateur)
+
+## Règles permanentes pour Claude Code
+
+### Après toute modification d'un DTO backend
+
+Toujours rappeler : `npm run generate:mobile-api` doit être lancé avant de committer
+si la PR touche `src/products/dto/`, `src/orders/dto/`, `src/quotas/dto/`.
+
+### Interdiction absolue
+
+- Ne jamais introduire de notion de "budget" (variable, commentaire, champ DB, DTO)
+- Ne jamais filtrer par rôle ou type de produit côté UI seulement
+
+### Moteur de validation (src/orders/validation-engine/)
+
+Toujours dans cet ordre : rôle/type produit → stock disponible → quota restant.
+Toujours couvert par validation-engine.spec.ts.
+
+### Bilingue obligatoire
+
+Chaque entité avec un nom visible a nameAr ET nameEn. Jamais l'un sans l'autre.
