@@ -1,25 +1,100 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
-import { CreateProductDto, ProductDto } from './dto/product.dto';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Product } from './entities/product.entity.js';
+import {
+  CreateProductDto,
+  ProductDto,
+  ProductType,
+} from './dto/product.dto.js';
 
 @Injectable()
 export class ProductsService {
-  create(_dto: CreateProductDto): Promise<ProductDto> {
-    throw new NotImplementedException();
+  constructor(
+    @InjectRepository(Product)
+    private readonly repo: Repository<Product>,
+  ) {}
+
+  async create(dto: CreateProductDto): Promise<ProductDto> {
+    const entity = this.repo.create({
+      nameAr: dto.nameAr,
+      nameEn: dto.nameEn,
+      category: dto.category,
+      type: dto.type,
+      allowedRoles: dto.allowedRoles ?? null,
+      imageUrl: dto.imageUrl ?? null,
+    });
+    const saved = await this.repo.save(entity);
+    return this.toDto(saved);
   }
 
-  findAll(): Promise<ProductDto[]> {
-    throw new NotImplementedException();
+  /**
+   * Règle métier §3.2 et §4 (CLAUDE.md) :
+   * Les produits LIBRE_SERVICE_VIP sont exclus pour tout rôle non-ADMIN.
+   * Le filtrage est appliqué ici côté service, jamais uniquement en UI.
+   */
+  async findAll(callerRole?: string): Promise<ProductDto[]> {
+    const isAdmin = callerRole === 'ADMIN';
+    const qb = this.repo
+      .createQueryBuilder('p')
+      .where('p.active = true')
+      .orderBy('p.nameEn', 'ASC');
+
+    if (!isAdmin) {
+      qb.andWhere('p.type = :type', { type: ProductType.COMMANDABLE });
+    }
+
+    const entities = await qb.getMany();
+
+    // Filter by allowedRoles if the product has role restrictions
+    if (!isAdmin && callerRole) {
+      return entities
+        .filter((e) => !e.allowedRoles || e.allowedRoles.includes(callerRole))
+        .map((e) => this.toDto(e));
+    }
+
+    return entities.map((e) => this.toDto(e));
   }
 
-  findOne(_id: string): Promise<ProductDto> {
-    throw new NotImplementedException();
+  async findOne(id: string): Promise<ProductDto> {
+    const entity = await this.repo.findOne({ where: { id } });
+    if (!entity) throw new NotFoundException(`Product ${id} not found`);
+    return this.toDto(entity);
   }
 
-  update(_id: string, _dto: Partial<CreateProductDto>): Promise<ProductDto> {
-    throw new NotImplementedException();
+  async update(
+    id: string,
+    dto: Partial<CreateProductDto>,
+  ): Promise<ProductDto> {
+    const entity = await this.repo.findOne({ where: { id } });
+    if (!entity) throw new NotFoundException(`Product ${id} not found`);
+    if (dto.nameAr !== undefined) entity.nameAr = dto.nameAr;
+    if (dto.nameEn !== undefined) entity.nameEn = dto.nameEn;
+    if (dto.category !== undefined) entity.category = dto.category;
+    if (dto.type !== undefined) entity.type = dto.type;
+    if (dto.allowedRoles !== undefined)
+      entity.allowedRoles = dto.allowedRoles ?? null;
+    if (dto.imageUrl !== undefined) entity.imageUrl = dto.imageUrl ?? null;
+    const saved = await this.repo.save(entity);
+    return this.toDto(saved);
   }
 
-  remove(_id: string): Promise<void> {
-    throw new NotImplementedException();
+  async remove(id: string): Promise<void> {
+    const entity = await this.repo.findOne({ where: { id } });
+    if (!entity) throw new NotFoundException(`Product ${id} not found`);
+    entity.active = false;
+    await this.repo.save(entity);
+  }
+
+  private toDto(e: Product): ProductDto {
+    const dto = new ProductDto();
+    dto.id = e.id;
+    dto.nameAr = e.nameAr;
+    dto.nameEn = e.nameEn;
+    dto.category = e.category;
+    dto.type = e.type;
+    dto.allowedRoles = e.allowedRoles ?? undefined;
+    dto.active = e.active;
+    return dto;
   }
 }
