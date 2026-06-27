@@ -98,5 +98,7 @@
   "deactivate": "إلغاء التفعيل",
   "deactivateConfirm": "سيتم إلغاء جميع الجلسات النشطة. هل تؤكد؟",
   "totalItems": "إجمالي العناصر",
-  "filters": "الفلاتر"
+  "filters": "الفلاتر",
+  "newStockEntry": "إضافة مخزون جديد",
+  "createStockSuccess": "تم إنشاء سجل المخزون"
 }

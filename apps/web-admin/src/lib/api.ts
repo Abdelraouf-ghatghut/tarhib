@@ -52,6 +52,7 @@ export const productsApi = {
 
 export const inventoryApi = {
   list: (branchId?: string) => api.get("/inventory", { params: branchId ? { branchId } : {} }),
+  create: (d: unknown) => api.post("/inventory", d),
   update: (id: string, d: unknown) => api.patch(`/inventory/${id}`, d),
   adjust: (id: string, d: unknown) => api.post(`/inventory/${id}/adjust`, d),
   alerts: () => api.get("/inventory/alerts/below-threshold"),

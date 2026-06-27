@@ -204,6 +204,48 @@ export class KeycloakService {
     return data.access_token;
   }
 
+  /**
+   * TARHIB-32: Révoque toutes les sessions actives d'un utilisateur via l'Admin API Keycloak.
+   * Appelé lors de la désactivation d'un compte employé.
+   * Non-fatal : l'employé est déjà désactivé en DB si cette méthode échoue.
+   */
+  async revokeUserSessions(email: string): Promise<void> {
+    const adminBase = this.config.get<string>(
+      'KEYCLOAK_ADMIN_URL',
+      'http://localhost:8080',
+    );
+    const realm = this.config.get<string>('KEYCLOAK_REALM', 'tarhib');
+
+    try {
+      const adminToken = await this.getAdminToken(adminBase);
+
+      const { data: users } = await firstValueFrom(
+        this.http.get<{ id: string }[]>(
+          `${adminBase}/admin/realms/${realm}/users?email=${encodeURIComponent(email)}&exact=true`,
+          { headers: { Authorization: `Bearer ${adminToken}` } },
+        ),
+      );
+
+      if (!users.length) {
+        this.logger.warn(
+          `revokeUserSessions: no Keycloak user found for ${email}`,
+        );
+        return;
+      }
+
+      await firstValueFrom(
+        this.http.delete(
+          `${adminBase}/admin/realms/${realm}/users/${users[0].id}/sessions`,
+          { headers: { Authorization: `Bearer ${adminToken}` } },
+        ),
+      );
+
+      this.logger.log(`All Keycloak sessions revoked for ${email}`);
+    } catch (err) {
+      this.logger.error(`revokeUserSessions failed for ${email}`, err);
+    }
+  }
+
   async revokeRefreshToken(refreshToken: string): Promise<void> {
     const params = new URLSearchParams({
       client_id: this.clientId,

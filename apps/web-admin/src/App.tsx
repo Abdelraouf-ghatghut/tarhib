@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ConfigProvider, App as AntApp } from "antd";
 import { RouterProvider } from "react-router-dom";
@@ -11,6 +12,12 @@ import { router } from "./router";
 function AppInner() {
   const { i18n } = useTranslation();
   const isAr = i18n.language === "ar";
+
+  // TARHIB-8/50: sync HTML dir + lang so CSS logical properties and browser layout apply RTL
+  useEffect(() => {
+    document.documentElement.dir = isAr ? "rtl" : "ltr";
+    document.documentElement.lang = isAr ? "ar" : "en";
+  }, [isAr]);
 
   return (
     <ConfigProvider
