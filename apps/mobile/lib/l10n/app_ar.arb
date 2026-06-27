@@ -51,5 +51,8 @@
   "category": "الفئة",
   "orderDetail": "تفاصيل الطلب",
   "validationResult": "نتيجة التحقق",
-  "partiallyRejected": "تم رفض بعض الأسطر"
+  "partiallyRejected": "تم رفض بعض الأسطر",
+  "pendingApproval": "في انتظار الموافقة",
+  "approve": "موافقة",
+  "reject": "رفض"
 }

@@ -17,6 +17,13 @@ final orderByIdProvider =
   return response.data;
 });
 
+/// Orders PENDING approval — for Department Manager (TARHIB-20)
+final pendingApprovalProvider = FutureProvider<List<OrderDto>>((ref) async {
+  final all = await ref.watch(ordersProvider.future);
+  return all.where((o) => o.status.name == 'PENDING').toList()
+    ..sort((a, b) => a.priority.name.compareTo(b.priority.name));
+});
+
 /// Orders pending for the hospitality agent queue (not DELIVERED / REJECTED)
 final agentQueueProvider = FutureProvider<List<OrderDto>>((ref) async {
   final all = await ref.watch(ordersProvider.future);
