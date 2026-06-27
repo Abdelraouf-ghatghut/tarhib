@@ -1,10 +1,28 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { BranchesService } from './branches.service';
-import { BranchDto, CreateBranchDto } from './dto/branch.dto';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { BranchesService } from './branches.service.js';
+import { BranchDto, CreateBranchDto } from './dto/branch.dto.js';
 
 @ApiTags('branches')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('branches')
 export class BranchesController {
   constructor(private readonly branchesService: BranchesService) {}
@@ -17,10 +35,11 @@ export class BranchesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Lister les branches' })
+  @ApiOperation({ summary: 'Lister les branches (filtrable par companyId)' })
+  @ApiQuery({ name: 'companyId', required: false })
   @ApiResponse({ status: 200, type: [BranchDto] })
-  findAll(): Promise<BranchDto[]> {
-    return this.branchesService.findAll();
+  findAll(@Query('companyId') companyId?: string): Promise<BranchDto[]> {
+    return this.branchesService.findAll(companyId);
   }
 
   @Get(':id')
@@ -33,12 +52,15 @@ export class BranchesController {
   @Patch(':id')
   @ApiOperation({ summary: 'Mettre à jour une branche' })
   @ApiResponse({ status: 200, type: BranchDto })
-  update(@Param('id') id: string, @Body() dto: Partial<CreateBranchDto>): Promise<BranchDto> {
+  update(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateBranchDto>,
+  ): Promise<BranchDto> {
     return this.branchesService.update(id, dto);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Supprimer une branche' })
+  @ApiOperation({ summary: 'Désactiver une branche (soft delete)' })
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string): Promise<void> {
     return this.branchesService.remove(id);
