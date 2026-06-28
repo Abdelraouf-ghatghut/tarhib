@@ -54,5 +54,13 @@
   "partiallyRejected": "تم رفض بعض الأسطر",
   "pendingApproval": "في انتظار الموافقة",
   "approve": "موافقة",
-  "reject": "رفض"
+  "reject": "رفض",
+  "loginSubtitle": "تسجيل الدخول إلى مساحة عملك",
+  "goodMorning": "صباح الخير،",
+  "goodAfternoon": "مساء الخير،",
+  "goodEvening": "مساء النور،",
+  "all": "الكل",
+  "ordersTotal": "طلبات",
+  "late": "متأخر",
+  "allClear": "القائمة فارغة — أحسنت!"
 }

@@ -172,4 +172,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reject => 'Reject';
+
+  @override
+  String get loginSubtitle => 'Sign in to your workspace';
+
+  @override
+  String get goodMorning => 'Good morning,';
+
+  @override
+  String get goodAfternoon => 'Good afternoon,';
+
+  @override
+  String get goodEvening => 'Good evening,';
+
+  @override
+  String get all => 'All';
+
+  @override
+  String get ordersTotal => 'orders';
+
+  @override
+  String get late => 'Late';
+
+  @override
+  String get allClear => 'Queue is clear — great work!';
 }
