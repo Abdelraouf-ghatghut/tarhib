@@ -2,8 +2,19 @@ import { Card, Col, Progress, Row, Space, Statistic, Tag, Typography } from "ant
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { reportingApi } from "../../lib/api";
+import { useAuth } from "../../hooks/useAuth";
 
 const { Title } = Typography;
+
+function getCompanyId(token: string | null): string {
+  if (!token) return "";
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.companyId || payload.tarhib_company_id || "";
+  } catch {
+    return "";
+  }
+}
 
 interface OrdersReport {
   total: number;
@@ -41,20 +52,22 @@ const STATUS_I18N_KEYS: Record<string, string> = {
 
 export function ReportsPage() {
   const { t } = useTranslation();
+  const { token } = useAuth();
+  const companyId = getCompanyId(token);
 
   const { data: ordersData } = useQuery({
-    queryKey: ["reports", "orders"],
-    queryFn: () => reportingApi.orders().then((r) => r.data as OrdersReport),
+    queryKey: ["reports", "orders", companyId],
+    queryFn: () => reportingApi.orders(companyId).then((r) => r.data as OrdersReport),
   });
 
   const { data: inventoryData } = useQuery({
-    queryKey: ["reports", "inventory"],
-    queryFn: () => reportingApi.inventory().then((r) => r.data as InventoryReport),
+    queryKey: ["reports", "inventory", companyId],
+    queryFn: () => reportingApi.inventory(companyId).then((r) => r.data as InventoryReport),
   });
 
   const { data: slaData } = useQuery({
-    queryKey: ["reports", "sla"],
-    queryFn: () => reportingApi.sla().then((r) => r.data as SlaReport),
+    queryKey: ["reports", "sla", companyId],
+    queryFn: () => reportingApi.sla(companyId).then((r) => r.data as SlaReport),
   });
 
   const complianceRate = Math.round(slaData?.complianceRate ?? 0);

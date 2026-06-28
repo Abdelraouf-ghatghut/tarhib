@@ -25,7 +25,12 @@ import {
 } from './validation-engine/validation-engine.service.js';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { NotificationsGateway } from '../notifications/notifications.gateway.js';
 import { Employee } from '../employees/entities/employee.entity.js';
+import { Product } from '../products/entities/product.entity.js';
+import { ProductType } from '../products/dto/product.dto.js';
+import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
+import { Quota } from '../quotas/entities/quota.entity.js';
 
 const PRIORITY_SLA_MINUTES: Record<OrderPriority, number> = {
   [OrderPriority.P1]: 10,
@@ -54,22 +59,64 @@ export class OrdersService {
     private readonly lineRepo: Repository<OrderLine>,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
+    @InjectRepository(InventoryItem)
+    private readonly inventoryRepo: Repository<InventoryItem>,
+    @InjectRepository(Quota)
+    private readonly quotaRepo: Repository<Quota>,
     private readonly validationEngine: ValidationEngineService,
     private readonly notificationsService: NotificationsService,
+    private readonly notificationsGateway: NotificationsGateway,
   ) {}
 
   async create(dto: CreateOrderDto, caller: JwtPayload): Promise<OrderDto> {
-    // Build ValidationContext — in prod, inject ProductsService/InventoryService/QuotasService
-    // For now the engine receives empty snapshots: all validation passes by default
-    // (cross-module data loading will be wired once ORG+Products branches are merged to main)
+    const productIds = dto.lines.map((l) => l.productId);
+
+    // Charge les vraies données (§3.3 CLAUDE.md — ordre strict)
+    const [products, stocks, quotas] = await Promise.all([
+      this.productRepo.find({ where: productIds.map((id) => ({ id })) }),
+      this.inventoryRepo.find({
+        where: productIds.map((id) => ({
+          productId: id,
+          branchId: caller.branchId || undefined,
+          companyId: caller.companyId || undefined,
+        })),
+      }),
+      this.quotaRepo
+        .createQueryBuilder('q')
+        .where('q.employee_id = :employeeId', { employeeId: caller.sub })
+        .andWhere('q.product_id IN (:...productIds)', { productIds })
+        .andWhere('q.period_start <= CURRENT_DATE')
+        .andWhere('q.period_end >= CURRENT_DATE')
+        .getMany(),
+    ]);
+
     const ctx: ValidationContext = {
       employeeId: caller.sub,
-      companyId: caller.companyId,
-      branchId: caller.branchId,
-      role: caller.role,
-      products: [],
-      stocks: [],
-      quotas: [],
+      companyId: caller.companyId || '',
+      branchId: caller.branchId || '',
+      role: caller.role || 'EMPLOYEE',
+      products: products.map((p) => ({
+        id: p.id,
+        type:
+          p.type === ProductType.LIBRE_SERVICE_VIP
+            ? 'LIBRE_SERVICE_VIP'
+            : 'COMMANDABLE',
+        allowedRoles: p.allowedRoles,
+        active: p.active,
+      })),
+      stocks: stocks.map((s) => ({
+        productId: s.productId,
+        branchId: s.branchId,
+        quantity: s.quantity,
+      })),
+      quotas: quotas.map((q) => ({
+        employeeId: q.employeeId,
+        productId: q.productId,
+        maxQuantity: q.maxQuantity,
+        usedQuantity: q.usedQuantity,
+      })),
     };
 
     const validation = this.validationEngine.validateCart(ctx, dto.lines);
@@ -115,6 +162,31 @@ export class OrdersService {
     });
 
     const saved = await this.orderRepo.save(order);
+
+    // Incrémente usedQuantity pour les lignes APPROVED
+    const approvedLines = saved.lines.filter(
+      (l) => l.validationStatus === LineValidationStatus.APPROVED,
+    );
+    if (approvedLines.length > 0) {
+      for (const line of approvedLines) {
+        await this.quotaRepo
+          .createQueryBuilder()
+          .update()
+          .set({ usedQuantity: () => 'used_quantity + :qty' })
+          .where('employee_id = :empId', { empId: caller.sub })
+          .andWhere('product_id = :productId', { productId: line.productId })
+          .andWhere('period_start <= CURRENT_DATE')
+          .andWhere('period_end >= CURRENT_DATE')
+          .setParameter('qty', line.quantity)
+          .execute();
+      }
+    }
+
+    this.notificationsGateway.emitOrderUpdate('order:new', {
+      orderId: saved.id,
+      branchId: saved.branchId,
+    });
+
     return this.toDto(saved);
   }
 
@@ -176,6 +248,12 @@ export class OrdersService {
           `Notification failed for order ${order.id}: ${String(err)}`,
         ),
       );
+
+    this.notificationsGateway.emitOrderUpdate('order:status', {
+      orderId: saved.id,
+      status: saved.status,
+      branchId: saved.branchId,
+    });
 
     return this.toDto(saved);
   }

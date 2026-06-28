@@ -172,4 +172,28 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get reject => 'رفض';
+
+  @override
+  String get loginSubtitle => 'تسجيل الدخول إلى مساحة عملك';
+
+  @override
+  String get goodMorning => 'صباح الخير،';
+
+  @override
+  String get goodAfternoon => 'مساء الخير،';
+
+  @override
+  String get goodEvening => 'مساء النور،';
+
+  @override
+  String get all => 'الكل';
+
+  @override
+  String get ordersTotal => 'طلبات';
+
+  @override
+  String get late => 'متأخر';
+
+  @override
+  String get allClear => 'القائمة فارغة — أحسنت!';
 }

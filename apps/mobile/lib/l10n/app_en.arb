@@ -54,5 +54,13 @@
   "partiallyRejected": "Some lines were rejected",
   "pendingApproval": "Pending approval",
   "approve": "Approve",
-  "reject": "Reject"
+  "reject": "Reject",
+  "loginSubtitle": "Sign in to your workspace",
+  "goodMorning": "Good morning,",
+  "goodAfternoon": "Good afternoon,",
+  "goodEvening": "Good evening,",
+  "all": "All",
+  "ordersTotal": "orders",
+  "late": "Late",
+  "allClear": "Queue is clear — great work!"
 }

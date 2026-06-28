@@ -28,6 +28,13 @@ export class NotificationsGateway {
     this.server.emit('sla:tick', { orderId, remainingSeconds, priority });
   }
 
+  emitOrderUpdate(
+    event: 'order:new' | 'order:status',
+    data: { orderId: string; status?: string; branchId: string },
+  ): void {
+    this.server.emit(event, data);
+  }
+
   @SubscribeMessage('subscribe:sla')
   handleSubscribe(@MessageBody() data: { orderId: string }) {
     return { event: 'subscribed', data: data.orderId };

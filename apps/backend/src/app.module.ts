@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { EnrichUserInterceptor } from './auth/interceptors/enrich-user.interceptor.js';
+import { Employee } from './employees/entities/employee.entity.js';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -42,12 +45,13 @@ import { ReportingModule } from './reporting/reporting.module';
           type: 'postgres',
           url: databaseUrl,
           autoLoadEntities: true,
-          synchronize: false,
-          logging: true, // Active les logs SQL
+          synchronize: true,
+          logging: false,
         };
       },
     }),
 
+    TypeOrmModule.forFeature([Employee]),
     RedisModule,
     AuthModule,
     CompaniesModule,
@@ -62,6 +66,12 @@ import { ReportingModule } from './reporting/reporting.module';
     ReportingModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: EnrichUserInterceptor,
+    },
+  ],
 })
 export class AppModule {}

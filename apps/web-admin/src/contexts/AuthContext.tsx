@@ -1,19 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { api, setAuthToken, clearAuthToken } from "../lib/api";
-import { AuthContext } from "./authContext";
-
-export interface AuthState {
-  token: string | null;
-  role: string | null;
-  email: string | null;
-}
-
-export interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  isAuthenticated: boolean;
-}
+import { AuthContext } from "./auth-context";
+import type { AuthState } from "./auth-context";
 
 const TOKEN_KEY = "tarhib_token";
 const ROLE_KEY = "tarhib_role";

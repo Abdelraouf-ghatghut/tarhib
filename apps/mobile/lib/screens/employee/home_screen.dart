@@ -26,29 +26,88 @@ class EmployeeHomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context)!;
     final cartCount =
-        ref.watch(cartProvider).fold<int>(0, (s, l) => s + l.quantity);
+        ref.watch(cartProvider).fold<int>(0, (s, line) => s + line.quantity);
     final idx = _currentIndex(context);
+    final auth = ref.watch(authProvider);
+
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? l.goodMorning
+        : hour < 18
+            ? l.goodAfternoon
+            : l.goodEvening;
 
     return TarhibScaffold(
       appBar: GlassAppBar(
-        title: Row(
+        title: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.local_cafe_rounded,
-              color: Theme.of(context).colorScheme.primary,
-              size: 22,
-            ),
-            const SizedBox(width: 8),
             Text(
-              l.appTitle,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              greeting,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.55),
+                letterSpacing: 0.3,
+              ),
+            ),
+            Text(
+              auth.email ?? l.appTitle,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
         actions: [
+          if (cartCount > 0 && idx != 1)
+            GestureDetector(
+              onTap: () => context.go('/employee/cart'),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.shopping_cart_rounded,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$cartCount',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           IconButton(
-            icon: const Icon(Icons.logout_rounded),
+            icon: const Icon(Icons.logout_rounded, size: 22),
             onPressed: () => ref.read(authProvider.notifier).logout(),
             tooltip: l.logout,
           ),
@@ -70,7 +129,11 @@ class EmployeeHomeScreen extends ConsumerWidget {
               label: Text('$cartCount'),
               child: const Icon(Icons.shopping_cart_outlined),
             ),
-            selectedIcon: const Icon(Icons.shopping_cart_rounded),
+            selectedIcon: Badge(
+              isLabelVisible: cartCount > 0,
+              label: Text('$cartCount'),
+              child: const Icon(Icons.shopping_cart_rounded),
+            ),
             label: l.cart,
           ),
           NavigationDestination(
