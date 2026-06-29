@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,11 +7,16 @@ import 'screens/employee/home_screen.dart';
 import 'screens/employee/catalog_screen.dart';
 import 'screens/employee/cart_screen.dart';
 import 'screens/employee/history_screen.dart';
+import 'screens/employee/meeting_rooms_screen.dart';
 import 'screens/employee/order_tracking_screen.dart';
-import 'screens/agent/queue_screen.dart';
 import 'screens/agent/order_detail_screen.dart';
-import 'screens/manager/manager_orders_screen.dart';
+import 'screens/agent/queue_screen.dart';
+import 'screens/agent/vip_stock_screen.dart';
+import 'screens/manager/manager_dashboard_screen.dart';
 import 'screens/manager/manager_order_detail_screen.dart';
+import 'screens/manager/manager_orders_screen.dart';
+import 'screens/auth/signup_screen.dart';
+import 'screens/profile/profile_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -22,8 +26,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final loggedIn = authState.isAuthenticated;
       final onLogin = state.matchedLocation == '/login';
+      final onSignup = state.matchedLocation == '/signup';
 
-      if (!loggedIn && !onLogin) return '/login';
+      if (!loggedIn && !onLogin && !onSignup) return '/login';
       if (loggedIn && onLogin) {
         if (authState.isAgent) return '/agent/queue';
         if (authState.isManager) return '/manager/orders';
@@ -33,8 +38,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
 
-      // ── Employee shell ──────────────────────────────────────────────────
+      // ── Employee shell ──────────────────────────────────────────────────────
       ShellRoute(
         builder: (context, state, child) => EmployeeHomeScreen(child: child),
         routes: [
@@ -46,24 +52,39 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, state) =>
                 OrderTrackingScreen(orderId: state.pathParameters['id']!),
           ),
+          GoRoute(
+            path: '/employee/rooms',
+            builder: (_, __) => const MeetingRoomsScreen(),
+          ),
         ],
       ),
 
-      // ── Hospitality agent ───────────────────────────────────────────────
+      // ── Hospitality agent ───────────────────────────────────────────────────
       GoRoute(path: '/agent/queue', builder: (_, __) => const QueueScreen()),
       GoRoute(
         path: '/agent/orders/:id',
         builder: (_, state) =>
             AgentOrderDetailScreen(orderId: state.pathParameters['id']!),
       ),
+      GoRoute(
+        path: '/agent/vip-stock',
+        builder: (_, __) => const VipStockScreen(),
+      ),
 
-      // ── Department manager (TARHIB-20) ──────────────────────────────────
+      // ── Department manager ──────────────────────────────────────────────────
       GoRoute(path: '/manager/orders', builder: (_, __) => const ManagerOrdersScreen()),
       GoRoute(
         path: '/manager/orders/:id',
         builder: (_, state) =>
             ManagerOrderDetailScreen(orderId: state.pathParameters['id']!),
       ),
+      GoRoute(
+        path: '/manager/dashboard',
+        builder: (_, __) => const ManagerDashboardScreen(),
+      ),
+
+      // ── Profile (all roles) ─────────────────────────────────────────────────
+      GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
     ],
   );
 });

@@ -246,6 +246,39 @@ export class KeycloakService {
     }
   }
 
+  /** Create a new user in Keycloak and return the keycloakId (UUID). */
+  async createUser(email: string, password: string): Promise<string> {
+    const adminBase = this.config.get<string>(
+      'KEYCLOAK_ADMIN_URL',
+      'http://localhost:8080',
+    );
+    const realm = this.config.get<string>('KEYCLOAK_REALM', 'tarhib');
+
+    const adminToken = await this.getAdminToken(adminBase);
+
+    const createUrl = `${adminBase}/admin/realms/${realm}/users`;
+    const response = await firstValueFrom(
+      this.http.post(
+        createUrl,
+        {
+          username: email,
+          email,
+          enabled: true,
+          credentials: [
+            { type: 'password', value: password, temporary: false },
+          ],
+        },
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      ),
+    );
+
+    // Keycloak returns the new user URL in the Location header
+    const location: string =
+      (response.headers as Record<string, string>)['location'] ?? '';
+    const keycloakId = location.split('/').pop() ?? email;
+    return keycloakId;
+  }
+
   async revokeRefreshToken(refreshToken: string): Promise<void> {
     const params = new URLSearchParams({
       client_id: this.clientId,

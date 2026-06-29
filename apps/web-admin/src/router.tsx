@@ -14,6 +14,8 @@ import { QuotasPage } from "./pages/quotas/QuotasPage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { RolesPage } from "./pages/roles/RolesPage";
 import { MeetingRoomsAdminPage } from "./pages/meeting-rooms/MeetingRoomsAdminPage";
+import { RegistrationsPage } from "./pages/registrations/RegistrationsPage";
+import { MeetingServicePackagesPage } from "./pages/meeting-service-packages/MeetingServicePackagesPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -37,6 +39,8 @@ export const router = createBrowserRouter([
       { path: "quotas", element: <QuotasPage /> },
       { path: "reports", element: <ReportsPage /> },
       { path: "meeting-rooms-admin", element: <MeetingRoomsAdminPage /> },
+      { path: "meeting-service-packages", element: <MeetingServicePackagesPage /> },
+      { path: "registrations", element: <RegistrationsPage /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Layout, Menu, Button, Space, Typography, Dropdown } from "antd";
+import { Layout, Menu, Button, Space, Typography, Dropdown, Select } from "antd";
 import type { MenuProps } from "antd";
 import {
   DashboardOutlined,
@@ -18,27 +18,52 @@ import {
   MenuUnfoldOutlined,
   SafetyOutlined,
   CalendarOutlined,
+  UserAddOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
+import { useScope } from "../contexts/ScopeContext";
+import { companiesApi, branchesApi } from "../lib/api";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
 
+interface NamedEntity {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+}
+
 export function AdminLayout() {
   const { t, i18n } = useTranslation();
-  const { logout, email, hasPermission } = useAuth();
+  const { logout, email, hasPermission, isSuperadmin } = useAuth();
+  const { companyId, branchId, setCompanyId, setBranchId } = useScope();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const isAr = i18n.language === "ar";
+
+  const { data: companies = [] } = useQuery<NamedEntity[]>({
+    queryKey: ["companies"],
+    queryFn: () => companiesApi.list().then((r) => r.data as NamedEntity[]),
+    enabled: isSuperadmin,
+  });
+
+  const { data: branches = [] } = useQuery<NamedEntity[]>({
+    queryKey: ["branches", companyId],
+    queryFn: () => branchesApi.list(companyId ?? undefined).then((r) => r.data as NamedEntity[]),
+    enabled: !!companyId,
+  });
+
+  const label = (e: NamedEntity) => (isAr ? e.nameAr : e.nameEn);
 
   const menuItems: MenuProps["items"] = useMemo(() => {
     const items: MenuProps["items"] = [
       { key: "/", icon: <DashboardOutlined />, label: t("dashboard") },
     ];
 
-    // Configuration section
     const configChildren: MenuProps["items"] = [];
     if (hasPermission("role.manage")) {
       configChildren.push({ key: "/roles", icon: <SafetyOutlined />, label: t("roles") });
@@ -54,6 +79,11 @@ export function AdminLayout() {
     }
     if (hasPermission("employee.manage")) {
       configChildren.push({ key: "/employees", icon: <TeamOutlined />, label: t("employees") });
+      configChildren.push({
+        key: "/registrations",
+        icon: <UserAddOutlined />,
+        label: t("pendingRegistrations"),
+      });
     }
     if (hasPermission("company.manage")) {
       configChildren.push({ key: "/products", icon: <ShoppingOutlined />, label: t("products") });
@@ -62,11 +92,18 @@ export function AdminLayout() {
       configChildren.push({ key: "/inventory", icon: <InboxOutlined />, label: t("inventory") });
     }
     if (hasPermission("branch.manage") || hasPermission("company.manage")) {
-      configChildren.push({
-        key: "/meeting-rooms-admin",
-        icon: <CalendarOutlined />,
-        label: t("meetingRoomsAdmin"),
-      });
+      configChildren.push(
+        {
+          key: "/meeting-rooms-admin",
+          icon: <CalendarOutlined />,
+          label: t("meetingRoomsAdmin"),
+        },
+        {
+          key: "/meeting-service-packages",
+          icon: <CalendarOutlined />,
+          label: t("meetingServicePackages"),
+        },
+      );
     }
 
     if (configChildren.length > 0) {
@@ -78,7 +115,6 @@ export function AdminLayout() {
       });
     }
 
-    // Operations section — always visible
     items.push({
       key: "operations",
       label: t("operations"),
@@ -89,7 +125,6 @@ export function AdminLayout() {
       ],
     });
 
-    // Reports section
     if (
       hasPermission("report.view") ||
       hasPermission("company.manage") ||
@@ -154,15 +189,46 @@ export function AdminLayout() {
             padding: "0 24px",
             background: "#fff",
             borderBlockEnd: "1px solid #f0f0f0",
+            gap: 12,
           }}
         >
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-          />
+          {/* Left: collapse + scope selectors */}
+          <Space size={8}>
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+            />
+
+            {isSuperadmin && (
+              <Select
+                allowClear
+                placeholder={t("allCompanies")}
+                style={{ minWidth: 160 }}
+                value={companyId ?? undefined}
+                onChange={(v) => setCompanyId(v ?? null)}
+                options={companies.map((c) => ({ value: c.id, label: label(c) }))}
+                size="middle"
+              />
+            )}
+
+            <Select
+              allowClear
+              placeholder={t("allBranches")}
+              style={{ minWidth: 160 }}
+              value={branchId ?? undefined}
+              onChange={(v) => setBranchId(v ?? null)}
+              options={branches.map((b) => ({ value: b.id, label: label(b) }))}
+              disabled={!companyId}
+              size="middle"
+            />
+          </Space>
+
+          {/* Right: email, lang, logout */}
           <Space>
-            <Text type="secondary">{email}</Text>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              {email}
+            </Text>
             <Dropdown
               menu={{
                 items: langItems,

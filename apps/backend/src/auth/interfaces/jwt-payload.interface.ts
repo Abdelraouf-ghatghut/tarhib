@@ -1,14 +1,16 @@
-import { EmployeeRole } from '../../employees/dto/employee.dto';
-
 export interface JwtPayload {
-  /** Keycloak user UUID, mapped to employee.keycloakId */
   sub: string;
   email: string;
-  role: EmployeeRole;
-  /** Tenant identifier — injected automatically by Keycloak mapper */
+  /** Legacy role string — kept for backward compat, use permissions[] for logic */
+  role: string;
+  /** UUID of the dynamic role entity */
+  roleId?: string;
+  roleName?: string;
+  scope?: 'TARHIB' | 'CLIENT';
+  /** Resolved permission keys from the role */
+  permissions: string[];
   companyId: string;
-  /** Required for HOSPITALITY_AGENT branch-scoped isolation */
-  branchId: string;
+  branchId?: string;
   iat?: number;
   exp?: number;
 }

@@ -100,3 +100,19 @@ export const meetingRoomsAdminApi = {
   remove: (id: string) => api.delete(`/meeting-rooms/${id}`),
   getBookings: (roomId: string) => api.get(`/meeting-rooms/${roomId}/bookings`),
 };
+
+export const meetingServicePackagesApi = {
+  list: (companyId?: string) =>
+    api.get("/meeting-service-packages/admin/all", { params: companyId ? { companyId } : {} }),
+  create: (d: unknown) => api.post("/meeting-service-packages", d),
+  update: (id: string, d: unknown) => api.patch(`/meeting-service-packages/${id}`, d),
+  remove: (id: string) => api.delete(`/meeting-service-packages/${id}`),
+};
+
+export const registrationsApi = {
+  listPending: (companyId?: string) =>
+    api.get("/auth/pending-registrations", { params: companyId ? { companyId } : {} }),
+  approve: (id: string) => api.patch(`/auth/registrations/${id}/approve`),
+  reject: (id: string) => api.patch(`/auth/registrations/${id}/reject`),
+  invite: (d: unknown) => api.post("/auth/invite", d),
+};
