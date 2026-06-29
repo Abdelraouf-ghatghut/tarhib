@@ -72,9 +72,31 @@ export const quotasApi = {
 };
 
 export const reportingApi = {
-  orders: (companyId?: string) =>
-    api.get("/reports/orders", { params: companyId ? { companyId } : {} }),
-  inventory: (companyId?: string) =>
-    api.get("/reports/inventory", { params: companyId ? { companyId } : {} }),
-  sla: (companyId?: string) => api.get("/reports/sla", { params: companyId ? { companyId } : {} }),
+  orders: (params?: Record<string, string>) => api.get("/reports/orders", { params }),
+  inventory: (params?: Record<string, string>) => api.get("/reports/inventory", { params }),
+  sla: (params?: Record<string, string>) => api.get("/reports/sla", { params }),
+  userActivity: (params?: Record<string, string>) => api.get("/reports/user-activity", { params }),
+  meetingRooms: (params?: Record<string, string>) => api.get("/reports/meeting-rooms", { params }),
+};
+
+export const rolesApi = {
+  list: () => api.get("/roles"),
+  create: (d: unknown) => api.post("/roles", d),
+  update: (id: string, d: unknown) => api.patch(`/roles/${id}`, d),
+  remove: (id: string) => api.delete(`/roles/${id}`),
+  getQuotas: (id: string) => api.get(`/roles/${id}/quotas`),
+  setQuota: (id: string, d: unknown) => api.post(`/roles/${id}/quotas`, d),
+};
+
+export const permissionsApi = {
+  list: (scope?: string) => api.get("/permissions", { params: scope ? { scope } : {} }),
+};
+
+export const meetingRoomsAdminApi = {
+  list: (companyId?: string) =>
+    api.get("/meeting-rooms/admin/all", { params: companyId ? { companyId } : {} }),
+  create: (d: unknown) => api.post("/meeting-rooms", d),
+  update: (id: string, d: unknown) => api.patch(`/meeting-rooms/${id}`, d),
+  remove: (id: string) => api.delete(`/meeting-rooms/${id}`),
+  getBookings: (roomId: string) => api.get(`/meeting-rooms/${roomId}/bookings`),
 };

@@ -12,6 +12,8 @@ import { InventoryPage } from "./pages/inventory/InventoryPage";
 import { OrdersPage } from "./pages/orders/OrdersPage";
 import { QuotasPage } from "./pages/quotas/QuotasPage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
+import { RolesPage } from "./pages/roles/RolesPage";
+import { MeetingRoomsAdminPage } from "./pages/meeting-rooms/MeetingRoomsAdminPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -24,6 +26,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <DashboardPage /> },
+      { path: "roles", element: <RolesPage /> },
       { path: "companies", element: <CompaniesPage /> },
       { path: "branches", element: <BranchesPage /> },
       { path: "departments", element: <DepartmentsPage /> },
@@ -33,6 +36,7 @@ export const router = createBrowserRouter([
       { path: "orders", element: <OrdersPage /> },
       { path: "quotas", element: <QuotasPage /> },
       { path: "reports", element: <ReportsPage /> },
+      { path: "meeting-rooms-admin", element: <MeetingRoomsAdminPage /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

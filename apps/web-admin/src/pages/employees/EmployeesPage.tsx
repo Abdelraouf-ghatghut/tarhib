@@ -15,11 +15,15 @@ import { StopOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CrudTable } from "../../components/CrudTable";
-import { employeesApi, companiesApi, branchesApi, departmentsApi } from "../../lib/api";
+import { employeesApi, companiesApi, branchesApi, departmentsApi, rolesApi } from "../../lib/api";
 
 const { Title } = Typography;
 
-const ROLES = ["ADMIN", "DEPARTMENT_MANAGER", "INVENTORY_MANAGER", "HOSPITALITY_AGENT", "EMPLOYEE"];
+interface DynamicRole {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+}
 
 interface Employee {
   id: string;
@@ -47,12 +51,12 @@ export function EmployeesPage() {
   const qc = useQueryClient();
   const isAr = i18n.language === "ar";
 
-  const [filterRole, setFilterRole] = useState<string | undefined>();
+  const [filterRoleId, setFilterRoleId] = useState<string | undefined>();
   const [filterDept, setFilterDept] = useState<string | undefined>();
   const [filterActive, setFilterActive] = useState<boolean | undefined>();
 
   const queryParams: Record<string, string> = {};
-  if (filterRole) queryParams.role = filterRole;
+  if (filterRoleId) queryParams.roleId = filterRoleId;
   if (filterDept) queryParams.departmentId = filterDept;
   if (filterActive !== undefined) queryParams.active = String(filterActive);
 
@@ -74,6 +78,11 @@ export function EmployeesPage() {
   const { data: departments = [] } = useQuery({
     queryKey: ["departments"],
     queryFn: () => departmentsApi.list().then((r) => r.data as NamedEntity[]),
+  });
+
+  const { data: roles = [] } = useQuery({
+    queryKey: ["roles"],
+    queryFn: () => rolesApi.list().then((r) => r.data as DynamicRole[]),
   });
 
   async function onSave(values: Record<string, unknown>, id?: string) {
@@ -109,9 +118,12 @@ export function EmployeesPage() {
           allowClear
           placeholder={t("role")}
           style={{ width: 220 }}
-          options={ROLES.map((r) => ({ value: r, label: r }))}
-          value={filterRole}
-          onChange={setFilterRole}
+          options={roles.map((r) => ({
+            value: r.id,
+            label: isAr ? r.nameAr : r.nameEn,
+          }))}
+          value={filterRoleId}
+          onChange={setFilterRoleId}
         />
         <Select
           allowClear
@@ -162,7 +174,14 @@ export function EmployeesPage() {
           },
           { title: t("email"), dataIndex: "email" },
           { title: t("phone"), dataIndex: "phoneNumber" },
-          { title: t("role"), dataIndex: "role", render: (v: string) => <Tag>{v}</Tag> },
+          {
+            title: t("role"),
+            key: "role",
+            render: (_: unknown, rec: Employee) => {
+              const r = roles.find((x) => x.id === rec.role);
+              return <Tag>{r ? (isAr ? r.nameAr : r.nameEn) : rec.role}</Tag>;
+            },
+          },
           {
             title: t("active"),
             dataIndex: "active",
@@ -199,8 +218,15 @@ export function EmployeesPage() {
                 <Input.Password />
               </Form.Item>
             )}
-            <Form.Item name="role" label={t("role")} rules={[{ required: true }]}>
-              <Select options={ROLES.map((r) => ({ value: r, label: r }))} />
+            <Form.Item name="roleId" label={t("role")} rules={[{ required: true }]}>
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={roles.map((r) => ({
+                  value: r.id,
+                  label: isAr ? r.nameAr : r.nameEn,
+                }))}
+              />
             </Form.Item>
             <Form.Item name="companyId" label={t("company")} rules={[{ required: true }]}>
               <Select options={companies.map((c) => ({ value: c.id, label: label(c) }))} />

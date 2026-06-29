@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Layout, Menu, Button, Space, Typography, Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
@@ -16,6 +16,8 @@ import {
   GlobalOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  SafetyOutlined,
+  CalendarOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -26,23 +28,83 @@ const { Text } = Typography;
 
 export function AdminLayout() {
   const { t, i18n } = useTranslation();
-  const { logout, email } = useAuth();
+  const { logout, email, hasPermission } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
-  const menuItems: MenuProps["items"] = [
-    { key: "/", icon: <DashboardOutlined />, label: t("dashboard") },
-    { key: "/companies", icon: <BankOutlined />, label: t("companies") },
-    { key: "/branches", icon: <BranchesOutlined />, label: t("branches") },
-    { key: "/departments", icon: <ApartmentOutlined />, label: t("departments") },
-    { key: "/employees", icon: <TeamOutlined />, label: t("employees") },
-    { key: "/products", icon: <ShoppingOutlined />, label: t("products") },
-    { key: "/inventory", icon: <InboxOutlined />, label: t("inventory") },
-    { key: "/orders", icon: <FileTextOutlined />, label: t("orders") },
-    { key: "/quotas", icon: <PercentageOutlined />, label: t("quotas") },
-    { key: "/reports", icon: <BarChartOutlined />, label: t("reports") },
-  ];
+  const menuItems: MenuProps["items"] = useMemo(() => {
+    const items: MenuProps["items"] = [
+      { key: "/", icon: <DashboardOutlined />, label: t("dashboard") },
+    ];
+
+    // Configuration section
+    const configChildren: MenuProps["items"] = [];
+    if (hasPermission("role.manage")) {
+      configChildren.push({ key: "/roles", icon: <SafetyOutlined />, label: t("roles") });
+    }
+    if (hasPermission("company.manage")) {
+      configChildren.push({ key: "/companies", icon: <BankOutlined />, label: t("companies") });
+    }
+    if (hasPermission("company.manage") || hasPermission("branch.manage")) {
+      configChildren.push(
+        { key: "/branches", icon: <BranchesOutlined />, label: t("branches") },
+        { key: "/departments", icon: <ApartmentOutlined />, label: t("departments") },
+      );
+    }
+    if (hasPermission("employee.manage")) {
+      configChildren.push({ key: "/employees", icon: <TeamOutlined />, label: t("employees") });
+    }
+    if (hasPermission("company.manage")) {
+      configChildren.push({ key: "/products", icon: <ShoppingOutlined />, label: t("products") });
+    }
+    if (hasPermission("inventory.manage") || hasPermission("company.manage")) {
+      configChildren.push({ key: "/inventory", icon: <InboxOutlined />, label: t("inventory") });
+    }
+    if (hasPermission("branch.manage") || hasPermission("company.manage")) {
+      configChildren.push({
+        key: "/meeting-rooms-admin",
+        icon: <CalendarOutlined />,
+        label: t("meetingRoomsAdmin"),
+      });
+    }
+
+    if (configChildren.length > 0) {
+      items.push({
+        key: "config",
+        label: t("configuration"),
+        type: "group",
+        children: configChildren,
+      });
+    }
+
+    // Operations section — always visible
+    items.push({
+      key: "operations",
+      label: t("operations"),
+      type: "group",
+      children: [
+        { key: "/orders", icon: <FileTextOutlined />, label: t("orders") },
+        { key: "/quotas", icon: <PercentageOutlined />, label: t("quotas") },
+      ],
+    });
+
+    // Reports section
+    if (
+      hasPermission("report.view") ||
+      hasPermission("company.manage") ||
+      hasPermission("branch.manage")
+    ) {
+      items.push({
+        key: "reports",
+        label: t("reports"),
+        type: "group",
+        children: [{ key: "/reports", icon: <BarChartOutlined />, label: t("reports") }],
+      });
+    }
+
+    return items;
+  }, [t, hasPermission]);
 
   const langItems: MenuProps["items"] = [
     { key: "ar", label: t("arabic") },
