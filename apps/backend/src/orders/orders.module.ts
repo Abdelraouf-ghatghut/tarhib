@@ -10,6 +10,8 @@ import { Employee } from '../employees/entities/employee.entity.js';
 import { Product } from '../products/entities/product.entity.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
 import { Quota } from '../quotas/entities/quota.entity.js';
+import { RoleQuota } from '../roles/entities/role-quota.entity.js';
+import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { Quota } from '../quotas/entities/quota.entity.js';
       Product,
       InventoryItem,
       Quota,
+      RoleQuota,
+      EmployeeQuotaUsage,
     ]),
     NotificationsModule,
   ],

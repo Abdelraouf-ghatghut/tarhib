@@ -1,9 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../providers/orders_provider.dart';
+import '../../widgets/error_card.dart';
+import '../../widgets/glass_app_bar.dart';
+import '../../widgets/glass_card.dart';
+import '../../widgets/order_line_tile.dart';
+import '../../widgets/tarhib_scaffold.dart';
 
 /// TARHIB-15 — Suivi commande en temps réel + compte à rebours SLA
 class OrderTrackingScreen extends ConsumerStatefulWidget {
@@ -11,7 +17,8 @@ class OrderTrackingScreen extends ConsumerStatefulWidget {
   const OrderTrackingScreen({super.key, required this.orderId});
 
   @override
-  ConsumerState<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
+  ConsumerState<OrderTrackingScreen> createState() =>
+      _OrderTrackingScreenState();
 }
 
 class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
@@ -36,49 +43,79 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
     final l = AppLocalizations.of(context)!;
     final orderAsync = ref.watch(orderByIdProvider(widget.orderId));
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l.orderDetail)),
-      body: orderAsync.when(
+    return TarhibScaffold(
+      appBar: GlassAppBar(
+        title: Text(l.orderDetail),
+        centerTitle: true,
+      ),
+      child: orderAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(e.toString())),
+        error: (e, _) => Center(
+          child: ErrorCard(
+            error: e,
+            onRetry: () => ref.invalidate(orderByIdProvider(widget.orderId)),
+            margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 80),
+          ),
+        ),
         data: (order) {
-          if (order == null) return Center(child: Text(l.noOrders));
+          if (order == null) {
+            return Center(child: Text(l.noOrders));
+          }
+
           final sla = DateTime.tryParse(order.slaDeadline);
-          final isDone =
-              order.status.name == 'DELIVERED' || order.status.name == 'REJECTED';
+          final isDone = order.status.name == 'DELIVERED' ||
+              order.status.name == 'REJECTED';
           if (isDone) _refreshTimer?.cancel();
 
           return ListView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(20, kToolbarHeight + 16, 20, 32),
             children: [
-              _StatusStepper(statusName: order.status.name),
-              const SizedBox(height: 24),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      _row(l.priority, order.priority.name),
-                      const Divider(),
-                      _row(l.slaDeadline,
-                          sla != null ? _fmt(sla) : order.slaDeadline),
-                      if (sla != null && !isDone) ...[
-                        const Divider(),
-                        _SlaCountdown(deadline: sla),
-                      ],
-                    ],
-                  ),
-                ),
+              // ── Status stepper ────────────────────────────────────────────
+              GlassCard(
+                padding: const EdgeInsets.all(16),
+                child: _StatusStepper(statusName: order.status.name),
               ),
               const SizedBox(height: 16),
+
+              // ── Priority / SLA card ───────────────────────────────────────
+              GlassCard(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    _InfoRow(label: l.priority, value: order.priority.name),
+                    const Divider(height: 24),
+                    _InfoRow(
+                      label: l.slaDeadline,
+                      value: sla != null
+                          ? DateFormat.yMd().add_Hm().format(sla.toLocal())
+                          : order.slaDeadline,
+                    ),
+                    if (sla != null && !isDone) ...[
+                      const Divider(height: 24),
+                      _SlaCountdown(deadline: sla),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Lines ─────────────────────────────────────────────────────
               Text(l.validationResult,
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              ...order.lines.map(
-                (ln) => ListTile(
-                  leading: const Icon(Icons.check_circle_outline, color: Colors.green),
-                  title: Text(ln.productId),
-                  trailing: Text('x${ln.quantity}'),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              GlassCard(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
+                child: Column(
+                  children: order.lines
+                      .map((ln) => OrderLineTile(
+                            productId: ln.productId,
+                            quantity: ln.quantity.toInt(),
+                          ))
+                      .toList(),
                 ),
               ),
             ],
@@ -87,24 +124,35 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
       ),
     );
   }
+}
 
-  Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: const TextStyle(color: Colors.grey)),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-          ],
-        ),
-      );
+// ── Info row ─────────────────────────────────────────────────────────────────
 
-  String _fmt(DateTime dt) {
-    final d = dt.difference(DateTime.now());
-    if (d.isNegative) return '--';
-    return '${d.inMinutes} min ${d.inSeconds % 60} s';
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label,
+            style: TextStyle(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.55),
+                fontSize: 13)),
+        Text(value,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+      ],
+    );
   }
 }
+
+// ── SLA countdown (ticks every second) ───────────────────────────────────────
 
 class _SlaCountdown extends StatefulWidget {
   final DateTime deadline;
@@ -123,8 +171,10 @@ class _SlaCountdownState extends State<_SlaCountdown> {
     super.initState();
     _remaining = widget.deadline.difference(DateTime.now());
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() => _remaining = widget.deadline.difference(DateTime.now()));
+      if (mounted) {
+        setState(
+            () => _remaining = widget.deadline.difference(DateTime.now()));
+      }
     });
   }
 
@@ -143,27 +193,33 @@ class _SlaCountdownState extends State<_SlaCountdown> {
         : _remaining.inMinutes < 5
             ? Colors.orange
             : Colors.green;
+
     return Row(
       children: [
-        Icon(Icons.timer_outlined, color: color, size: 20),
+        Icon(Icons.timer_rounded, color: color, size: 20),
         const SizedBox(width: 8),
         Text(
           expired
               ? l.slaExpired
-              : '${_remaining.inMinutes.abs()} min ${_remaining.inSeconds.abs() % 60} s',
-          style: TextStyle(color: color, fontWeight: FontWeight.bold),
+              : '${_remaining.inMinutes.abs()} m ${_remaining.inSeconds.abs() % 60} s',
+          style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              fontFamily: 'monospace'),
         ),
       ],
     );
   }
 }
 
+// ── Status stepper ────────────────────────────────────────────────────────────
+
 class _StatusStepper extends StatelessWidget {
   final String statusName;
   const _StatusStepper({required this.statusName});
 
   static const _steps = ['PENDING', 'APPROVED', 'IN_PROGRESS', 'DELIVERED'];
-
   int get _idx => _steps.indexOf(statusName).clamp(0, _steps.length - 1);
 
   String _label(BuildContext ctx, String s) {
@@ -181,9 +237,14 @@ class _StatusStepper extends StatelessWidget {
   Widget build(BuildContext context) {
     if (statusName == 'REJECTED') {
       return ListTile(
-        leading: const Icon(Icons.cancel, color: Colors.red, size: 32),
-        title: Text(AppLocalizations.of(context)!.orderStatus_REJECTED,
-            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        leading: Icon(Icons.cancel_rounded,
+            color: Theme.of(context).colorScheme.error, size: 32),
+        title: Text(
+          AppLocalizations.of(context)!.orderStatus_REJECTED,
+          style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.bold),
+        ),
       );
     }
     return Stepper(
@@ -192,7 +253,8 @@ class _StatusStepper extends StatelessWidget {
       controlsBuilder: (_, __) => const SizedBox.shrink(),
       steps: _steps
           .map((s) => Step(
-                title: Text(_label(context, s)),
+                title: Text(_label(context, s),
+                    style: const TextStyle(fontSize: 13)),
                 content: const SizedBox.shrink(),
                 isActive: _steps.indexOf(s) <= _idx,
                 state: _steps.indexOf(s) < _idx

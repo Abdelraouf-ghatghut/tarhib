@@ -1,115 +1,129 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsOptional,
   IsString,
   IsUUID,
   Matches,
   MinLength,
-} from "class-validator";
+} from 'class-validator';
+import { EmployeeScope } from '../entities/employee.entity.js';
 
+/** @deprecated Use dynamic roles via roleId. Kept for Keycloak fallback and seed compatibility. */
 export enum EmployeeRole {
-  EMPLOYEE = "EMPLOYEE",
-  DEPARTMENT_MANAGER = "DEPARTMENT_MANAGER",
-  INVENTORY_MANAGER = "INVENTORY_MANAGER",
-  HOSPITALITY_AGENT = "HOSPITALITY_AGENT",
-  ADMIN = "ADMIN",
+  EMPLOYEE = 'EMPLOYEE',
+  DEPARTMENT_MANAGER = 'DEPARTMENT_MANAGER',
+  INVENTORY_MANAGER = 'INVENTORY_MANAGER',
+  HOSPITALITY_AGENT = 'HOSPITALITY_AGENT',
+  ADMIN = 'ADMIN',
 }
 
 export class CreateEmployeeDto {
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0854" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0854' })
   @IsUUID()
   companyId!: string;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0853" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0853' })
   @IsUUID()
   branchId!: string;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0852" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0852' })
   @IsUUID()
   departmentId!: string;
 
-  @ApiProperty({ example: "محمد" })
+  @ApiProperty({ example: 'محمد' })
   @IsString()
   @MinLength(1)
   firstNameAr!: string;
 
-  @ApiProperty({ example: "Mohamed" })
+  @ApiProperty({ example: 'Mohamed' })
   @IsString()
   @MinLength(1)
   firstNameEn!: string;
 
-  @ApiProperty({ example: "علي" })
+  @ApiProperty({ example: 'علي' })
   @IsString()
   @MinLength(1)
   lastNameAr!: string;
 
-  @ApiProperty({ example: "Ali" })
+  @ApiProperty({ example: 'Ali' })
   @IsString()
   @MinLength(1)
   lastNameEn!: string;
 
-  @ApiProperty({ example: "m.ali@company.com" })
+  @ApiProperty({ example: 'm.ali@company.com' })
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: "+213555000000", description: "Format E.164 international" })
+  @ApiProperty({ example: '+213555000000', description: 'Format E.164' })
   @IsString()
-  @Matches(/^\+[1-9]\d{7,14}$/, { message: "phoneNumber must be E.164 format (e.g. +213555000000)" })
+  @Matches(/^\+[1-9]\d{7,14}$/, { message: 'phoneNumber must be E.164 format' })
   phoneNumber!: string;
 
-  @ApiProperty({ enum: EmployeeRole })
-  @IsEnum(EmployeeRole)
-  role!: EmployeeRole;
+  @ApiPropertyOptional({ description: 'Dynamic role UUID (preferred)' })
+  @IsOptional()
+  @IsUUID()
+  roleId?: string;
+
+  @ApiPropertyOptional({ enum: EmployeeScope })
+  @IsOptional()
+  @IsEnum(EmployeeScope)
+  scope?: EmployeeScope;
 }
 
 export class EmployeeDto {
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0851" })
+  @ApiProperty()
   @IsUUID()
   id!: string;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0854" })
+  @ApiProperty()
   @IsUUID()
   companyId!: string;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0853" })
+  @ApiProperty()
   @IsUUID()
   branchId!: string;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0852" })
+  @ApiProperty()
   @IsUUID()
   departmentId!: string;
 
-  @ApiProperty({ example: "محمد" })
+  @ApiProperty()
   @IsString()
   firstNameAr!: string;
 
-  @ApiProperty({ example: "Mohamed" })
+  @ApiProperty()
   @IsString()
   firstNameEn!: string;
 
-  @ApiProperty({ example: "علي" })
+  @ApiProperty()
   @IsString()
   lastNameAr!: string;
 
-  @ApiProperty({ example: "Ali" })
+  @ApiProperty()
   @IsString()
   lastNameEn!: string;
 
-  @ApiProperty({ example: "m.ali@company.com" })
+  @ApiProperty()
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: "+213555000000" })
+  @ApiProperty()
   @IsString()
   phoneNumber!: string;
 
-  @ApiProperty({ enum: EmployeeRole })
-  @IsEnum(EmployeeRole)
-  role!: EmployeeRole;
+  @ApiPropertyOptional({ description: 'Dynamic role UUID' })
+  roleId!: string | null;
 
-  @ApiProperty({ example: true })
+  @ApiPropertyOptional({ description: 'Legacy role string (deprecated)' })
+  role!: string;
+
+  @ApiProperty({ enum: EmployeeScope })
+  scope!: EmployeeScope;
+
+  @ApiProperty()
   @IsBoolean()
   active!: boolean;
 }

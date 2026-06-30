@@ -31,6 +31,8 @@ import { Product } from '../products/entities/product.entity.js';
 import { ProductType } from '../products/dto/product.dto.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
 import { Quota } from '../quotas/entities/quota.entity.js';
+import { RoleQuota } from '../roles/entities/role-quota.entity.js';
+import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
 
 const PRIORITY_SLA_MINUTES: Record<OrderPriority, number> = {
   [OrderPriority.P1]: 10,
@@ -40,13 +42,22 @@ const PRIORITY_SLA_MINUTES: Record<OrderPriority, number> = {
   [OrderPriority.P5]: 60,
 };
 
-const ROLE_PRIORITY: Record<string, OrderPriority> = {
-  ADMIN: OrderPriority.P1,
-  DEPARTMENT_MANAGER: OrderPriority.P2,
-  INVENTORY_MANAGER: OrderPriority.P3,
-  HOSPITALITY_AGENT: OrderPriority.P3,
-  EMPLOYEE: OrderPriority.P5,
-};
+function resolveOrderPriority(caller: JwtPayload): OrderPriority {
+  // Use the role's sla_priority if carried in JWT (set via EnrichUserInterceptor from role.slaPriority)
+  // Fallback to legacy role string for backward compat
+  const slaPriority = (caller as { slaPriority?: string }).slaPriority;
+  if (slaPriority && slaPriority in OrderPriority)
+    return slaPriority as OrderPriority;
+
+  const legacyMap: Record<string, OrderPriority> = {
+    ADMIN: OrderPriority.P1,
+    DEPARTMENT_MANAGER: OrderPriority.P2,
+    INVENTORY_MANAGER: OrderPriority.P3,
+    HOSPITALITY_AGENT: OrderPriority.P3,
+    EMPLOYEE: OrderPriority.P5,
+  };
+  return legacyMap[caller.role] ?? OrderPriority.P5;
+}
 
 @Injectable()
 export class OrdersService {
@@ -65,6 +76,10 @@ export class OrdersService {
     private readonly inventoryRepo: Repository<InventoryItem>,
     @InjectRepository(Quota)
     private readonly quotaRepo: Repository<Quota>,
+    @InjectRepository(RoleQuota)
+    private readonly roleQuotaRepo: Repository<RoleQuota>,
+    @InjectRepository(EmployeeQuotaUsage)
+    private readonly quotaUsageRepo: Repository<EmployeeQuotaUsage>,
     private readonly validationEngine: ValidationEngineService,
     private readonly notificationsService: NotificationsService,
     private readonly notificationsGateway: NotificationsGateway,
@@ -74,7 +89,7 @@ export class OrdersService {
     const productIds = dto.lines.map((l) => l.productId);
 
     // Charge les vraies données (§3.3 CLAUDE.md — ordre strict)
-    const [products, stocks, quotas] = await Promise.all([
+    const [products, stocks] = await Promise.all([
       this.productRepo.find({ where: productIds.map((id) => ({ id })) }),
       this.inventoryRepo.find({
         where: productIds.map((id) => ({
@@ -83,14 +98,10 @@ export class OrdersService {
           companyId: caller.companyId || undefined,
         })),
       }),
-      this.quotaRepo
-        .createQueryBuilder('q')
-        .where('q.employee_id = :employeeId', { employeeId: caller.sub })
-        .andWhere('q.product_id IN (:...productIds)', { productIds })
-        .andWhere('q.period_start <= CURRENT_DATE')
-        .andWhere('q.period_end >= CURRENT_DATE')
-        .getMany(),
     ]);
+
+    // Quota system: prefer new role-based quotas, fallback to legacy per-employee quotas
+    const quotaSnapshots = await this.buildQuotaSnapshots(caller, productIds);
 
     const ctx: ValidationContext = {
       employeeId: caller.sub,
@@ -111,12 +122,7 @@ export class OrdersService {
         branchId: s.branchId,
         quantity: s.quantity,
       })),
-      quotas: quotas.map((q) => ({
-        employeeId: q.employeeId,
-        productId: q.productId,
-        maxQuantity: q.maxQuantity,
-        usedQuantity: q.usedQuantity,
-      })),
+      quotas: quotaSnapshots,
     };
 
     const validation = this.validationEngine.validateCart(ctx, dto.lines);
@@ -133,7 +139,7 @@ export class OrdersService {
       }
     }
 
-    const priority = ROLE_PRIORITY[caller.role] ?? OrderPriority.P5;
+    const priority = resolveOrderPriority(caller);
     const slaMinutes = PRIORITY_SLA_MINUTES[priority];
     const slaDeadline = new Date(Date.now() + slaMinutes * 60_000);
 
@@ -163,23 +169,18 @@ export class OrdersService {
 
     const saved = await this.orderRepo.save(order);
 
-    // Incrémente usedQuantity pour les lignes APPROVED
+    // Incrémente la consommation pour les lignes APPROVED
     const approvedLines = saved.lines.filter(
       (l) => l.validationStatus === LineValidationStatus.APPROVED,
     );
     if (approvedLines.length > 0) {
-      for (const line of approvedLines) {
-        await this.quotaRepo
-          .createQueryBuilder()
-          .update()
-          .set({ usedQuantity: () => 'used_quantity + :qty' })
-          .where('employee_id = :empId', { empId: caller.sub })
-          .andWhere('product_id = :productId', { productId: line.productId })
-          .andWhere('period_start <= CURRENT_DATE')
-          .andWhere('period_end >= CURRENT_DATE')
-          .setParameter('qty', line.quantity)
-          .execute();
-      }
+      await this.incrementQuotaUsage(
+        caller,
+        approvedLines.map((l) => ({
+          productId: l.productId,
+          quantity: l.quantity,
+        })),
+      );
     }
 
     this.notificationsGateway.emitOrderUpdate('order:new', {
@@ -218,7 +219,7 @@ export class OrdersService {
     });
     if (!order) throw new NotFoundException(`Order ${id} not found`);
 
-    const allowed = this.allowedTransitions(caller.role, order.status);
+    const allowed = this.allowedTransitions(caller, order.status);
     if (!allowed.includes(status)) {
       throw new BadRequestException(
         `Role ${caller.role} cannot transition ${order.status} → ${status}`,
@@ -259,28 +260,26 @@ export class OrdersService {
   }
 
   private allowedTransitions(
-    role: string,
+    caller: JwtPayload,
     current: OrderStatus,
   ): OrderStatus[] {
-    const map: Record<string, Record<OrderStatus, OrderStatus[]>> = {
-      HOSPITALITY_AGENT: {
-        [OrderStatus.PENDING]: [OrderStatus.IN_PROGRESS],
-        [OrderStatus.APPROVED]: [OrderStatus.IN_PROGRESS],
-        [OrderStatus.IN_PROGRESS]: [
-          OrderStatus.DELIVERED,
-          OrderStatus.REJECTED,
-        ],
-        [OrderStatus.DELIVERED]: [],
-        [OrderStatus.REJECTED]: [],
-      },
-      DEPARTMENT_MANAGER: {
-        [OrderStatus.PENDING]: [OrderStatus.APPROVED, OrderStatus.REJECTED],
-        [OrderStatus.APPROVED]: [OrderStatus.REJECTED],
-        [OrderStatus.IN_PROGRESS]: [],
-        [OrderStatus.DELIVERED]: [],
-        [OrderStatus.REJECTED]: [],
-      },
-      ADMIN: {
+    const perms = caller.permissions ?? [];
+
+    const canPrepare =
+      perms.includes('order.prepare') || perms.includes('order.queue.manage');
+    const canDeliver =
+      perms.includes('order.deliver') || perms.includes('order.queue.manage');
+    const canApprove = perms.includes('order.approve');
+    const isAdmin =
+      perms.includes('company.manage') || perms.includes('employee.manage');
+
+    // Backward compat: legacy role strings
+    const legacyAgent = caller.role === 'HOSPITALITY_AGENT';
+    const legacyManager = caller.role === 'DEPARTMENT_MANAGER';
+    const legacyAdmin = caller.role === 'ADMIN';
+
+    if (isAdmin || legacyAdmin) {
+      const full: Record<OrderStatus, OrderStatus[]> = {
         [OrderStatus.PENDING]: [
           OrderStatus.APPROVED,
           OrderStatus.IN_PROGRESS,
@@ -293,9 +292,36 @@ export class OrdersService {
         ],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
-      },
-    };
-    return map[role]?.[current] ?? [];
+      };
+      return full[current] ?? [];
+    }
+
+    if (canApprove || legacyManager) {
+      const approver: Record<OrderStatus, OrderStatus[]> = {
+        [OrderStatus.PENDING]: [OrderStatus.APPROVED, OrderStatus.REJECTED],
+        [OrderStatus.APPROVED]: [OrderStatus.REJECTED],
+        [OrderStatus.IN_PROGRESS]: [],
+        [OrderStatus.DELIVERED]: [],
+        [OrderStatus.REJECTED]: [],
+      };
+      return approver[current] ?? [];
+    }
+
+    if (canPrepare || canDeliver || legacyAgent) {
+      const agent: Record<OrderStatus, OrderStatus[]> = {
+        [OrderStatus.PENDING]: [OrderStatus.IN_PROGRESS],
+        [OrderStatus.APPROVED]: [OrderStatus.IN_PROGRESS],
+        [OrderStatus.IN_PROGRESS]: [
+          OrderStatus.DELIVERED,
+          OrderStatus.REJECTED,
+        ],
+        [OrderStatus.DELIVERED]: [],
+        [OrderStatus.REJECTED]: [],
+      };
+      return agent[current] ?? [];
+    }
+
+    return [];
   }
 
   async findOne(id: string): Promise<OrderDto> {
@@ -305,6 +331,130 @@ export class OrdersService {
     });
     if (!order) throw new NotFoundException(`Order ${id} not found`);
     return this.toDto(order);
+  }
+
+  private async buildQuotaSnapshots(
+    caller: JwtPayload,
+    productIds: string[],
+  ): Promise<
+    Array<{
+      employeeId: string;
+      productId: string;
+      maxQuantity: number;
+      usedQuantity: number;
+    }>
+  > {
+    const today = new Date().toISOString().slice(0, 10);
+
+    // New role-based quota system
+    if (caller.roleId) {
+      const [roleQuotas, usages] = await Promise.all([
+        this.roleQuotaRepo
+          .createQueryBuilder('rq')
+          .where('rq.role_id = :roleId', { roleId: caller.roleId })
+          .andWhere('rq.product_id IN (:...productIds)', { productIds })
+          .andWhere('rq.company_id = :companyId', {
+            companyId: caller.companyId,
+          })
+          .getMany(),
+        this.quotaUsageRepo
+          .createQueryBuilder('u')
+          .where('u.employee_id = :empId', { empId: caller.sub })
+          .andWhere('u.product_id IN (:...productIds)', { productIds })
+          .andWhere('u.period_start <= :today', { today })
+          .andWhere('u.period_end >= :today', { today })
+          .getMany(),
+      ]);
+
+      return roleQuotas.map((rq) => {
+        const usage = usages.find((u) => u.productId === rq.productId);
+        return {
+          employeeId: caller.sub,
+          productId: rq.productId,
+          maxQuantity: rq.maxQuantity,
+          usedQuantity: usage?.usedQuantity ?? 0,
+        };
+      });
+    }
+
+    // Legacy per-employee quotas fallback
+    const legacy = await this.quotaRepo
+      .createQueryBuilder('q')
+      .where('q.employee_id = :employeeId', { employeeId: caller.sub })
+      .andWhere('q.product_id IN (:...productIds)', { productIds })
+      .andWhere('q.period_start <= :today', { today })
+      .andWhere('q.period_end >= :today', { today })
+      .getMany();
+
+    return legacy.map((q) => ({
+      employeeId: q.employeeId,
+      productId: q.productId,
+      maxQuantity: q.maxQuantity,
+      usedQuantity: q.usedQuantity,
+    }));
+  }
+
+  private async incrementQuotaUsage(
+    caller: JwtPayload,
+    lines: Array<{ productId: string; quantity: number }>,
+  ): Promise<void> {
+    const today = new Date();
+    const periodStart = today.toISOString().slice(0, 10);
+    // Period end: end of current month
+    const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+      .toISOString()
+      .slice(0, 10);
+
+    if (caller.roleId) {
+      for (const line of lines) {
+        await this.quotaUsageRepo
+          .createQueryBuilder()
+          .insert()
+          .into(EmployeeQuotaUsage)
+          .values({
+            employeeId: caller.sub,
+            productId: line.productId,
+            companyId: caller.companyId,
+            periodStart,
+            periodEnd,
+            usedQuantity: line.quantity,
+          })
+          .orUpdate(
+            ['used_quantity'],
+            [
+              'employee_id',
+              'product_id',
+              'company_id',
+              'period_start',
+              'period_end',
+            ],
+          )
+          .execute()
+          .catch(() =>
+            this.quotaUsageRepo.query(
+              `UPDATE employee_quota_usage SET used_quantity = used_quantity + $1
+               WHERE employee_id = $2 AND product_id = $3 AND company_id = $4
+                 AND period_start <= CURRENT_DATE AND period_end >= CURRENT_DATE`,
+              [line.quantity, caller.sub, line.productId, caller.companyId],
+            ),
+          );
+      }
+      return;
+    }
+
+    // Legacy fallback
+    for (const line of lines) {
+      await this.quotaRepo
+        .createQueryBuilder()
+        .update()
+        .set({ usedQuantity: () => 'used_quantity + :qty' })
+        .where('employee_id = :empId', { empId: caller.sub })
+        .andWhere('product_id = :productId', { productId: line.productId })
+        .andWhere('period_start <= CURRENT_DATE')
+        .andWhere('period_end >= CURRENT_DATE')
+        .setParameter('qty', line.quantity)
+        .execute();
+    }
   }
 
   private toDto(o: Order): OrderDto {
