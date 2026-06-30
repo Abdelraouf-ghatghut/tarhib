@@ -85,8 +85,19 @@ if ($backendReady) {
 # ── Étape 5 : Seed de la base ────────────────────────────────
 Write-Host "▶ [5/5] Injection des données de test..." -ForegroundColor Yellow
 $seedFile = Join-Path $root "seed.sql"
-Get-Content $seedFile | docker exec -i tarhib-postgres psql -U tarhib -d tarhib_dev
-Write-Host "  ✓ Seed appliqué" -ForegroundColor Green
+
+# Nettoyer les tables avant de seeder (ON CONFLICT DO NOTHING ne met pas à jour les données corrompues)
+docker exec tarhib-postgres psql -U tarhib -d tarhib_dev -c @'
+TRUNCATE TABLE room_bookings, quotas, employee_quota_usage, role_quotas,
+  order_lines, orders, inventory_items, meeting_rooms, employees,
+  departments, branches, products, companies CASCADE;
+'@
+
+# Copier le fichier dans le container pour préserver l'encodage UTF-8 (CRLF sous Windows corrompt l'arabe)
+docker cp $seedFile tarhib-postgres:/tmp/seed.sql
+docker exec tarhib-postgres bash -c "PGCLIENTENCODING=UTF8 psql -U tarhib -d tarhib_dev -f /tmp/seed.sql"
+
+Write-Host "  ✓ Seed appliqué (UTF-8 natif via docker cp)" -ForegroundColor Green
 
 # ── Résumé ───────────────────────────────────────────────────
 Write-Host ""
@@ -104,12 +115,9 @@ Write-Host "     flutter run" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  🔑 Utilisateurs de test (mot de passe : Test1234! pour tous) :"
 Write-Host ""
-Write-Host "  ┌──────────────────┬───────────────────────┬──────────────┐"
-Write-Host "  │ Login            │ Rôle                  │ Scénario     │"
-Write-Host "  ├──────────────────┼───────────────────────┼──────────────┤"
-Write-Host "  │ sarah.benali     │ EMPLOYEE              │ Quotas OK    │"
-Write-Host "  │ omar.cherif      │ EMPLOYEE              │ Quotas serrés│"
-Write-Host "  │ yassine.agent    │ HOSPITALITY_AGENT     │ File livraison│"
-Write-Host "  │ karim.manager    │ DEPARTMENT_MANAGER    │ Approbations │"
-Write-Host "  └──────────────────┴───────────────────────┴──────────────┘"
+Write-Host "  App MOBILE CLIENT  : sarah@acme.com / omar@acme.com  (EMPLOYEE)"
+Write-Host "  App MOBILE AGENT   : yassine@acme.com               (HOSPITALITY_AGENT)"
+Write-Host "  App MOBILE MANAGER : karim@acme.com                 (DEPARTMENT_MANAGER)"
+Write-Host "  WEB ADMIN          : admin@tarhib.com               (ADMIN / superadmin)"
+Write-Host "    -> username Keycloak pour admin : admin.tarhib" -ForegroundColor DarkGray
 Write-Host ""
