@@ -37,10 +37,10 @@ export class VipReplenishmentTask {
   @Column({ type: 'varchar', length: 20, default: VipTaskStatus.OPEN })
   status!: VipTaskStatus;
 
-  @Column({ name: 'assigned_agent_id', nullable: true })
+  @Column({ name: 'assigned_agent_id', type: 'varchar', nullable: true })
   assignedAgentId!: string | null;
 
-  @Column({ name: 'completed_by', nullable: true })
+  @Column({ name: 'completed_by', type: 'varchar', nullable: true })
   completedBy!: string | null;
 
   @Column({ name: 'completed_at', nullable: true, type: 'timestamptz' })

@@ -44,8 +44,7 @@ export class NotificationsService {
     try {
       // Dynamic require: firebase-admin is an optional peer dependency
       /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
-      const admin =
-        require('firebase-admin') as typeof import('firebase-admin');
+      const admin = require('firebase-admin');
       const serviceAccount = JSON.parse(saJson) as object;
       this.fcmApp = admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
@@ -76,16 +75,13 @@ export class NotificationsService {
     }
     try {
       /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
-      const admin =
-        require('firebase-admin') as typeof import('firebase-admin');
-      await admin
-        .messaging(this.fcmApp as ReturnType<typeof admin.initializeApp>)
-        .send({
-          token: deviceToken,
-          notification: { title, body },
-          android: { priority: 'high' },
-          apns: { payload: { aps: { sound: 'default' } } },
-        });
+      const admin = require('firebase-admin');
+      await admin.messaging(this.fcmApp as any).send({
+        token: deviceToken,
+        notification: { title, body },
+        android: { priority: 'high' },
+        apns: { payload: { aps: { sound: 'default' } } },
+      });
       /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
       this.logger.log(`FCM push envoyé → ${deviceToken.slice(0, 12)}…`);
     } catch (err) {

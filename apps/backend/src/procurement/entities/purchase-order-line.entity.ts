@@ -1,4 +1,10 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { PurchaseOrder } from './purchase-order.entity.js';
 
 @Entity('purchase_order_lines')
@@ -10,6 +16,7 @@ export class PurchaseOrderLine {
   purchaseOrderId!: string;
 
   @ManyToOne(() => PurchaseOrder, (o) => o.lines, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'purchase_order_id' })
   order!: PurchaseOrder;
 
   @Column({ name: 'product_id' })

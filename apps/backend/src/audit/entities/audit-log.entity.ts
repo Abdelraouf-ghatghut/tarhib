@@ -13,22 +13,22 @@ export class AuditLog {
   @Column({ name: 'user_id' })
   userId!: string;
 
-  @Column({ name: 'user_email', nullable: true })
+  @Column({ name: 'user_email', type: 'varchar', nullable: true })
   userEmail!: string | null;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 100 })
   action!: string;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 100 })
   entity!: string;
 
-  @Column({ name: 'entity_id', nullable: true })
+  @Column({ name: 'entity_id', type: 'varchar', nullable: true })
   entityId!: string | null;
 
   @Column({ type: 'jsonb', nullable: true })
   metadata!: Record<string, unknown> | null;
 
-  @Column({ name: 'ip_address', length: 45, nullable: true })
+  @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
   ipAddress!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })

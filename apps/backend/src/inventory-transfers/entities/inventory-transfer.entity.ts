@@ -41,7 +41,7 @@ export class InventoryTransfer {
   @Column({ name: 'requested_by' })
   requestedBy!: string;
 
-  @Column({ name: 'confirmed_by', nullable: true })
+  @Column({ name: 'confirmed_by', type: 'varchar', nullable: true })
   confirmedBy!: string | null;
 
   @Column({ nullable: true, type: 'text' })
