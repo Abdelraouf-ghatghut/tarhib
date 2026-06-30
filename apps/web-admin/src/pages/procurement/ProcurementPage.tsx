@@ -24,7 +24,7 @@ import {
   EyeOutlined,
 } from "@ant-design/icons";
 import { procurementApi, productsAdminApi, suppliersApi } from "../../lib/api";
-import { useScope } from "../../context/ScopeContext";
+import { useScope } from "../../contexts/ScopeContext";
 
 const { Title } = Typography;
 

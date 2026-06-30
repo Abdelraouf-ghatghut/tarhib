@@ -15,7 +15,7 @@ import {
 } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { suppliersApi } from "../../lib/api";
-import { useScope } from "../../context/ScopeContext";
+import { useScope } from "../../contexts/ScopeContext";
 
 const { Title } = Typography;
 
