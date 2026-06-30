@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import {
   Badge,
   Button,
@@ -10,6 +10,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -17,11 +18,11 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { rolesApi, permissionsApi } from "../../lib/api";
+import { rolesApi, permissionsApi, companiesApi } from "../../lib/api";
 import { useAuth } from "../../hooks/useAuth";
 import { RoleQuotasModal } from "./RoleQuotasModal";
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 interface Permission {
   key: string;
@@ -32,18 +33,31 @@ interface Permission {
 
 interface Role {
   id: string;
+  companyId: string | null;
   nameAr: string;
   nameEn: string;
   scope: "TARHIB" | "CLIENT";
   slaPriority: string;
   isSystem: boolean;
-  permissions: Permission[];
+  permissions: string[];
 }
+
+interface Company {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+}
+
+type ActiveTab = "tarhib" | "client";
 
 export function RolesPage() {
   const { t, i18n } = useTranslation();
+  const isAr = i18n.language === "ar";
   const { isSuperadmin } = useAuth();
   const qc = useQueryClient();
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>("tarhib");
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Role | null>(null);
@@ -56,11 +70,29 @@ export function RolesPage() {
     queryFn: () => rolesApi.list().then((r) => r.data as Role[]),
   });
 
+  const { data: companies } = useQuery({
+    queryKey: ["companies"],
+    queryFn: () => companiesApi.list().then((r) => r.data as Company[]),
+    enabled: isSuperadmin,
+  });
+
   const { data: permissions } = useQuery({
     queryKey: ["permissions"],
     queryFn: () => permissionsApi.list().then((r) => r.data as Permission[]),
     enabled: formOpen,
   });
+
+  const tarhibRoles = (roles ?? []).filter((r) => r.scope === "TARHIB");
+  const clientRoles = (roles ?? []).filter(
+    (r) => r.scope === "CLIENT" && (!selectedCompanyId || r.companyId === selectedCompanyId),
+  );
+
+  const selectedCompany = companies?.find((c) => c.id === selectedCompanyId);
+  const selectedCompanyName = selectedCompany
+    ? isAr
+      ? selectedCompany.nameAr
+      : selectedCompany.nameEn
+    : null;
 
   function openCreate() {
     setEditing(null);
@@ -73,9 +105,8 @@ export function RolesPage() {
     form.setFieldsValue({
       nameAr: role.nameAr,
       nameEn: role.nameEn,
-      scope: role.scope,
       slaPriority: role.slaPriority,
-      permissionKeys: role.permissions.map((p) => p.key),
+      permissionKeys: role.permissions,
     });
     setFormOpen(true);
   }
@@ -84,10 +115,16 @@ export function RolesPage() {
     try {
       const values = await form.validateFields();
       setSaving(true);
+      const payload = {
+        ...values,
+        scope: activeTab === "tarhib" ? "TARHIB" : "CLIENT",
+        companyId: activeTab === "client" ? selectedCompanyId : undefined,
+        permissionKeys: (values.permissionKeys as string[] | undefined) ?? [],
+      };
       if (editing) {
-        await rolesApi.update(editing.id, values);
+        await rolesApi.update(editing.id, payload);
       } else {
-        await rolesApi.create(values);
+        await rolesApi.create(payload);
       }
       void qc.invalidateQueries({ queryKey: ["roles"] });
       setFormOpen(false);
@@ -119,81 +156,203 @@ export function RolesPage() {
       )
     : [];
 
+  function roleColumns(tab: ActiveTab) {
+    return [
+      {
+        title: isAr ? t("nameAr") : t("nameEn"),
+        key: "name",
+        render: (_: unknown, r: Role) => (isAr ? r.nameAr : r.nameEn),
+      },
+      ...(tab === "client"
+        ? [
+            {
+              title: t("company"),
+              key: "company",
+              render: (_: unknown, r: Role) => {
+                const co = companies?.find((c) => c.id === r.companyId);
+                return co ? (
+                  <Text strong>{isAr ? co.nameAr : co.nameEn}</Text>
+                ) : (
+                  <Text type="secondary">{"—"}</Text>
+                );
+              },
+            },
+          ]
+        : []),
+      {
+        title: t("slaPriority"),
+        dataIndex: "slaPriority",
+        render: (p: string) => <Badge color="gold" text={p} />,
+      },
+      {
+        title: t("systemRole"),
+        dataIndex: "isSystem",
+        render: (v: boolean) => (v ? <Tag color="red">{t("systemRole")}</Tag> : null),
+      },
+      {
+        title: t("permissionsLabel"),
+        key: "perms",
+        render: (_: unknown, r: Role) => <Tag>{r.permissions.length}</Tag>,
+      },
+      {
+        title: t("actions"),
+        key: "_actions",
+        width: 160,
+        render: (_: unknown, r: Role) => (
+          <Space>
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              disabled={r.isSystem}
+              onClick={() => openEdit(r)}
+            />
+            <Popconfirm
+              title={r.isSystem ? t("systemRoleCannotDelete") : t("deleteConfirm")}
+              onConfirm={() => !r.isSystem && void handleDelete(r.id)}
+              okText={t("confirm")}
+              cancelText={t("cancel")}
+              disabled={r.isSystem}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} disabled={r.isSystem} />
+            </Popconfirm>
+            <Button
+              size="small"
+              icon={<SettingOutlined />}
+              onClick={() => setQuotaRole(r)}
+              title={t("quotaPerRole")}
+            />
+          </Space>
+        ),
+      },
+    ];
+  }
+
+  const tarhibTabLabel = (
+    <span>
+      {t("roleScopeTarhib")}
+      <Tag color="blue" style={{ marginInlineStart: 6 }}>
+        {tarhibRoles.length}
+      </Tag>
+    </span>
+  );
+
+  const clientTabLabel = (
+    <span>
+      {selectedCompanyName ? (
+        <>
+          {t("roleScopeClient")}
+          {" — "}
+          <Text strong style={{ color: "#fa8c16" }}>
+            {selectedCompanyName}
+          </Text>
+        </>
+      ) : (
+        t("roleScopeClient")
+      )}
+      <Tag color="orange" style={{ marginInlineStart: 6 }}>
+        {clientRoles.length}
+      </Tag>
+    </span>
+  );
+
+  const modalTitle = editing
+    ? t("editRole")
+    : activeTab === "tarhib"
+      ? t("createTarhibRole")
+      : selectedCompanyName
+        ? t("createClientRoleFor", { company: selectedCompanyName })
+        : t("createClientRole");
+
   return (
     <>
       <Title level={4}>{t("roles")}</Title>
 
-      <div style={{ marginBlockEnd: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          {t("createRole")}
-        </Button>
-      </div>
-
-      <Table<Role>
-        rowKey="id"
-        dataSource={roles}
-        loading={isPending}
-        pagination={{ pageSize: 20 }}
-        size="middle"
-        scroll={{ x: true }}
-        columns={[
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => setActiveTab(k as ActiveTab)}
+        items={[
           {
-            title: i18n.language === "ar" ? t("nameAr") : t("nameEn"),
-            key: "name",
-            render: (_, r) => (i18n.language === "ar" ? r.nameAr : r.nameEn),
-          },
-          {
-            title: t("roleScope"),
-            dataIndex: "scope",
-            render: (s: string) => (
-              <Tag color={s === "TARHIB" ? "blue" : "orange"}>
-                {s === "TARHIB" ? t("roleScopeTarhib") : t("roleScopeClient")}
-              </Tag>
+            key: "tarhib",
+            label: tarhibTabLabel,
+            children: (
+              <>
+                <div style={{ marginBlockEnd: 16 }}>
+                  {isSuperadmin && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                      {t("createTarhibRole")}
+                    </Button>
+                  )}
+                </div>
+                <Table<Role>
+                  rowKey="id"
+                  dataSource={tarhibRoles}
+                  loading={isPending}
+                  pagination={{ pageSize: 20 }}
+                  size="middle"
+                  scroll={{ x: true }}
+                  columns={roleColumns("tarhib")}
+                />
+              </>
             ),
           },
           {
-            title: t("slaPriority"),
-            dataIndex: "slaPriority",
-            render: (p: string) => <Badge color="gold" text={p} />,
-          },
-          {
-            title: t("systemRole"),
-            dataIndex: "isSystem",
-            render: (v: boolean) => (v ? <Tag color="red">{t("systemRole")}</Tag> : null),
-          },
-          {
-            title: t("permissionsLabel"),
-            key: "perms",
-            render: (_, r) => <Tag>{r.permissions.length}</Tag>,
-          },
-          {
-            title: t("actions"),
-            key: "_actions",
-            width: 160,
-            render: (_, r) => (
-              <Space>
-                <Button
-                  size="small"
-                  icon={<EditOutlined />}
-                  disabled={r.isSystem}
-                  onClick={() => openEdit(r)}
-                />
-                <Popconfirm
-                  title={r.isSystem ? t("systemRoleCannotDelete") : t("deleteConfirm")}
-                  onConfirm={() => !r.isSystem && handleDelete(r.id)}
-                  okText={t("confirm")}
-                  cancelText={t("cancel")}
-                  disabled={r.isSystem}
+            key: "client",
+            label: clientTabLabel,
+            children: (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    marginBlockEnd: 16,
+                    flexWrap: "wrap",
+                  }}
                 >
-                  <Button size="small" danger icon={<DeleteOutlined />} disabled={r.isSystem} />
-                </Popconfirm>
-                <Button
-                  size="small"
-                  icon={<SettingOutlined />}
-                  onClick={() => setQuotaRole(r)}
-                  title={t("quotaPerRole")}
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder={t("filterByCompany")}
+                    style={{ minWidth: 220 }}
+                    value={selectedCompanyId ?? undefined}
+                    onChange={(v: string | undefined) => setSelectedCompanyId(v ?? null)}
+                    filterOption={(input, opt) =>
+                      String(opt?.label ?? "")
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
+                    }
+                    options={(companies ?? []).map((c) => ({
+                      value: c.id,
+                      label: isAr ? c.nameAr : c.nameEn,
+                    }))}
+                  />
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={openCreate}
+                    disabled={!selectedCompanyId}
+                    title={!selectedCompanyId ? t("selectCompanyFirst") : undefined}
+                  >
+                    {selectedCompanyName
+                      ? t("createClientRoleFor", { company: selectedCompanyName })
+                      : t("createClientRole")}
+                  </Button>
+                </div>
+                {!selectedCompanyId && (
+                  <Text type="secondary" style={{ display: "block", marginBlockEnd: 12 }}>
+                    {t("selectCompanyToSeeRoles")}
+                  </Text>
+                )}
+                <Table<Role>
+                  rowKey="id"
+                  dataSource={clientRoles}
+                  loading={isPending}
+                  pagination={{ pageSize: 20 }}
+                  size="middle"
+                  scroll={{ x: true }}
+                  columns={roleColumns("client")}
                 />
-              </Space>
+              </>
             ),
           },
         ]}
@@ -201,7 +360,7 @@ export function RolesPage() {
 
       <Modal
         open={formOpen}
-        title={editing ? t("editRole") : t("createRole")}
+        title={modalTitle}
         onOk={handleSave}
         onCancel={() => {
           setFormOpen(false);
@@ -215,47 +374,40 @@ export function RolesPage() {
       >
         <Form form={form} layout="vertical" style={{ marginBlockStart: 16 }}>
           <Form.Item name="nameAr" label={t("roleNameAr")} rules={[{ required: true }]}>
-            <Input />
+            <Input dir="rtl" />
           </Form.Item>
           <Form.Item name="nameEn" label={t("roleNameEn")} rules={[{ required: true }]}>
-            <Input />
+            <Input dir="ltr" />
           </Form.Item>
-          {isSuperadmin && (
-            <Form.Item name="scope" label={t("roleScope")} rules={[{ required: true }]}>
-              <Select
-                options={[
-                  { value: "TARHIB", label: t("roleScopeTarhib") },
-                  { value: "CLIENT", label: t("roleScopeClient") },
-                ]}
-              />
-            </Form.Item>
-          )}
           <Form.Item name="slaPriority" label={t("slaPriority")} rules={[{ required: true }]}>
             <Select options={["P1", "P2", "P3", "P4", "P5"].map((v) => ({ value: v, label: v }))} />
           </Form.Item>
-          <Form.Item name="permissionKeys" label={t("permissionsLabel")}>
-            <Checkbox.Group style={{ width: "100%" }}>
-              {permOptionsByGroup.map(([group, perms]) => (
-                <div key={group} style={{ marginBlockEnd: 8 }}>
-                  <strong style={{ textTransform: "capitalize" }}>{group}</strong>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBlockStart: 4 }}>
-                    {perms.map((p) => (
-                      <Checkbox key={p.key} value={p.key}>
-                        {i18n.language === "ar" ? p.nameAr : p.nameEn}
-                      </Checkbox>
-                    ))}
+
+          {activeTab === "tarhib" && (
+            <Form.Item name="permissionKeys" label={t("permissionsLabel")}>
+              <Checkbox.Group style={{ width: "100%" }}>
+                {permOptionsByGroup.map(([group, perms]) => (
+                  <div key={group} style={{ marginBlockEnd: 8 }}>
+                    <strong style={{ textTransform: "capitalize" }}>{group}</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBlockStart: 4 }}>
+                      {perms.map((p) => (
+                        <Checkbox key={p.key} value={p.key}>
+                          {isAr ? p.nameAr : p.nameEn}
+                        </Checkbox>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </Checkbox.Group>
-          </Form.Item>
+                ))}
+              </Checkbox.Group>
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
       {quotaRole && (
         <RoleQuotasModal
           roleId={quotaRole.id}
-          roleName={i18n.language === "ar" ? quotaRole.nameAr : quotaRole.nameEn}
+          roleName={isAr ? quotaRole.nameAr : quotaRole.nameEn}
           open={!!quotaRole}
           onClose={() => setQuotaRole(null)}
         />
