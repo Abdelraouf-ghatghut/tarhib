@@ -3,7 +3,10 @@ import {
   Controller,
   Get,
   HttpCode,
+  Param,
+  Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -27,6 +30,11 @@ import { PasswordResetRequestDto } from './dto/password-reset-request.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { PermissionsGuard } from './guards/permissions.guard';
+import { RequirePermission } from './decorators/require-permission.decorator';
+import { RegisterDto } from './dto/register.dto';
+import { InviteEmployeeDto } from './dto/invite-employee.dto';
+import { AcceptInviteDto } from './dto/accept-invite.dto';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 
 @ApiTags('auth')
@@ -119,5 +127,69 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   getMe(@CurrentUser() user: JwtPayload): JwtPayload {
     return this.authService.getCurrentUser(user);
+  }
+
+  // ── Signup ────────────────────────────────────────────────────────────────
+  @Post('register')
+  @HttpCode(204)
+  @ApiOperation({
+    summary: 'Self-register as employee (pending admin approval)',
+  })
+  @ApiNoContentResponse({
+    description: 'Registration submitted — awaiting approval',
+  })
+  async register(@Body() dto: RegisterDto): Promise<void> {
+    await this.authService.register(dto);
+  }
+
+  @Post('invite')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermission('employee.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Invite an employee by email (admin)' })
+  @ApiNoContentResponse({ description: 'Invitation sent' })
+  async inviteEmployee(@Body() dto: InviteEmployeeDto): Promise<void> {
+    await this.authService.inviteEmployee(dto);
+  }
+
+  @Post('accept-invite')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Accept invitation and set up account' })
+  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Token invalid or expired' })
+  acceptInvite(@Body() dto: AcceptInviteDto): Promise<TokenResponseDto> {
+    return this.authService.acceptInvite(dto);
+  }
+
+  @Get('pending-registrations')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermission('employee.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List pending self-registrations (admin)' })
+  getPendingRegistrations(@Query('companyId') companyId?: string) {
+    return this.authService.getPendingRegistrations(companyId);
+  }
+
+  @Patch('registrations/:id/approve')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermission('employee.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve a pending registration' })
+  @ApiNoContentResponse({ description: 'Approved' })
+  async approveRegistration(@Param('id') id: string): Promise<void> {
+    await this.authService.approveRegistration(id);
+  }
+
+  @Patch('registrations/:id/reject')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermission('employee.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reject and delete a pending registration' })
+  @ApiNoContentResponse({ description: 'Rejected' })
+  async rejectRegistration(@Param('id') id: string): Promise<void> {
+    await this.authService.rejectRegistration(id);
   }
 }

@@ -1,4 +1,3 @@
-import 'package:built_collection/built_collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tarhib_api_client/tarhib_api_client.dart';
 
@@ -42,14 +41,20 @@ final agentQueueProvider = FutureProvider<List<OrderDto>>((ref) async {
 class OrdersNotifier extends StateNotifier<AsyncValue<List<OrderDto>>> {
   OrdersNotifier() : super(const AsyncValue.loading());
 
-  Future<OrderDto?> createOrder(List<CreateOrderLineDto> lines) async {
-    final dto = CreateOrderDto(
-      (b) => b..lines = ListBuilder(lines),
+  Future<OrderDto?> createOrder(List<CreateOrderLineDto> lines, {String? note}) async {
+    final resp = await ApiClient.rawDio.post<Map<String, dynamic>>(
+      '/orders',
+      data: {
+        'lines': lines
+            .map((l) => {'productId': l.productId, 'quantity': l.quantity})
+            .toList(),
+        if (note != null && note.isNotEmpty) 'note': note,
+      },
     );
-    final response = await ApiClient.orders.ordersControllerCreate(
-      createOrderDto: dto,
-    );
-    return response.data;
+    final id = resp.data?['id'] as String?;
+    if (id == null) return null;
+    final full = await ApiClient.orders.ordersControllerFindOne(id: id);
+    return full.data;
   }
 
   Future<void> updateStatus(String orderId, String newStatus) async {

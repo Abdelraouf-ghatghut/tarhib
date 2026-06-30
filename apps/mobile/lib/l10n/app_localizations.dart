@@ -469,6 +469,744 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Queue is clear — great work!'**
   String get allClear;
+
+  /// No description provided for @nextOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Next order'**
+  String get nextOrder;
+
+  /// No description provided for @deliveryPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivery photo'**
+  String get deliveryPhoto;
+
+  /// No description provided for @photoUploading.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading photo...'**
+  String get photoUploading;
+
+  /// No description provided for @takePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Take photo'**
+  String get takePhoto;
+
+  /// No description provided for @photoOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo is optional'**
+  String get photoOptional;
+
+  /// No description provided for @nSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} selected'**
+  String nSelected(int n);
+
+  /// No description provided for @selectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get selectAll;
+
+  /// No description provided for @vipStock.
+  ///
+  /// In en, this message translates to:
+  /// **'VIP stock'**
+  String get vipStock;
+
+  /// No description provided for @filterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get filterAll;
+
+  /// No description provided for @batchStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start all'**
+  String get batchStart;
+
+  /// No description provided for @batchMarkDelivered.
+  ///
+  /// In en, this message translates to:
+  /// **'Deliver all'**
+  String get batchMarkDelivered;
+
+  /// No description provided for @markReplenished.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark replenished'**
+  String get markReplenished;
+
+  /// No description provided for @vipLocations.
+  ///
+  /// In en, this message translates to:
+  /// **'VIP Locations'**
+  String get vipLocations;
+
+  /// No description provided for @stockBelowThreshold.
+  ///
+  /// In en, this message translates to:
+  /// **'Below threshold'**
+  String get stockBelowThreshold;
+
+  /// No description provided for @replenishTask.
+  ///
+  /// In en, this message translates to:
+  /// **'Replenishment task'**
+  String get replenishTask;
+
+  /// No description provided for @currentStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Current stock'**
+  String get currentStock;
+
+  /// No description provided for @stockLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'{current} (min {min} / max {max})'**
+  String stockLevel(int current, int min, int max);
+
+  /// No description provided for @threshold.
+  ///
+  /// In en, this message translates to:
+  /// **'Threshold'**
+  String get threshold;
+
+  /// No description provided for @managerDashboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Dashboard'**
+  String get managerDashboard;
+
+  /// No description provided for @todayOrders.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s orders'**
+  String get todayOrders;
+
+  /// No description provided for @pendingCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get pendingCount;
+
+  /// No description provided for @deliveredToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered today'**
+  String get deliveredToday;
+
+  /// No description provided for @avgSlaMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'Avg SLA (min)'**
+  String get avgSlaMinutes;
+
+  /// No description provided for @mostOrdered.
+  ///
+  /// In en, this message translates to:
+  /// **'Most ordered'**
+  String get mostOrdered;
+
+  /// No description provided for @employeeQuotas.
+  ///
+  /// In en, this message translates to:
+  /// **'Employee quotas'**
+  String get employeeQuotas;
+
+  /// No description provided for @quotaUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'{used} / {max}'**
+  String quotaUsed(int used, int max);
+
+  /// No description provided for @roleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Role'**
+  String get roleLabel;
+
+  /// No description provided for @theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get theme;
+
+  /// No description provided for @themeSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get themeSystem;
+
+  /// No description provided for @themeLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get themeLight;
+
+  /// No description provided for @themeDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get themeDark;
+
+  /// No description provided for @roleAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Hospitality Agent'**
+  String get roleAgent;
+
+  /// No description provided for @roleManager.
+  ///
+  /// In en, this message translates to:
+  /// **'Department Manager'**
+  String get roleManager;
+
+  /// No description provided for @roleAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin'**
+  String get roleAdmin;
+
+  /// No description provided for @roleEmployee.
+  ///
+  /// In en, this message translates to:
+  /// **'Employee'**
+  String get roleEmployee;
+
+  /// No description provided for @quickReorder.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick reorder'**
+  String get quickReorder;
+
+  /// No description provided for @reorderConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder these items?'**
+  String get reorderConfirm;
+
+  /// No description provided for @meetingRooms.
+  ///
+  /// In en, this message translates to:
+  /// **'Meeting rooms'**
+  String get meetingRooms;
+
+  /// No description provided for @bookRoom.
+  ///
+  /// In en, this message translates to:
+  /// **'Book'**
+  String get bookRoom;
+
+  /// No description provided for @myBookings.
+  ///
+  /// In en, this message translates to:
+  /// **'My bookings'**
+  String get myBookings;
+
+  /// No description provided for @available.
+  ///
+  /// In en, this message translates to:
+  /// **'Available'**
+  String get available;
+
+  /// No description provided for @booked.
+  ///
+  /// In en, this message translates to:
+  /// **'Booked'**
+  String get booked;
+
+  /// No description provided for @cancelBooking.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel booking'**
+  String get cancelBooking;
+
+  /// No description provided for @noRoomsAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No rooms available'**
+  String get noRoomsAvailable;
+
+  /// No description provided for @noBookings.
+  ///
+  /// In en, this message translates to:
+  /// **'No bookings'**
+  String get noBookings;
+
+  /// No description provided for @addNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a note'**
+  String get addNote;
+
+  /// No description provided for @notePlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Special instructions...'**
+  String get notePlaceholder;
+
+  /// No description provided for @confirmOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm order'**
+  String get confirmOrder;
+
+  /// No description provided for @orderSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Order summary'**
+  String get orderSummary;
+
+  /// No description provided for @loginWithPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get loginWithPassword;
+
+  /// No description provided for @loginWithOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'OTP'**
+  String get loginWithOtp;
+
+  /// No description provided for @phone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone number'**
+  String get phone;
+
+  /// No description provided for @otpCodeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter verification code'**
+  String get otpCodeHint;
+
+  /// No description provided for @resendOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'Resend code'**
+  String get resendOtp;
+
+  /// No description provided for @verifyOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get verifyOtp;
+
+  /// No description provided for @sendOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'Send code'**
+  String get sendOtp;
+
+  /// No description provided for @confirmOrderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm order'**
+  String get confirmOrderTitle;
+
+  /// No description provided for @confirmOrderItems.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} items'**
+  String confirmOrderItems(int n);
+
+  /// No description provided for @estimatedPriority.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated priority'**
+  String get estimatedPriority;
+
+  /// No description provided for @confirmAndSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm & submit'**
+  String get confirmAndSubmit;
+
+  /// No description provided for @linesAccepted.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} lines accepted'**
+  String linesAccepted(int n);
+
+  /// No description provided for @linesRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} lines rejected'**
+  String linesRejected(int n);
+
+  /// No description provided for @outOfStockTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Out of stock'**
+  String get outOfStockTitle;
+
+  /// No description provided for @outOfStockBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Report this item as out of stock?'**
+  String get outOfStockBody;
+
+  /// No description provided for @outOfStockReported.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported as out of stock'**
+  String get outOfStockReported;
+
+  /// No description provided for @previousOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous order'**
+  String get previousOrder;
+
+  /// No description provided for @searchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search products...'**
+  String get searchHint;
+
+  /// No description provided for @quota.
+  ///
+  /// In en, this message translates to:
+  /// **'Quota'**
+  String get quota;
+
+  /// No description provided for @quotaOf.
+  ///
+  /// In en, this message translates to:
+  /// **'{used} / {max}'**
+  String quotaOf(int used, int max);
+
+  /// No description provided for @catalogEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No products available'**
+  String get catalogEmpty;
+
+  /// No description provided for @catalogEmptySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Check back later or contact your admin'**
+  String get catalogEmptySubtitle;
+
+  /// No description provided for @capacity.
+  ///
+  /// In en, this message translates to:
+  /// **'Capacity: {n}'**
+  String capacity(int n);
+
+  /// No description provided for @occupied.
+  ///
+  /// In en, this message translates to:
+  /// **'Occupied'**
+  String get occupied;
+
+  /// No description provided for @bookingConfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Booking confirmed'**
+  String get bookingConfirmed;
+
+  /// No description provided for @startTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Start time'**
+  String get startTime;
+
+  /// No description provided for @endTime.
+  ///
+  /// In en, this message translates to:
+  /// **'End time'**
+  String get endTime;
+
+  /// No description provided for @roleDirecteurGeneral.
+  ///
+  /// In en, this message translates to:
+  /// **'General Manager'**
+  String get roleDirecteurGeneral;
+
+  /// No description provided for @roleViceDirecteur.
+  ///
+  /// In en, this message translates to:
+  /// **'Deputy Manager'**
+  String get roleViceDirecteur;
+
+  /// No description provided for @roleDirecteurBranche.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch Manager'**
+  String get roleDirecteurBranche;
+
+  /// No description provided for @roleSuperviseur.
+  ///
+  /// In en, this message translates to:
+  /// **'Supervisor'**
+  String get roleSuperviseur;
+
+  /// No description provided for @roleCuisinier.
+  ///
+  /// In en, this message translates to:
+  /// **'Cook'**
+  String get roleCuisinier;
+
+  /// No description provided for @roleLivreur.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivery Agent'**
+  String get roleLivreur;
+
+  /// No description provided for @roleFemmeMenage.
+  ///
+  /// In en, this message translates to:
+  /// **'Cleaning Staff'**
+  String get roleFemmeMenage;
+
+  /// No description provided for @roleCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom role'**
+  String get roleCustom;
+
+  /// No description provided for @permissionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Permission'**
+  String get permissionLabel;
+
+  /// No description provided for @permissionsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Permissions'**
+  String get permissionsLabel;
+
+  /// No description provided for @createRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Create role'**
+  String get createRole;
+
+  /// No description provided for @editRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit role'**
+  String get editRole;
+
+  /// No description provided for @deleteRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete role'**
+  String get deleteRole;
+
+  /// No description provided for @systemRole.
+  ///
+  /// In en, this message translates to:
+  /// **'System role'**
+  String get systemRole;
+
+  /// No description provided for @systemRoleCannotDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'System roles cannot be deleted'**
+  String get systemRoleCannotDelete;
+
+  /// No description provided for @roleScope.
+  ///
+  /// In en, this message translates to:
+  /// **'Scope'**
+  String get roleScope;
+
+  /// No description provided for @roleScopeTarhib.
+  ///
+  /// In en, this message translates to:
+  /// **'Tarhib (internal)'**
+  String get roleScopeTarhib;
+
+  /// No description provided for @roleScopeClient.
+  ///
+  /// In en, this message translates to:
+  /// **'Client company'**
+  String get roleScopeClient;
+
+  /// No description provided for @slaPriority.
+  ///
+  /// In en, this message translates to:
+  /// **'SLA priority'**
+  String get slaPriority;
+
+  /// No description provided for @quotaPerRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Quota per role'**
+  String get quotaPerRole;
+
+  /// No description provided for @setQuota.
+  ///
+  /// In en, this message translates to:
+  /// **'Set quota'**
+  String get setQuota;
+
+  /// No description provided for @quotaPeriodDaily.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily'**
+  String get quotaPeriodDaily;
+
+  /// No description provided for @quotaPeriodWeekly.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekly'**
+  String get quotaPeriodWeekly;
+
+  /// No description provided for @quotaPeriodMonthly.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly'**
+  String get quotaPeriodMonthly;
+
+  /// No description provided for @meetingServices.
+  ///
+  /// In en, this message translates to:
+  /// **'Meeting services'**
+  String get meetingServices;
+
+  /// No description provided for @orderServicesForMeeting.
+  ///
+  /// In en, this message translates to:
+  /// **'Order services for this meeting'**
+  String get orderServicesForMeeting;
+
+  /// No description provided for @meetingServiceOrdered.
+  ///
+  /// In en, this message translates to:
+  /// **'Services ordered'**
+  String get meetingServiceOrdered;
+
+  /// No description provided for @noMeetingServices.
+  ///
+  /// In en, this message translates to:
+  /// **'No services ordered yet'**
+  String get noMeetingServices;
+
+  /// No description provided for @signupLink.
+  ///
+  /// In en, this message translates to:
+  /// **'No account? Register'**
+  String get signupLink;
+
+  /// No description provided for @signupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create account'**
+  String get signupTitle;
+
+  /// No description provided for @signupCompanySection.
+  ///
+  /// In en, this message translates to:
+  /// **'Company'**
+  String get signupCompanySection;
+
+  /// No description provided for @signupCompanyCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Company code (slug)'**
+  String get signupCompanyCode;
+
+  /// No description provided for @signupIdentitySection.
+  ///
+  /// In en, this message translates to:
+  /// **'Your information'**
+  String get signupIdentitySection;
+
+  /// No description provided for @signupPasswordSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get signupPasswordSection;
+
+  /// No description provided for @signupPasswordMin.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimum 8 characters'**
+  String get signupPasswordMin;
+
+  /// No description provided for @signupButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit registration'**
+  String get signupButton;
+
+  /// No description provided for @signupPendingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Registration submitted'**
+  String get signupPendingTitle;
+
+  /// No description provided for @signupPendingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account is pending admin approval. You will receive an email once activated.'**
+  String get signupPendingBody;
+
+  /// No description provided for @backToLogin.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to login'**
+  String get backToLogin;
+
+  /// No description provided for @firstNameEn.
+  ///
+  /// In en, this message translates to:
+  /// **'First name (EN)'**
+  String get firstNameEn;
+
+  /// No description provided for @lastNameEn.
+  ///
+  /// In en, this message translates to:
+  /// **'Last name (EN)'**
+  String get lastNameEn;
+
+  /// No description provided for @firstNameAr.
+  ///
+  /// In en, this message translates to:
+  /// **'First name (AR)'**
+  String get firstNameAr;
+
+  /// No description provided for @lastNameAr.
+  ///
+  /// In en, this message translates to:
+  /// **'Last name (AR)'**
+  String get lastNameAr;
+
+  /// No description provided for @meetingServiceBreakfast.
+  ///
+  /// In en, this message translates to:
+  /// **'Breakfast + service'**
+  String get meetingServiceBreakfast;
+
+  /// No description provided for @meetingServiceLunch.
+  ///
+  /// In en, this message translates to:
+  /// **'Lunch + service'**
+  String get meetingServiceLunch;
+
+  /// No description provided for @chooseServicePackage.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a service package'**
+  String get chooseServicePackage;
+
+  /// No description provided for @servicePackage.
+  ///
+  /// In en, this message translates to:
+  /// **'Service package'**
+  String get servicePackage;
 }
 
 class _AppLocalizationsDelegate

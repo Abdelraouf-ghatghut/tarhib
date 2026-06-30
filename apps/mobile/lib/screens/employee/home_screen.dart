@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/orders_provider.dart';
 import '../../widgets/glass_app_bar.dart';
 import '../../widgets/glass_nav_bar.dart';
 import '../../widgets/tarhib_scaffold.dart';
@@ -29,6 +30,16 @@ class EmployeeHomeScreen extends ConsumerWidget {
         ref.watch(cartProvider).fold<int>(0, (s, line) => s + line.quantity);
     final idx = _currentIndex(context);
     final auth = ref.watch(authProvider);
+    final locale = ref.watch(localeProvider);
+
+    // Badge commandes en cours sur l'onglet historique
+    final inProgressCount = ref
+            .watch(ordersProvider)
+            .whenData((orders) => orders
+                .where((o) => o.status.name == 'IN_PROGRESS')
+                .length)
+            .value ??
+        0;
 
     final hour = DateTime.now().hour;
     final greeting = hour < 12
@@ -67,13 +78,13 @@ class EmployeeHomeScreen extends ConsumerWidget {
           ],
         ),
         actions: [
+          // Badge panier rapide (hors onglet panier)
           if (cartCount > 0 && idx != 1)
             GestureDetector(
               onTap: () => context.go('/employee/cart'),
               child: Container(
                 margin: const EdgeInsets.symmetric(vertical: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   color: Theme.of(context)
                       .colorScheme
@@ -106,10 +117,35 @@ class EmployeeHomeScreen extends ConsumerWidget {
                 ),
               ),
             ),
+
+          // Toggle langue AR/EN
           IconButton(
-            icon: const Icon(Icons.logout_rounded, size: 22),
-            onPressed: () => ref.read(authProvider.notifier).logout(),
-            tooltip: l.logout,
+            icon: Text(
+              locale.languageCode == 'ar' ? 'EN' : 'ع',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            onPressed: () {
+              final next = locale.languageCode == 'ar' ? 'en' : 'ar';
+              ref.read(localeProvider.notifier).state = Locale(next);
+            },
+            tooltip: l.language,
+          ),
+
+          // Meeting rooms shortcut
+          IconButton(
+            icon: const Icon(Icons.meeting_room_outlined, size: 22),
+            onPressed: () => context.push('/employee/rooms'),
+            tooltip: l.meetingRooms,
+          ),
+          // Profil
+          IconButton(
+            icon: const Icon(Icons.person_outline_rounded, size: 22),
+            onPressed: () => context.push('/profile'),
+            tooltip: l.profile,
           ),
           const SizedBox(width: 4),
         ],
@@ -137,8 +173,16 @@ class EmployeeHomeScreen extends ConsumerWidget {
             label: l.cart,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.receipt_long_outlined),
-            selectedIcon: const Icon(Icons.receipt_long_rounded),
+            icon: Badge(
+              isLabelVisible: inProgressCount > 0,
+              label: Text('$inProgressCount'),
+              child: const Icon(Icons.receipt_long_outlined),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible: inProgressCount > 0,
+              label: Text('$inProgressCount'),
+              child: const Icon(Icons.receipt_long_rounded),
+            ),
             label: l.myOrders,
           ),
         ],

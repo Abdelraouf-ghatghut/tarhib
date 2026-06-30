@@ -7,6 +7,7 @@ import arEG from "antd/locale/ar_EG";
 import enUS from "antd/locale/en_US";
 import { queryClient } from "./lib/queryClient";
 import { AuthProvider } from "./contexts/AuthContext";
+import { ScopeProvider } from "./contexts/ScopeContext";
 import { router } from "./router";
 
 function AppInner() {
@@ -41,7 +42,9 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <AppInner />
+        <ScopeProvider>
+          <AppInner />
+        </ScopeProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

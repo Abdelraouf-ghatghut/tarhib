@@ -1,0 +1,149 @@
+{
+  "id": "tarhib",
+  "realm": "tarhib",
+  "displayName": "Tarhib",
+  "enabled": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": false,
+  "clients": [
+    {
+      "id": "tarhib-backend-client-id",
+      "clientId": "tarhib-backend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "qz7XBqi4Hvvi6Q3G08UiSjQ6iPeRREqE",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "id": "pm-email",
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "email",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "id": "pm-tarhib-role",
+          "name": "tarhib_role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "tarhib_role",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "tarhib_role",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "id": "pm-company-id",
+          "name": "tarhib_company_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "false",
+            "user.attribute": "tarhib_company_id",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "claim.name": "tarhib_company_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "id": "pm-branch-id",
+          "name": "tarhib_branch_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "false",
+            "user.attribute": "tarhib_branch_id",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "claim.name": "tarhib_branch_id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "00000001-0000-4000-8000-000000000001",
+      "username": "sarah.benali",
+      "email": "sarah@acme.com",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Sarah",
+      "lastName": "Benali",
+      "attributes": {
+        "tarhib_role": ["EMPLOYEE"],
+        "tarhib_company_id": ["11111111-0000-0000-0000-000000000001"],
+        "tarhib_branch_id": ["22222222-0000-0000-0000-000000000001"]
+      },
+      "credentials": [{ "type": "password", "value": "Test1234!", "temporary": false }]
+    },
+    {
+      "id": "00000002-0000-4000-8000-000000000002",
+      "username": "omar.cherif",
+      "email": "omar@acme.com",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Omar",
+      "lastName": "Cherif",
+      "attributes": {
+        "tarhib_role": ["EMPLOYEE"],
+        "tarhib_company_id": ["11111111-0000-0000-0000-000000000001"],
+        "tarhib_branch_id": ["22222222-0000-0000-0000-000000000001"]
+      },
+      "credentials": [{ "type": "password", "value": "Test1234!", "temporary": false }]
+    },
+    {
+      "id": "00000003-0000-4000-8000-000000000003",
+      "username": "yassine.agent",
+      "email": "yassine@acme.com",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Yassine",
+      "lastName": "Agentali",
+      "attributes": {
+        "tarhib_role": ["HOSPITALITY_AGENT"],
+        "tarhib_company_id": ["11111111-0000-0000-0000-000000000001"],
+        "tarhib_branch_id": ["22222222-0000-0000-0000-000000000001"]
+      },
+      "credentials": [{ "type": "password", "value": "Test1234!", "temporary": false }]
+    },
+    {
+      "id": "00000004-0000-4000-8000-000000000004",
+      "username": "karim.manager",
+      "email": "karim@acme.com",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Karim",
+      "lastName": "Manageri",
+      "attributes": {
+        "tarhib_role": ["DEPARTMENT_MANAGER"],
+        "tarhib_company_id": ["11111111-0000-0000-0000-000000000001"],
+        "tarhib_branch_id": ["22222222-0000-0000-0000-000000000001"]
+      },
+      "credentials": [{ "type": "password", "value": "Test1234!", "temporary": false }]
+    }
+  ]
+}

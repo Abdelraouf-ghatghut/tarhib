@@ -7,10 +7,21 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { EmployeeRole } from '../dto/employee.dto.js';
 import { Department } from '../../departments/entities/department.entity.js';
 import { Branch } from '../../branches/entities/branch.entity.js';
 import { Company } from '../../companies/entities/company.entity.js';
+import { Role } from '../../roles/entities/role.entity.js';
+
+export enum EmployeeScope {
+  TARHIB = 'TARHIB',
+  CLIENT = 'CLIENT',
+}
+
+export enum EmployeeStatus {
+  ACTIVE = 'ACTIVE',
+  PENDING = 'PENDING', // self-registered, awaiting admin approval
+  INVITED = 'INVITED', // invited by admin, awaiting password setup
+}
 
 @Entity('employees')
 export class Employee {
@@ -64,11 +75,35 @@ export class Employee {
   @Column({ name: 'phone_number', unique: true })
   phoneNumber!: string;
 
-  @Column({ type: 'varchar', length: 50 })
-  role!: EmployeeRole;
+  /** Legacy role string — kept for backward compat and Keycloak fallback */
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  role!: string;
+
+  /** Dynamic role FK — primary RBAC source */
+  @Column({ name: 'role_id', type: 'uuid', nullable: true })
+  roleId!: string | null;
+
+  @ManyToOne(() => Role, { nullable: true, eager: false })
+  @JoinColumn({ name: 'role_id' })
+  dynamicRole!: Role | null;
+
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: EmployeeScope.CLIENT,
+    nullable: true,
+  })
+  scope!: EmployeeScope;
 
   @Column({ default: true })
   active!: boolean;
+
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: EmployeeStatus.ACTIVE,
+  })
+  status!: EmployeeStatus;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

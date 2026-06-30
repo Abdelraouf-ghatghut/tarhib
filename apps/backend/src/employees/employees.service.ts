@@ -2,11 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Employee } from './entities/employee.entity.js';
-import {
-  CreateEmployeeDto,
-  EmployeeDto,
-  EmployeeRole,
-} from './dto/employee.dto.js';
+import { CreateEmployeeDto, EmployeeDto } from './dto/employee.dto.js';
 import { KeycloakService } from '../auth/keycloak/keycloak.service.js';
 
 @Injectable()
@@ -30,7 +26,6 @@ export class EmployeesService {
       lastNameEn: dto.lastNameEn,
       email: dto.email,
       phoneNumber: dto.phoneNumber,
-      role: dto.role,
     });
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
@@ -47,7 +42,7 @@ export class EmployeesService {
     if (companyId) where.companyId = companyId;
     if (branchId) where.branchId = branchId;
     if (departmentId) where.departmentId = departmentId;
-    if (role) where.role = role as EmployeeRole;
+    if (role) where.role = role;
     if (active !== undefined && active !== '') where.active = active === 'true';
     const entities = await this.repo.find({
       where,
@@ -74,7 +69,6 @@ export class EmployeesService {
     if (dto.lastNameEn !== undefined) entity.lastNameEn = dto.lastNameEn;
     if (dto.email !== undefined) entity.email = dto.email;
     if (dto.phoneNumber !== undefined) entity.phoneNumber = dto.phoneNumber;
-    if (dto.role !== undefined) entity.role = dto.role;
     if (dto.departmentId !== undefined) entity.departmentId = dto.departmentId;
     if (dto.branchId !== undefined) entity.branchId = dto.branchId;
     const saved = await this.repo.save(entity);

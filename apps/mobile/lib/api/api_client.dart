@@ -29,6 +29,9 @@ class ApiClient {
   static void setToken(String token) => _jwtToken = token;
   static void clearToken() => _jwtToken = '';
 
+  static String get baseUrl =>
+      kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
+
   /// Raw Dio for endpoints not in the generated client (status patch, login)
   static Dio get rawDio => _dio;
 

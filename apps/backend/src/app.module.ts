@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { EnrichUserInterceptor } from './auth/interceptors/enrich-user.interceptor.js';
 import { Employee } from './employees/entities/employee.entity.js';
+import { Role } from './roles/entities/role.entity.js';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -20,6 +21,10 @@ import { OrdersModule } from './orders/orders.module';
 import { QuotasModule } from './quotas/quotas.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportingModule } from './reporting/reporting.module';
+import { RolesModule } from './roles/roles.module';
+import { PermissionsModule } from './permissions/permissions.module';
+import { MeetingRoomsModule } from './meeting-rooms/meeting-rooms.module';
+import { MeetingServicePackagesModule } from './meeting-service-packages/meeting-service-packages.module';
 
 @Module({
   imports: [
@@ -34,13 +39,6 @@ import { ReportingModule } from './reporting/reporting.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const databaseUrl = config.get<string>('DATABASE_URL');
-
-        console.log(
-          '🔍 DATABASE_URL loaded:',
-          databaseUrl ? '✅ Oui' : '❌ NON TROUVÉ',
-        );
-        console.log('🔍 DATABASE_URL value:', databaseUrl);
-
         return {
           type: 'postgres',
           url: databaseUrl,
@@ -51,7 +49,8 @@ import { ReportingModule } from './reporting/reporting.module';
       },
     }),
 
-    TypeOrmModule.forFeature([Employee]),
+    // Registered here so EnrichUserInterceptor can access Employee + Role repos at the app level
+    TypeOrmModule.forFeature([Employee, Role]),
     RedisModule,
     AuthModule,
     CompaniesModule,
@@ -64,6 +63,10 @@ import { ReportingModule } from './reporting/reporting.module';
     QuotasModule,
     NotificationsModule,
     ReportingModule,
+    RolesModule,
+    PermissionsModule,
+    MeetingRoomsModule,
+    MeetingServicePackagesModule,
   ],
   controllers: [AppController],
   providers: [
