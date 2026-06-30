@@ -13,6 +13,7 @@ const MOCK_PAYLOAD: JwtPayload = {
   role: EmployeeRole.HOSPITALITY_AGENT,
   companyId: 'company-uuid',
   branchId: 'branch-uuid',
+  permissions: [],
 };
 
 const TOKEN: TokenResponseDto = {

@@ -72,6 +72,7 @@ describe('AuthService.getCurrentUser', () => {
       role: EmployeeRole.EMPLOYEE,
       companyId: 'c1',
       branchId: 'b1',
+      permissions: [],
     };
     expect(svc.getCurrentUser(payload)).toBe(payload);
   });

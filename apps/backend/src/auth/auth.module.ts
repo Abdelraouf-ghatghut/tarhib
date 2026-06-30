@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Employee } from '../employees/entities/employee.entity';
 import { Company } from '../companies/entities/company.entity';
+import { Role } from '../roles/entities/role.entity';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -19,7 +20,7 @@ import { EmailService } from './email/email.service';
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     HttpModule,
-    TypeOrmModule.forFeature([Employee, Company]),
+    TypeOrmModule.forFeature([Employee, Company, Role]),
   ],
   providers: [
     AuthService,
