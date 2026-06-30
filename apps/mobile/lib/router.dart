@@ -15,7 +15,6 @@ import 'screens/agent/vip_stock_screen.dart';
 import 'screens/manager/manager_dashboard_screen.dart';
 import 'screens/manager/manager_order_detail_screen.dart';
 import 'screens/manager/manager_orders_screen.dart';
-import 'screens/auth/signup_screen.dart';
 import 'screens/profile/profile_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -26,9 +25,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final loggedIn = authState.isAuthenticated;
       final onLogin = state.matchedLocation == '/login';
-      final onSignup = state.matchedLocation == '/signup';
 
-      if (!loggedIn && !onLogin && !onSignup) return '/login';
+      if (!loggedIn && !onLogin) return '/login';
       if (loggedIn && onLogin) {
         if (authState.isAgent) return '/agent/queue';
         if (authState.isManager) return '/manager/orders';
@@ -38,7 +36,6 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
 
       // ── Employee shell ──────────────────────────────────────────────────────
       ShellRoute(

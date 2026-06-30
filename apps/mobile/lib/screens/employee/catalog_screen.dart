@@ -424,7 +424,7 @@ class _ProductCard extends ConsumerWidget {
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
-                                l.quotaOf(0, quota!.max),
+                                l.quotaOf(0, quota.max),
                                 style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 10,

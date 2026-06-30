@@ -32,7 +32,7 @@ class ErrorCard extends StatelessWidget {
           final code = dioErr.response?.statusCode;
           if (code == 401) return 'Session expirée. Reconnectez-vous.';
           if (code == 403) return 'Accès refusé.';
-          if (code != null && code >= 500) return 'Erreur serveur (${code}). Réessayez.';
+          if (code != null && code >= 500) return 'Erreur serveur ($code). Réessayez.';
       }
     }
     final msg = error.toString();

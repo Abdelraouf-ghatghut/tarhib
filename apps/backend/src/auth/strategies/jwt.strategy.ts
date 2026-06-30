@@ -42,6 +42,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         payload.branchId ??
         (raw['tarhib_branch_id'] as string | undefined) ??
         '',
+      permissions: raw['permissions'] ?? [],
       iat: payload.iat,
       exp: payload.exp,
     };

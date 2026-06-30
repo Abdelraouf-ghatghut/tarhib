@@ -180,9 +180,13 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
                   // Apply filters
                   var displayed = orders.where((o) {
                     if (_priorityFilter != null &&
-                        o.priority.name != _priorityFilter) return false;
+                        o.priority.name != _priorityFilter) {
+                      return false;
+                    }
                     if (_statusFilter != null &&
-                        o.status.name != _statusFilter) return false;
+                        o.status.name != _statusFilter) {
+                      return false;
+                    }
                     return true;
                   }).toList();
 
