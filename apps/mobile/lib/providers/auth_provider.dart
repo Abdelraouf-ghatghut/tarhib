@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -136,6 +137,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       await _persist(next);
       state = next;
+      _registerFcmToken();
       return true;
     } on DioException catch (e) {
       final msg = (e.response?.data as Map?)?['message'] as String? ?? 'error';
@@ -183,6 +185,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
     ApiClient.clearToken();
     await _storage.deleteAll();
     state = const AuthState();
+  }
+
+  /// Enregistre le token FCM de l'appareil côté backend.
+  /// Appelé silencieusement après login — échec non bloquant.
+  void _registerFcmToken() {
+    FirebaseMessaging.instance.getToken().then((token) {
+      if (token == null) return;
+      ApiClient.rawDio
+          .patch<void>('/auth/device-token', data: {'token': token})
+          .catchError((_) {});
+    }).catchError((_) {});
   }
 }
 

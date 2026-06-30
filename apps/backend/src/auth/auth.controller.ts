@@ -192,4 +192,17 @@ export class AuthController {
   async rejectRegistration(@Param('id') id: string): Promise<void> {
     await this.authService.rejectRegistration(id);
   }
+
+  @Patch('device-token')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Enregistrer le token FCM de l'appareil" })
+  @ApiNoContentResponse({ description: 'Token enregistré' })
+  async updateDeviceToken(
+    @Body() body: { token: string },
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    await this.authService.updateDeviceToken(user.sub, body.token);
+  }
 }

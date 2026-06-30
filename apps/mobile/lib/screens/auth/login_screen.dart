@@ -5,8 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../api/api_client.dart';
 import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
-import '../../widgets/glass_card.dart';
-import '../../widgets/tarhib_scaffold.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -18,26 +16,16 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen>
     with TickerProviderStateMixin {
   late final TabController _tabs;
-  late final AnimationController _logoCtrl;
-  late final Animation<double> _logoScale;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
-    _logoCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-    _logoScale = Tween<double>(begin: 1.0, end: 1.06).animate(
-      CurvedAnimation(parent: _logoCtrl, curve: Curves.easeInOut),
-    );
   }
 
   @override
   void dispose() {
     _tabs.dispose();
-    _logoCtrl.dispose();
     super.dispose();
   }
 
@@ -45,84 +33,95 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return TarhibScaffold(
-      child: SafeArea(
+    return Scaffold(
+      body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ── Logo ──────────────────────────────────────────────────────
-                ScaleTransition(
-                  scale: _logoScale,
-                  child: Container(
-                    width: 96,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: scheme.primary,
-                      boxShadow: [
-                        BoxShadow(
-                          color: scheme.primary.withValues(alpha: 0.5),
-                          blurRadius: 40,
-                          spreadRadius: 4,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(Icons.local_cafe_rounded,
-                        color: Colors.white, size: 44),
+                // ── Logo circle ───────────────────────────────────────────
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: scheme.primary,
+                  ),
+                  child: const Icon(
+                    Icons.local_cafe_rounded,
+                    color: Colors.white,
+                    size: 28,
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+
+                // ── Title & subtitle ──────────────────────────────────────
                 Text(
                   l.appTitle,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: scheme.primary,
-                        letterSpacing: -0.5,
-                      ),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.primary,
+                  ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   l.loginSubtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurface.withValues(alpha: 0.55),
-                        height: 1.5,
-                      ),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 14,
+                    color: Color(0xFF6B778C),
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
 
-                // ── Tab selector ──────────────────────────────────────────────
-                GlassCard(
-                  borderRadius: 16,
+                // ── Tab pill selector ─────────────────────────────────────
+                Container(
                   padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF1A1A1A)
+                        : const Color(0xFFF4F5F7),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   child: TabBar(
                     controller: _tabs,
                     indicator: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
                       color: scheme.primary,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
                     labelColor: Colors.white,
-                    unselectedLabelColor: scheme.onSurface.withValues(alpha: 0.6),
-                    labelStyle:
-                        const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    unselectedLabelColor: const Color(0xFF6B778C),
+                    labelStyle: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w400,
+                      fontSize: 13,
+                    ),
                     tabs: [
                       Tab(text: l.loginWithPassword),
                       Tab(text: l.loginWithOtp),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-                // ── Form card ─────────────────────────────────────────────────
+                // ── Form views ────────────────────────────────────────────
                 SizedBox(
-                  height: 340,
+                  height: 280,
                   child: TabBarView(
                     controller: _tabs,
                     children: [
@@ -131,11 +130,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ],
                   ),
                 ),
+                const SizedBox(height: 8),
 
-                const SizedBox(height: 16),
+                // ── Sign-up link ──────────────────────────────────────────
                 TextButton(
                   onPressed: () => context.push('/signup'),
-                  child: Text(l.signupLink),
+                  child: Text(
+                    l.signupLink,
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      color: scheme.primary,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -180,21 +186,23 @@ class _PasswordFormState extends ConsumerState<_PasswordForm> {
   Widget build(BuildContext context) {
     final l = widget.l;
     final auth = ref.watch(authProvider);
-    final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final inputBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(
-        color: isDark
-            ? const Color(0x40FFFFFF)
-            : scheme.outline.withValues(alpha: 0.3),
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141414) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? const []
+            : const [
+                BoxShadow(
+                  color: Color(0x0A000000),
+                  blurRadius: 16,
+                  offset: Offset(0, 4),
+                ),
+              ],
       ),
-    );
-
-    return GlassCard(
-      borderRadius: 28,
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+      padding: const EdgeInsets.all(24),
       child: Form(
         key: _formKey,
         child: Column(
@@ -206,77 +214,51 @@ class _PasswordFormState extends ConsumerState<_PasswordForm> {
               keyboardType: TextInputType.emailAddress,
               decoration: InputDecoration(
                 labelText: l.email,
-                prefixIcon: Icon(Icons.person_outline_rounded,
-                    color: scheme.primary.withValues(alpha: 0.8)),
-                filled: true,
-                fillColor: isDark
-                    ? const Color(0x14FFFFFF)
-                    : scheme.primary.withValues(alpha: 0.04),
-                border: inputBorder,
-                enabledBorder: inputBorder,
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: scheme.primary, width: 2),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                prefixIcon: const Icon(Icons.email_outlined),
               ),
-              validator: (v) => (v == null || v.isEmpty) ? l.email : null,
+              validator: (v) =>
+                  (v == null || !v.contains('@')) ? l.email : null,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _passwordCtrl,
               obscureText: _obscure,
               onFieldSubmitted: (_) => _submit(),
               decoration: InputDecoration(
                 labelText: l.password,
-                prefixIcon: Icon(Icons.lock_outline_rounded,
-                    color: scheme.primary.withValues(alpha: 0.8)),
+                prefixIcon: const Icon(Icons.lock_outline),
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscure
                         ? Icons.visibility_outlined
                         : Icons.visibility_off_outlined,
-                    color: scheme.onSurface.withValues(alpha: 0.5),
                   ),
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
-                filled: true,
-                fillColor: isDark
-                    ? const Color(0x14FFFFFF)
-                    : scheme.primary.withValues(alpha: 0.04),
-                border: inputBorder,
-                enabledBorder: inputBorder,
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: scheme.primary, width: 2),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               ),
-              validator: (v) => (v == null || v.isEmpty) ? l.password : null,
+              validator: (v) =>
+                  (v == null || v.isEmpty) ? l.password : null,
             ),
             if (auth.error != null) ...[
               const SizedBox(height: 12),
               _ErrorBanner(message: l.loginError),
             ],
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: auth.isLoading ? null : _submit,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-                shape:
-                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 52,
+              child: FilledButton(
+                onPressed: auth.isLoading ? null : _submit,
+                child: auth.isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(l.loginButton),
               ),
-              child: auth.isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child:
-                          CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                    )
-                  : Text(l.loginButton,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -368,76 +350,68 @@ class _OtpFormState extends ConsumerState<_OtpForm> {
       ),
     );
 
-    return GlassCard(
-      borderRadius: 28,
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141414) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? const []
+            : const [
+                BoxShadow(
+                  color: Color(0x0A000000),
+                  blurRadius: 16,
+                  offset: Offset(0, 4),
+                ),
+              ],
+      ),
+      padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Phone field (always visible)
           TextField(
             controller: _phoneCtrl,
             keyboardType: TextInputType.phone,
             enabled: !_otpSent,
             decoration: InputDecoration(
               labelText: l.phone,
-              prefixIcon: Icon(Icons.phone_outlined,
-                  color: scheme.primary.withValues(alpha: 0.8)),
-              filled: true,
-              fillColor: isDark
-                  ? const Color(0x14FFFFFF)
-                  : scheme.primary.withValues(alpha: 0.04),
-              border: inputBorder,
-              enabledBorder: inputBorder,
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: scheme.primary, width: 2),
-              ),
-              disabledBorder: inputBorder,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              prefixIcon: const Icon(Icons.phone_outlined),
             ),
           ),
 
-          // OTP code field (after OTP sent)
           if (_otpSent) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             TextField(
               controller: _otpCtrl,
               keyboardType: TextInputType.number,
               maxLength: 6,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 12),
+                fontFamily: 'Cairo',
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 8,
+              ),
               decoration: InputDecoration(
                 hintText: l.otpCodeHint,
                 counterText: '',
-                filled: true,
-                fillColor: isDark
-                    ? const Color(0x14FFFFFF)
-                    : scheme.primary.withValues(alpha: 0.04),
-                border: inputBorder,
-                enabledBorder: inputBorder,
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: scheme.primary, width: 2),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               ),
             ),
             const SizedBox(height: 8),
-            GestureDetector(
-              onTap: _loading ? null : () => setState(() => _otpSent = false),
+            TextButton(
+              onPressed: _loading
+                  ? null
+                  : () => setState(() {
+                        _otpSent = false;
+                        _otpCtrl.clear();
+                      }),
               child: Text(
                 l.resendOtp,
                 style: TextStyle(
+                  fontFamily: 'Cairo',
                   fontSize: 12,
                   color: scheme.primary,
-                  decoration: TextDecoration.underline,
                 ),
-                textAlign: TextAlign.center,
               ),
             ),
           ],
@@ -447,28 +421,22 @@ class _OtpFormState extends ConsumerState<_OtpForm> {
             _ErrorBanner(message: _error!),
           ],
 
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _loading
-                ? null
-                : _otpSent
-                    ? _verifyOtp
-                    : _sendOtp,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 52,
+            child: FilledButton(
+              onPressed: _loading ? null : (_otpSent ? _verifyOtp : _sendOtp),
+              child: _loading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(_otpSent ? l.verifyOtp : l.sendOtp),
             ),
-            child: _loading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.5, color: Colors.white),
-                  )
-                : Text(
-                    _otpSent ? l.verifyOtp : l.sendOtp,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
           ),
         ],
       ),
@@ -476,7 +444,7 @@ class _OtpFormState extends ConsumerState<_OtpForm> {
   }
 }
 
-// ── Error banner ──────────────────────────────────────────────────────────────
+// ── Error banner ───────────────────────────────────────────────────────────────
 
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({required this.message});
@@ -484,21 +452,30 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: scheme.error.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.error.withValues(alpha: 0.25)),
+        color: const Color(0xFFFF4D4F).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded, color: scheme.error, size: 16),
+          const Icon(
+            Icons.info_outline_rounded,
+            color: Color(0xFFFF4D4F),
+            size: 16,
+          ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(message,
-                style: TextStyle(color: scheme.error, fontSize: 12, height: 1.4)),
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                color: Color(0xFFFF4D4F),
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
           ),
         ],
       ),

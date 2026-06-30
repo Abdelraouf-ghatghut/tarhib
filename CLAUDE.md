@@ -1,169 +1,831 @@
-# CLAUDE.md
+# Tarhib — Cahier des Charges Fonctionnel Complet
 
-Ce fichier donne à Claude Code (et à tout agent IA travaillant sur ce repo) le contexte nécessaire pour développer, modifier ou déboguer **Tarhib**. À lire avant toute tâche.
-
----
-
-## 1. Contexte du projet
-
-**Tarhib** est une plateforme de gestion de l'hospitalité corporate (commandes de boissons/snacks/repas, gestion des salles de réunion, stocks, achats, priorités/SLA) pour un prestataire qui sert plusieurs sociétés clientes, chacune avec plusieurs branches/départements/employés.
-
-- **Architecture** : Multi-tenant (Société Cliente = tenant), Multi-branche, Multi-département
-- **Plateformes** : App mobile (iOS/Android) pour Employés & Agents d'Hospitalité + Portail Web Admin pour les rôles de gestion
-- **Langues** : Arabe (par défaut, RTL) et Anglais — **tout texte affiché doit passer par i18n, jamais de chaîne en dur**
-- Documents de référence dans ce repo : `Fiche_Fonctionnelle_Plateforme_Hospitalite.md` (liste exhaustive des modules), `Parcours_Employe_Agent_Hospitalite.md` (UX détaillée des deux rôles principaux), `Guide_Git_CICD.md` (workflow Git, structure du repo, CI/CD, tests)
-
-## 2. Stack technique (à respecter, ne pas dévier sans discussion)
-
-| Couche            | Techno                                                          | Notes                                                                                                                                                                                                                         |
-| ----------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mobile            | Flutter (Dart)                                                  | Support RTL natif (widgets `Directionality`/`MaterialApp` localisés), mode offline (Drift/SQLite ou Hive) pour les Agents d'Hospitalité sur le terrain. Une seule base de code pour iOS/Android.                              |
-| Web Admin         | React + TypeScript, Ant Design ou MUI                           | RTL natif                                                                                                                                                                                                                     |
-| Backend           | NestJS (Node.js/TypeScript)                                     | Modulaire, un module Nest = un module métier (voir §4)                                                                                                                                                                        |
-| DB principale     | PostgreSQL                                                      | Schéma multi-tenant via `tenant_id` (company_id) sur les tables concernées                                                                                                                                                    |
-| Cache / Files     | Redis                                                           | File de la cuisine, sessions, rate limiting                                                                                                                                                                                   |
-| Temps réel        | Socket.io                                                       | Statuts de commande, alertes SLA, dashboard cuisine                                                                                                                                                                           |
-| Auth              | Keycloak                                                        | RBAC, OTP via Twilio, SSO Azure AD/Google (futur)                                                                                                                                                                             |
-| Notifications     | FCM (push), SendGrid/SES (email), Twilio (SMS)                  |                                                                                                                                                                                                                               |
-| Stockage fichiers | S3 / MinIO                                                      | Images produits                                                                                                                                                                                                               |
-| i18n              | i18next (Web Admin) / `flutter_localizations` + `intl` (Mobile) | + CSS logical properties pour le RTL côté web (jamais `left`/`right` en dur dans le CSS) ; côté Flutter, RTL géré nativement par le framework (`Directionality`), jamais de `EdgeInsets`/`Alignment` non-directionnels en dur |
-| Infra             | Docker + Kubernetes                                             | CI/CD via GitHub Actions                                                                                                                                                                                                      |
-
-## 3. Règles métier critiques — à NE JAMAIS casser
-
-Ces règles ont été définies explicitement et sont au cœur du produit. Toute modification de code touchant aux commandes ou aux produits doit les respecter :
-
-1. **Pas de budget.** Le système ne gère AUCUNE notion de budget (montant €/$ consommé/restant). Seule la notion de **quota** (quantité par produit/période) existe. Si une fonctionnalité semble nécessiter un "budget", vérifier auprès du métier avant d'implémenter — ce n'est probablement pas voulu.
-
-2. **Produits VIP en libre-service ≠ produits commandables.**
-   - Un produit a un type : `commandable` ou `libre_service_vip`.
-   - Les produits `libre_service_vip` ne doivent **jamais** apparaître dans le catalogue de commande de l'Employé, quel que soit son rôle. Ils sont stockés physiquement à l'avance (frigo/bureau VIP) et consommés hors application.
-   - Ces produits ne génèrent **jamais** de commande, de quota, de priorité ni de SLA.
-   - Ils sont suivis uniquement via le module Stock, sur un **emplacement dédié** (ex. "Frigo — Bureau CFO"), avec ses propres seuils min/max. Le passage sous le seuil déclenche une **tâche de réapprovisionnement** (pas une commande) assignée à l'Agent d'Hospitalité ou à l'Inventory Manager.
-
-3. **Moteur de validation de commande — ordre des contrôles à respecter.** Pour chaque ligne d'un panier, dans cet ordre exact :
-   1. Le produit est `commandable` et le rôle de l'employé l'autorise (vérifié côté serveur, jamais seulement côté UI)
-   2. Stock disponible dans la branche ≥ quantité demandée (revérifié à la confirmation, pas seulement à l'ajout au panier — le stock peut avoir changé)
-   3. Quota produit restant sur la période (jour/semaine/mois) ≥ quantité demandée
-   - Décision agrégée sur l'ensemble du panier : validation auto / attente d'approbation (Department Manager) / rejet automatique de la ligne fautive — jamais de blocage de tout le panier pour une seule ligne en faute, sauf si la config société l'exige explicitement.
-
-4. **Visibilité produit = filtrage backend, pas seulement UI.** Toute restriction de rôle ou de type de produit doit être appliquée côté API (les endpoints catalogue doivent filtrer selon le rôle de l'appelant). Ne jamais se fier à un simple `hidden` côté front pour la sécurité.
-
-5. **Priorité et SLA.** Chaque commande hérite d'une priorité (P1 à P5) dérivée du rôle de l'employé et du contexte (réunion, urgence). Le SLA associé doit être recalculé et affiché en temps réel côté Agent d'Hospitalité (compte à rebours), jamais une valeur statique calculée une seule fois à la création.
-
-## 4. Découpage modulaire attendu (backend)
-
-Faire correspondre les modules NestJS aux modules métier de la fiche fonctionnelle, pas l'inverse. Modules principaux (voir `Fiche_Fonctionnelle_Plateforme_Hospitalite.md` pour le détail complet) :
-
-```
-auth/            companies/        branches/        departments/
-employees/       products/         suppliers/       procurement/
-inventory/       inventory-transfers/   orders/      priority-sla/
-quotas/          meeting-rooms/   kitchen/          delivery/
-hospitality-service/   vip-self-service/   notifications/
-reporting/        dashboards/      i18n/             audit/
-```
-
-`vip-self-service/` est un module à part entière (pas un sous-module d'`orders/`), car sa logique (emplacements, seuils, tâches de réappro) n'a rien à voir avec le cycle de commande.
-
-## 5. Conventions de code
-
-- TypeScript strict partout (`strict: true`), pas de `any` non justifié
-- DTOs validés avec `class-validator` sur chaque endpoint
-- Toute entité métier sensible (commande, stock, quota) doit avoir un test unitaire couvrant le moteur de validation avant merge
-- Migrations DB versionnées (TypeORM/Prisma migrations), jamais de modification manuelle de schéma en prod
-- Toute chaîne affichée à l'utilisateur passe par une clé i18n (`t('orders.status.delivered')`), jamais de texte en dur
-- Nommage des entités en anglais dans le code, mais les libellés UI sont bilingues AR/EN via i18n
-
-## 5-bis. Git — règles à appliquer systématiquement
-
-Guide complet : `Guide_Git_CICD.md`. Résumé opérationnel pour toute tâche de code :
-
-- **Jamais de commit direct sur `main`.** Toujours créer une branche `feature/TARHIB-<id>-description`, `fix/TARHIB-<id>-description`, etc.
-- **Commits au format Conventional Commits** : `feat(scope): ...`, `fix(scope): ...`, `test(scope): ...`, `docs(scope): ...`. Référencer le ticket Jira si connu.
-- **Une PR par ticket**, jamais plusieurs sujets mélangés dans une même branche.
-- **Rebase sur `main` avant de pousser**, pas de merge commit dans l'historique de feature branch.
-- **Avant d'ouvrir/mettre à jour une PR sur les modules `orders`, `quotas`, `vip-self-service`** : vérifier que les tests couvrant la matrice de décision du moteur de validation sont présents et passent (voir §3 ci-dessus).
-- **Ne jamais utiliser `git push --force`** : utiliser `--force-with-lease` si un amend est nécessaire après revue.
-- Si une tâche révèle une règle métier non documentée ici, la proposer en ajout au présent fichier dans la même PR.
-
-## 6. Avant de commencer une tâche
-
-1. Relire la règle métier concernée dans `Fiche_Fonctionnelle_Plateforme_Hospitalite.md` ou `Parcours_Employe_Agent_Hospitalite.md`
-2. Vérifier si la tâche touche au moteur de validation, au flux VIP libre-service, ou à la gestion des quotas — si oui, relire le §3 ci-dessus avant de coder
-3. Pour toute ambiguïté métier (ex. "faut-il un budget ici ?"), partir du principe que la réponse est non si ce n'est pas explicitement documenté
-
-## 7. Ce qui n'existe PAS dans ce produit (pour éviter les suppositions)
-
-- Pas de gestion de budget monétaire
-- Pas de paiement en ligne dans l'app employé (l'hospitalité est un service interne, pas un e-commerce payant)
-- Pas de commande pour les produits VIP libre-service
-- Pas de panier partagé entre plusieurs employés (les commandes groupées restent rattachées à un seul créateur)
-
-## Règles permanentes pour Claude Code
-
-### Après toute modification d'un DTO backend
-
-Toujours rappeler : `npm run generate:mobile-api` doit être lancé avant de committer
-si la PR touche `src/products/dto/`, `src/orders/dto/`, `src/quotas/dto/`.
-
-### Interdiction absolue
-
-- Ne jamais introduire de notion de "budget" (variable, commentaire, champ DB, DTO)
-- Ne jamais filtrer par rôle ou type de produit côté UI seulement
-
-### Moteur de validation (src/orders/validation-engine/)
-
-Toujours dans cet ordre : rôle/type produit → stock disponible → quota restant.
-Toujours couvert par validation-engine.spec.ts.
-
-### Bilingue obligatoire
-
-Chaque entité avec un nom visible a nameAr ET nameEn. Jamais l'un sans l'autre.
+**Version :** 1.0 Finale Consolidée
+**Date :** 30 Juin 2026
 
 ---
 
-## 8. État d'avancement et prochaines tâches (mis à jour le 2026-06-27)
+# Table des matières
 
-### Ce qui est implémenté (branch `feature/TARHIB-1-auth-rbac`)
+1. Vision du projet
+2. Architecture technique
+3. Architecture fonctionnelle
+4. Modules du système
+5. Gestion des rôles et permissions
+6. Applications mobiles
 
-| Ticket    | Statut    | Ce qui existe                                                                              |
-| --------- | --------- | ------------------------------------------------------------------------------------------ |
-| TARHIB-1  | In Review | Epic AUTH — JWT guard, RolesGuard, @Roles, @CurrentUser, GET /auth/me                      |
-| TARHIB-21 | In Review | POST /auth/login — Keycloak password grant + brute-force Redis                             |
-| TARHIB-22 | In Review | POST /auth/otp/request + /verify — OTP Redis 5min + Twilio                                 |
-| TARHIB-23 | In Review | POST /auth/password/reset-request + /reset — token Redis 1h + révocation sessions Keycloak |
-| TARHIB-24 | In Review | POST /auth/refresh + /logout — délégation Keycloak                                         |
-| TARHIB-25 | In Review | RolesGuard matrice complète — 11 cas unit + 8 tests intégration HTTP                       |
+   - Tarhib Employee
+   - Tarhib Operations
 
-Infrastructure posée : `RedisModule` (global), `KeycloakService`, `SmsService`, `EmailService`.
-Variables d'environnement : **configurées** (JWT*SECRET, KEYCLOAK*_, REDIS*URL, TWILIO*_, APP_URL, LOGIN_LOCK_DURATION_SECONDS).
+7. Gestion des commandes
+8. Gestion des quotas
+9. Gestion du stock
+10. Gestion des salles de réunion
+11. Catalogue produits
+12. Rapports & Analytics
+13. Paramètres système
+14. Authentification & Sécurité
+15. Internationalisation
+16. Design System
+17. Police de caractères
+18. Contraintes fonctionnelles
+19. Évolutions futures
 
-### À faire avant de merger la PR AUTH
+---
 
-- [ ] Configurer le **realm Keycloak** `tarhib` : créer le client `tarhib-backend`, ajouter les mappers de claims (`companyId`, `branchId`, `role`) dans le token JWT
-- [ ] Remplir les **migrations TypeORM vides** dans `src/migrations/` (tables companies, branches, departments, employees — les stubs sont créés mais sans SQL)
-- [ ] Câbler **SendGrid/SES** dans `EmailService` (`src/auth/email/email.service.ts`) dès que la clé API est disponible
+# 1. Vision du projet
 
-### Prochains tickets à implémenter (dans l'ordre recommandé)
+Tarhib est une plateforme professionnelle de gestion d'hospitalité destinée aux entreprises.
 
-1. **TARHIB-[ORG]** — Modules Companies / Branches / Departments / Employees (CRUD, entités TypeORM, migrations)
-   - Dépendance : `AuthModule` exporté ✅ — les futurs modules importent `JwtAuthGuard` + `RolesGuard` depuis `AuthModule`
-   - Rappel : injecter `companyId` depuis `JwtPayload` dans chaque requête TypeORM (`WHERE company_id = :companyId`)
+Elle permet aux prestataires de gérer :
 
-2. **TARHIB-[PROD]** — Module Products (catalogue, type `commandable`/`libre_service_vip`, filtrage backend par rôle)
-   - Règle §3 : le filtrage `type=COMMANDABLE` se fait dans le service, jamais seulement dans l'UI
+- les commandes de repas
+- les pauses café
+- les services internes
+- les réservations de salles
+- les stocks
+- les achats
+- les quotas employés
 
-3. **TARHIB-[STOCK]** — Module Inventory (stock par branche, seuils, alertes)
+L'architecture est entièrement **modulaire**, permettant d'activer uniquement les fonctionnalités nécessaires selon le rôle de chaque utilisateur.
 
-4. **TARHIB-[ORDER]** — Module Orders + `src/orders/validation-engine/` (moteur rôle→stock→quota)
-   - Les stubs `validation-engine.service.ts` et `validation-engine.spec.ts` sont vides — à implémenter en priorité
+Deux applications mobiles distinctes sont prévues :
 
-5. **TARHIB-[QUOTA]** — Module Quotas (config par société/période/produit/rôle)
+- **Tarhib Employee** : destinée aux employés des entreprises clientes.
+- **Tarhib Operations (Pro)** : destinée au personnel interne Tarhib.
 
-### Rappels techniques permanents issus de l'implémentation AUTH
+---
 
-- `KeycloakService.loginWithPhoneOtp()` utilise un grant `password` avec marqueur interne — à remplacer par un **custom Keycloak authenticator** ou un **direct grant OTP** en V2 si Keycloak le supporte nativement
-- Le middleware **tenant isolation** (injection `WHERE company_id`) n'est pas encore posé — à ajouter dans chaque module métier lors de son implémentation, en lisant `request.user.companyId` (disponible via `JwtPayload`)
-- `EmailService` est un **stub logger** — brancher SendGrid/SES avant la mise en prod (variable `SENDGRID_API_KEY`)
-- `SmsService` passe en mode mock si `TWILIO_ACCOUNT_SID` est absent — comportement normal en dev/test
+# 2. Architecture technique
+
+## Backend
+
+- NestJS
+- PostgreSQL
+- Redis
+- Keycloak
+
+## Web Admin
+
+- React
+- Ant Design
+
+## Mobile
+
+Deux applications Flutter indépendantes :
+
+- Tarhib Employee
+- Tarhib Operations
+
+---
+
+# 3. Architecture fonctionnelle
+
+Le système est organisé autour de modules totalement indépendants.
+
+Chaque module peut être :
+
+- activé
+- désactivé
+- attribué à un rôle
+- ajouté à un utilisateur individuellement
+
+Le système doit permettre une très grande flexibilité dans la gestion des permissions.
+
+---
+
+# 4. Modules du système
+
+## Auth & Utilisateurs
+
+Gestion :
+
+- utilisateurs
+- invitations
+- authentification
+- sessions
+- profils
+
+---
+
+## Rôles & Permissions
+
+Création de :
+
+- rôles internes
+- rôles clients
+
+Gestion des permissions par module.
+
+---
+
+## Sociétés & Branches
+
+Gestion multi-tenant.
+
+Chaque société possède :
+
+- plusieurs branches
+- plusieurs employés
+- plusieurs salles
+- plusieurs quotas
+
+---
+
+## Catalogue Produits
+
+Gestion de :
+
+- catégories
+- produits
+- images
+- descriptions
+- allergènes
+- informations nutritionnelles
+- disponibilité
+
+---
+
+## Stock & Inventaire
+
+Gestion de trois niveaux :
+
+1. Cuisine
+2. Entrepôt Branche
+3. Entrepôt Central
+
+Fonctionnalités :
+
+- entrées
+- sorties
+- transferts
+- seuil minimum
+- alertes
+- historique
+
+---
+
+## Commandes
+
+Gestion complète :
+
+- panier
+- validation
+- préparation
+- livraison
+- historique
+
+---
+
+## Quotas
+
+Configuration des quotas :
+
+- par société
+- par rôle client
+- par produit
+- par période
+
+---
+
+## Salles & Services
+
+Gestion :
+
+- salles
+- capacités
+- équipements
+- réservations
+- packages
+
+---
+
+## Fournisseurs & Achats
+
+Gestion :
+
+- fournisseurs
+- bons de commande
+- réceptions
+- historiques
+
+---
+
+## Rapports & Analytics
+
+Statistiques :
+
+- commandes
+- produits
+- stocks
+- SLA
+- quotas
+
+---
+
+## Paramètres Système
+
+Configuration globale :
+
+- seuils
+- stock
+- notifications
+- modules
+- paramètres métier
+
+---
+
+# 5. Gestion des rôles et permissions
+
+## Principe
+
+Le système est entièrement modulaire.
+
+Un utilisateur possède :
+
+- un rôle principal
+- zéro ou plusieurs modules supplémentaires
+
+Le Super Admin peut créer un nombre illimité de rôles.
+
+---
+
+## Rôles internes par défaut
+
+### Directeur Général (Super Admin)
+
+Accès complet.
+
+---
+
+### Sous-Directeur / Admin Branche
+
+Accès à tous les modules de sa branche.
+
+---
+
+### Manager Hospitalité / Ménage
+
+Accès :
+
+- Commandes
+- Rapports
+- Consultation Stock
+
+---
+
+### Cuisinier
+
+Accès :
+
+- Préparation des commandes
+- Stock Cuisine
+
+---
+
+### Livreur
+
+Accès :
+
+- Livraison
+- Validation de livraison
+
+---
+
+### Responsable Stock
+
+Accès :
+
+- Stock complet
+- Inventaire
+- Transferts
+
+---
+
+### Responsable Achats
+
+Accès :
+
+- Fournisseurs
+- Achats
+- Consultation Stock
+
+---
+
+## Attribution flexible
+
+Exemple :
+
+Un utilisateur peut avoir :
+
+- rôle Cuisinier
+- module Rapports
+- module Stock
+
+sans changer son rôle principal.
+
+---
+
+# 6. Rôles clients
+
+Créés par :
+
+- Super Admin
+- Admin Branche
+
+Chaque rôle peut disposer de :
+
+- quotas activés ou non
+- produits autorisés
+- salles accessibles
+
+Les modules accessibles sont limités à :
+
+- Catalogue
+- Commandes
+- Salles de réunion
+
+---
+
+# 7. Application Mobile — Tarhib Employee
+
+## Public
+
+Employés des entreprises clientes.
+
+---
+
+## Catalogue
+
+Affichage :
+
+- grille 2 colonnes
+- recherche AR / EN
+- filtres catégories
+
+Chaque carte contient :
+
+- photo
+- nom
+- quota restant
+- disponibilité
+
+Statuts :
+
+- Disponible
+- Stock limité
+- Indisponible
+
+---
+
+## Détail Produit
+
+Affichage :
+
+- grande photo
+- nom arabe
+- nom anglais
+- description
+- allergènes
+- nutrition
+- quota restant
+- barre de progression
+- état du stock
+- quantité
+- Ajouter au panier
+
+---
+
+## Panier
+
+Fonctionnalités :
+
+- modifier quantité
+- supprimer article
+- commentaire libre
+- résumé
+- confirmation
+
+---
+
+## Confirmation
+
+Après validation :
+
+redirection automatique vers le suivi.
+
+---
+
+## Suivi de commande
+
+Étapes :
+
+Commande Confirmée
+
+↓
+
+En Préparation
+
+↓
+
+Prête
+
+↓
+
+Livrée
+
+Le suivi est mis à jour en temps réel.
+
+Animation demandée :
+
+**verre qui se remplit progressivement**
+
+Aucun SLA.
+
+Aucune priorité.
+
+---
+
+## Mes commandes
+
+Fonctionnalités :
+
+- historique
+- filtre
+- détail
+- raison de rejet
+- recommander
+
+---
+
+## Réservation de salles
+
+Liste des salles :
+
+- capacité
+- équipements
+- disponibilité
+
+Réservation :
+
+- date
+- heure
+- durée
+- participants
+
+Packages :
+
+- Petit déjeuner
+- Déjeuner
+- Custom
+
+Gestion :
+
+- historique
+- annulation
+
+---
+
+## Profil
+
+Fonctionnalités :
+
+- informations personnelles
+- langue
+- RTL/LTR
+- thème clair/sombre
+- déconnexion
+
+---
+
+# 8. Application Mobile — Tarhib Operations
+
+## Public
+
+Personnel interne Tarhib.
+
+---
+
+## File d'attente
+
+Liste des commandes.
+
+Tri :
+
+- SLA
+- priorité
+- branche
+
+Filtres :
+
+- statut
+- priorité
+- société
+
+Actions groupées disponibles.
+
+---
+
+## Détail commande
+
+### Cuisinier
+
+Peut :
+
+- démarrer préparation
+- marquer prête
+- signaler rupture
+
+---
+
+### Livreur
+
+Peut :
+
+- marquer livrée
+
+Aucune photo de livraison.
+
+---
+
+## Gestion Stock
+
+Onglets :
+
+Cuisine
+
+Entrepôt Branche
+
+Libre-Service VIP
+
+Affichage :
+
+- quantité
+- seuil
+- statut
+
+Actions :
+
+- entrée
+- sortie
+- transfert
+
+Alertes visibles.
+
+---
+
+## Dashboard Manager
+
+Indicateurs :
+
+- commandes du jour
+- commandes en attente
+- SLA moyen
+- top produits
+
+Graphiques d'évolution.
+
+Alertes critiques.
+
+---
+
+## Profil
+
+Paramètres :
+
+- stock
+- seuils
+- modules
+- rôles
+
+---
+
+# 9. Gestion des commandes
+
+Cycle complet :
+
+Nouvelle commande
+
+↓
+
+Confirmée
+
+↓
+
+Préparation
+
+↓
+
+Prête
+
+↓
+
+Livrée
+
+Gestion :
+
+- commentaires
+- historique
+- notifications
+- temps réel
+
+---
+
+# 10. Gestion des quotas
+
+Configuration :
+
+- société
+- branche
+- rôle client
+- produit
+
+Possibilité :
+
+- quota journalier
+- hebdomadaire
+- mensuel
+
+Affichage du quota restant dans l'application Employee.
+
+---
+
+# 11. Gestion du stock
+
+Architecture :
+
+Entrepôt Central
+
+↓
+
+Entrepôt Branche
+
+↓
+
+Cuisine
+
+Une rupture en branche rend immédiatement le produit indisponible côté client.
+
+Toutes les opérations doivent être historisées.
+
+---
+
+# 12. Gestion des salles
+
+Fonctionnalités :
+
+- calendrier
+- disponibilité
+- équipements
+- réservations
+- packages
+
+Packages disponibles :
+
+- Petit déjeuner + service
+- Déjeuner + service
+- Custom
+
+---
+
+# 13. Rapports & Analytics
+
+Rapports :
+
+- commandes
+- ventes
+- consommation
+- quotas
+- stocks
+- SLA
+
+Graphiques :
+
+- évolution
+- top produits
+- tendances
+
+---
+
+# 14. Paramètres système
+
+Gestion :
+
+- modules
+- notifications
+- paramètres métier
+- seuils
+- langues
+- thèmes
+
+---
+
+# 15. Authentification & Sécurité
+
+Authentification via Keycloak.
+
+Fonctionnalités :
+
+- SSO
+- JWT
+- RBAC
+- permissions par module
+- multi-tenant
+
+---
+
+# 16. Internationalisation
+
+Langues :
+
+- Français
+- Anglais
+- Arabe
+
+Support :
+
+- RTL
+- LTR
+
+Changement instantané.
+
+---
+
+# 17. Design System
+
+Interfaces modernes.
+
+Technologies :
+
+- Flutter Material 3
+- React + Ant Design
+
+Thèmes :
+
+- clair
+- sombre
+
+Design responsive.
+
+---
+
+# 18. Police de caractères
+
+Police principale :
+
+**Thmanyah**
+
+Contraintes de licence :
+
+- ne pas redistribuer
+- ne pas modifier
+- ne pas permettre l'extraction
+- ne pas vendre séparément
+
+---
+
+# 19. Contraintes fonctionnelles
+
+Le système doit :
+
+- être entièrement modulaire
+- être multi-tenant
+- fonctionner en temps réel
+- permettre une gestion fine des permissions
+- être évolutif
+- être sécurisé
+- être performant
+
+---
+
+# 20. Évolutions futures
+
+Le projet est conçu pour intégrer facilement de nouveaux modules :
+
+- Facturation
+- Paiements
+- CRM
+- Fidélité
+- IA pour prévision des stocks
+- Tableaux de bord avancés
+- Notifications intelligentes
+- API publiques
+- Intégrations ERP
+- Intégrations RH
+
+---
+
+# Résumé
+
+Tarhib est une plateforme d'hospitalité corporate moderne, modulaire et multi-tenant permettant :
+
+- la gestion des commandes,
+- la gestion des stocks,
+- la gestion des salles,
+- la gestion des quotas,
+- la gestion des achats,
+- l'administration complète des entreprises clientes,
+- deux applications mobiles spécialisées (Employee & Operations),
+- une administration centralisée avec un système avancé de rôles et permissions.
+
+Ce document constitue la base fonctionnelle complète du projet et peut servir de référence unique pour le développement, la conception de la base de données, les API, les interfaces utilisateur et la planification des futures évolutions.

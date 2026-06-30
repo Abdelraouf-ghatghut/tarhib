@@ -51,11 +51,48 @@ export const productsApi = {
 };
 
 export const inventoryApi = {
-  list: (branchId?: string) => api.get("/inventory", { params: branchId ? { branchId } : {} }),
+  list: (params?: Record<string, string>) => api.get("/inventory", { params }),
   create: (d: unknown) => api.post("/inventory", d),
   update: (id: string, d: unknown) => api.patch(`/inventory/${id}`, d),
   adjust: (id: string, d: unknown) => api.post(`/inventory/${id}/adjust`, d),
-  alerts: () => api.get("/inventory/alerts/below-threshold"),
+  alerts: (params?: Record<string, string>) =>
+    api.get("/inventory/alerts/below-threshold", { params }),
+};
+
+export const suppliersApi = {
+  list: (companyId?: string) => api.get("/suppliers", { params: companyId ? { companyId } : {} }),
+  create: (d: unknown) => api.post("/suppliers", d),
+  update: (id: string, d: unknown) => api.patch(`/suppliers/${id}`, d),
+  remove: (id: string) => api.delete(`/suppliers/${id}`),
+};
+
+export const procurementApi = {
+  list: (params?: Record<string, string>) => api.get("/procurement", { params }),
+  one: (id: string) => api.get(`/procurement/${id}`),
+  create: (d: unknown) => api.post("/procurement", d),
+  send: (id: string) => api.patch(`/procurement/${id}/send`),
+  cancel: (id: string) => api.patch(`/procurement/${id}/cancel`),
+  receive: (id: string, d: unknown) => api.patch(`/procurement/${id}/receive`, d),
+};
+
+export const productsAdminApi = {
+  list: () => api.get("/products/admin"),
+};
+
+export const vipSelfServiceApi = {
+  locations: (params?: Record<string, string>) =>
+    api.get("/vip-self-service/locations", { params }),
+  replenish: (locationId: string) =>
+    api.patch(`/vip-self-service/locations/${locationId}/replenish`),
+  tasks: (params?: Record<string, string>) => api.get("/vip-self-service/tasks", { params }),
+  completeTask: (taskId: string) => api.patch(`/vip-self-service/tasks/${taskId}/complete`),
+};
+
+export const inventoryTransfersApi = {
+  list: (params?: Record<string, string>) => api.get("/inventory-transfers", { params }),
+  create: (d: unknown) => api.post("/inventory-transfers", d),
+  confirm: (id: string) => api.patch(`/inventory-transfers/${id}/confirm`),
+  cancel: (id: string) => api.patch(`/inventory-transfers/${id}/cancel`),
 };
 
 export const ordersApi = {
@@ -107,6 +144,17 @@ export const meetingServicePackagesApi = {
   create: (d: unknown) => api.post("/meeting-service-packages", d),
   update: (id: string, d: unknown) => api.patch(`/meeting-service-packages/${id}`, d),
   remove: (id: string) => api.delete(`/meeting-service-packages/${id}`),
+};
+
+export const auditApi = {
+  list: (params?: {
+    entity?: string;
+    userId?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get("/audit", { params }),
 };
 
 export const registrationsApi = {

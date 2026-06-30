@@ -383,4 +383,8 @@ export class AuthService {
     await this.redis.del(`pending_pwd:${id}`);
     await this.employeeRepo.remove(employee);
   }
+
+  async updateDeviceToken(employeeId: string, fcmToken: string): Promise<void> {
+    await this.employeeRepo.update({ id: employeeId }, { fcmToken });
+  }
 }

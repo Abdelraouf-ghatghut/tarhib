@@ -6,9 +6,7 @@ import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/orders_provider.dart';
-import '../../widgets/glass_app_bar.dart';
 import '../../widgets/glass_nav_bar.dart';
-import '../../widgets/tarhib_scaffold.dart';
 
 class EmployeeHomeScreen extends ConsumerWidget {
   final Widget child;
@@ -48,8 +46,8 @@ class EmployeeHomeScreen extends ConsumerWidget {
             ? l.goodAfternoon
             : l.goodEvening;
 
-    return TarhibScaffold(
-      appBar: GlassAppBar(
+    return Scaffold(
+      appBar: AppBar(
         title: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,7 +185,7 @@ class EmployeeHomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-      child: child,
+      body: child,
     );
   }
 }

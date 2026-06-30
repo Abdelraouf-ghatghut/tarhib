@@ -6,16 +6,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/connectivity_provider.dart';
 import '../../providers/orders_provider.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_card.dart';
-import '../../widgets/glass_app_bar.dart';
-import '../../widgets/glass_card.dart';
 import '../../widgets/skeleton_loader.dart';
 import '../../widgets/tarhib_scaffold.dart';
 import 'order_detail_screen.dart' show queueNavProvider;
 
-/// TARHIB-17 — File agent avec filtres, sélection multiple, et navigation
+/// TARHIB-17 — Agent order queue: status filters, batch actions, SLA countdown
 class QueueScreen extends ConsumerStatefulWidget {
   const QueueScreen({super.key});
 
@@ -24,46 +23,57 @@ class QueueScreen extends ConsumerStatefulWidget {
 }
 
 class _QueueScreenState extends ConsumerState<QueueScreen> {
-  Timer? _slaTimer;
+  String _filter = 'ALL';
+  final Set<String> _selected = {};
   Timer? _refreshTimer;
 
-  // Filtres
-  String? _priorityFilter; // null = all
-  String? _statusFilter;   // null = all
-
-  // Sélection multiple
-  bool _selecting = false;
-  final Set<String> _selected = {};
+  bool get _isSelecting => _selected.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    _slaTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      ref.invalidate(ordersProvider);
-      ref.invalidate(agentQueueProvider);
+      if (mounted) {
+        ref.invalidate(ordersProvider);
+        ref.invalidate(agentQueueProvider);
+      }
     });
   }
 
   @override
   void dispose() {
-    _slaTimer?.cancel();
     _refreshTimer?.cancel();
     super.dispose();
   }
 
-  static const _priorityMeta = {
-    'P1': _PriorityMeta(Color(0xFFEF5350), '🔴'),
-    'P2': _PriorityMeta(Color(0xFFFF7043), '🟠'),
-    'P3': _PriorityMeta(Color(0xFFFFA726), '🟡'),
-    'P4': _PriorityMeta(Color(0xFF42A5F5), '🔵'),
-    'P5': _PriorityMeta(Color(0xFF78909C), '⚪'),
-  };
+  // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  _PriorityMeta _meta(String p) =>
-      _priorityMeta[p] ?? const _PriorityMeta(Color(0xFF78909C), '⚪');
+  Color _priorityColor(String p) => switch (p) {
+        'P1' => const Color(0xFFFF4D4F),
+        'P2' => const Color(0xFFFF991F),
+        'P3' => const Color(0xFFFF991F),
+        'P4' => const Color(0xFF0052CC),
+        'P5' => const Color(0xFF6B778C),
+        _ => const Color(0xFF6B778C),
+      };
+
+  Color _statusColor(String s) => switch (s) {
+        'PENDING' => const Color(0xFFFF991F),
+        'APPROVED' => const Color(0xFF0052CC),
+        'IN_PROGRESS' => const Color(0xFF00A3BF),
+        'DELIVERED' => const Color(0xFF36B37E),
+        'REJECTED' => const Color(0xFFFF4D4F),
+        _ => const Color(0xFF6B778C),
+      };
+
+  String _statusLabel(String s, AppLocalizations l) => switch (s) {
+        'PENDING' => l.orderStatus_PENDING,
+        'APPROVED' => l.orderStatus_APPROVED,
+        'IN_PROGRESS' => l.orderStatus_IN_PROGRESS,
+        'DELIVERED' => l.orderStatus_DELIVERED,
+        'REJECTED' => l.orderStatus_REJECTED,
+        _ => s,
+      };
 
   Future<void> _batchTransition(String newStatus) async {
     if (_selected.isEmpty) return;
@@ -72,33 +82,34 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
     await Future.wait(_selected.map((id) => notifier.updateStatus(id, newStatus)));
     ref.invalidate(ordersProvider);
     ref.invalidate(agentQueueProvider);
-    setState(() {
-      _selected.clear();
-      _selecting = false;
-    });
+    setState(() => _selected.clear());
   }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
     final locale = ref.watch(localeProvider);
     final queueAsync = ref.watch(agentQueueProvider);
+    final connectivity = ref.watch(connectivityProvider);
+    final isOffline = connectivity.maybeWhen(data: (v) => !v, orElse: () => false);
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return TarhibScaffold(
-      appBar: GlassAppBar(
-        title: _selecting
-            ? Text(l.nSelected(_selected.length),
-                style: const TextStyle(fontWeight: FontWeight.bold))
-            : Text(l.orderQueue,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-        actions: _selecting
+      appBar: AppBar(
+        title: Text(
+          _isSelecting ? l.nSelected(_selected.length) : l.orderQueue,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
+        scrolledUnderElevation: 1,
+        actions: _isSelecting
             ? [
                 IconButton(
                   icon: const Icon(Icons.close_rounded),
-                  onPressed: () => setState(() {
-                    _selecting = false;
-                    _selected.clear();
-                  }),
+                  onPressed: () => setState(() => _selected.clear()),
+                  tooltip: l.cancel,
                 ),
               ]
             : [
@@ -108,18 +119,14 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: cs.primary,
                     ),
                   ),
                   onPressed: () {
                     final next = locale.languageCode == 'ar' ? 'en' : 'ar';
                     ref.read(localeProvider.notifier).state = Locale(next);
                   },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.checklist_rounded),
-                  tooltip: l.selectAll,
-                  onPressed: () => setState(() => _selecting = true),
+                  tooltip: l.language,
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh_rounded),
@@ -130,34 +137,45 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.inventory_2_outlined),
-                  tooltip: AppLocalizations.of(context)!.vipStock,
+                  tooltip: l.vipStock,
                   onPressed: () => context.push('/agent/vip-stock'),
                 ),
                 IconButton(
                   icon: const Icon(Icons.person_outline_rounded),
                   onPressed: () => context.push('/profile'),
+                  tooltip: l.profile,
                 ),
                 const SizedBox(width: 4),
               ],
       ),
       child: Column(
         children: [
-          // Batch action bar
-          if (_selecting && _selected.isNotEmpty)
-            _BatchBar(
-              count: _selected.length,
-              l: l,
-              onStart: () => _batchTransition('IN_PROGRESS'),
-              onDeliver: () => _batchTransition('DELIVERED'),
+          if (isOffline)
+            Material(
+              color: const Color(0xFFFF991F),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.wifi_off_rounded,
+                        size: 14, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      l.offlineMode,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
             ),
-
-          // Filter chips
           _FilterRow(
-            priorityFilter: _priorityFilter,
-            statusFilter: _statusFilter,
-            onPriorityChanged: (p) => setState(() => _priorityFilter = p),
-            onStatusChanged: (s) => setState(() => _statusFilter = s),
+            filter: _filter,
+            onChanged: (f) => setState(() => _filter = f),
             l: l,
+            cs: cs,
           ),
 
           Expanded(
@@ -177,17 +195,11 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
                   ),
                 ),
                 data: (orders) {
-                  // Apply filters
-                  var displayed = orders.where((o) {
-                    if (_priorityFilter != null &&
-                        o.priority.name != _priorityFilter) {
-                      return false;
-                    }
-                    if (_statusFilter != null &&
-                        o.status.name != _statusFilter) {
-                      return false;
-                    }
-                    return true;
+                  final now = DateTime.now();
+
+                  final displayed = orders.where((o) {
+                    if (_filter == 'ALL') return true;
+                    return o.status.name == _filter;
                   }).toList();
 
                   if (displayed.isEmpty) {
@@ -198,54 +210,44 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
                     );
                   }
 
-                  final now = DateTime.now();
-                  final lateCount = orders.where((o) {
-                    final sla = DateTime.tryParse(o.slaDeadline);
-                    return sla != null && sla.isBefore(now);
-                  }).length;
+                  final lateCount = orders
+                      .where((o) {
+                        final sla = DateTime.tryParse(o.slaDeadline);
+                        return sla != null && sla.isBefore(now);
+                      })
+                      .length;
 
                   return ListView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                     itemCount: displayed.length + 1,
                     itemBuilder: (ctx, i) {
                       if (i == 0) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: GlassCard(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 24, vertical: 14),
-                            child: Row(
-                              children: [
-                                _StatChip(
-                                  value: '${displayed.length}',
-                                  label: l.ordersTotal,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                                if (lateCount > 0) ...[
-                                  const SizedBox(width: 24),
-                                  _StatChip(
-                                    value: '$lateCount',
-                                    label: l.late,
-                                    color: const Color(0xFFEF5350),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                        return _SummaryBar(
+                          total: displayed.length,
+                          lateCount: lateCount,
+                          l: l,
+                          cs: cs,
+                          isDark: isDark,
                         );
                       }
 
                       final o = displayed[i - 1];
-                      final meta = _meta(o.priority.name);
-                      final sla = DateTime.tryParse(o.slaDeadline);
-                      final isLate = sla != null && sla.isBefore(now);
                       final isSelected = _selected.contains(o.id);
 
                       return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: GestureDetector(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _OrderQueueCard(
+                          order: o,
+                          isSelected: isSelected,
+                          isSelecting: _isSelecting,
+                          priorityColor: _priorityColor(o.priority.name),
+                          statusColor: _statusColor(o.status.name),
+                          statusLabel: _statusLabel(o.status.name, l),
+                          isDark: isDark,
+                          cs: cs,
+                          l: l,
                           onTap: () {
-                            if (_selecting) {
+                            if (_isSelecting) {
                               HapticFeedback.selectionClick();
                               setState(() {
                                 if (isSelected) {
@@ -255,7 +257,6 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
                                 }
                               });
                             } else {
-                              // Store ordered IDs for prev/next navigation
                               ref.read(queueNavProvider.notifier).state =
                                   displayed.map((d) => d.id).toList();
                               context.go('/agent/orders/${o.id}');
@@ -263,143 +264,8 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
                           },
                           onLongPress: () {
                             HapticFeedback.mediumImpact();
-                            setState(() {
-                              _selecting = true;
-                              _selected.add(o.id);
-                            });
+                            setState(() => _selected.add(o.id));
                           },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
-                              border: isSelected
-                                  ? Border.all(
-                                      color: Theme.of(context).colorScheme.primary,
-                                      width: 2)
-                                  : null,
-                            ),
-                            child: GlassCard(
-                              padding: const EdgeInsets.all(16),
-                              child: Row(
-                                children: [
-                                  if (_selecting)
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 12),
-                                      child: Icon(
-                                        isSelected
-                                            ? Icons.check_circle_rounded
-                                            : Icons.radio_button_unchecked_rounded,
-                                        color: isSelected
-                                            ? Theme.of(context).colorScheme.primary
-                                            : Theme.of(context)
-                                                .colorScheme
-                                                .onSurface
-                                                .withValues(alpha: 0.3),
-                                      ),
-                                    ),
-                                  Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: meta.color.withValues(alpha: 0.12),
-                                      border: Border.all(
-                                        color: meta.color.withValues(alpha: 0.45),
-                                        width: 2,
-                                      ),
-                                    ),
-                                    child: Center(
-                                      child: Text(meta.emoji,
-                                          style: const TextStyle(fontSize: 18)),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Text(
-                                              '#${o.id.substring(0, 8).toUpperCase()}',
-                                              style: const TextStyle(
-                                                fontFamily: 'monospace',
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 8, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: meta.color.withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(999),
-                                              ),
-                                              child: Text(
-                                                o.priority.name,
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: meta.color,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          o.status.name,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurface
-                                                .withValues(alpha: 0.45),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      isLate
-                                          ? Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 10, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFEF5350),
-                                                borderRadius:
-                                                    BorderRadius.circular(999),
-                                              ),
-                                              child: Text(
-                                                l.slaExpired,
-                                                style: const TextStyle(
-                                                    fontSize: 11,
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.bold),
-                                              ),
-                                            )
-                                          : sla != null
-                                              ? _LiveCountdown(deadline: sla)
-                                              : const SizedBox.shrink(),
-                                    ],
-                                  ),
-                                  if (!_selecting) ...[
-                                    const SizedBox(width: 8),
-                                    Icon(
-                                      Icons.chevron_right_rounded,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurface
-                                          .withValues(alpha: 0.25),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
                         ),
                       );
                     },
@@ -408,7 +274,375 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
               ),
             ),
           ),
+
+          if (_selected.isNotEmpty)
+            _BatchBar(
+              count: _selected.length,
+              l: l,
+              cs: cs,
+              onStart: () => _batchTransition('IN_PROGRESS'),
+              onDeliver: () => _batchTransition('DELIVERED'),
+              onClear: () => setState(() => _selected.clear()),
+              onSelectAll: () {
+                final orders = ref.read(agentQueueProvider).value ?? [];
+                final filtered = orders.where((o) {
+                  if (_filter == 'ALL') return true;
+                  return o.status.name == _filter;
+                });
+                setState(() =>
+                    _selected.addAll(filtered.map((o) => o.id)));
+              },
+            ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Summary bar ───────────────────────────────────────────────────────────────
+
+class _SummaryBar extends StatelessWidget {
+  const _SummaryBar({
+    required this.total,
+    required this.lateCount,
+    required this.l,
+    required this.cs,
+    required this.isDark,
+  });
+
+  final int total;
+  final int lateCount;
+  final AppLocalizations l;
+  final ColorScheme cs;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141414) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: isDark
+            ? const []
+            : const [
+                BoxShadow(
+                  color: Color(0x0A000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Row(
+        children: [
+          _StatItem(
+            value: '$total',
+            label: l.ordersTotal,
+            color: cs.primary,
+          ),
+          if (lateCount > 0) ...[
+            const SizedBox(width: 4),
+            Container(
+              width: 1,
+              height: 28,
+              color: cs.onSurface.withValues(alpha: 0.12),
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+            _StatItem(
+              value: '$lateCount',
+              label: l.late,
+              color: const Color(0xFFFF4D4F),
+              icon: Icons.warning_amber_rounded,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  const _StatItem({
+    required this.value,
+    required this.label,
+    required this.color,
+    this.icon,
+  });
+
+  final String value;
+  final String label;
+  final Color color;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 4),
+        ],
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: color,
+            height: 1,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Order queue card ──────────────────────────────────────────────────────────
+
+class _OrderQueueCard extends StatelessWidget {
+  const _OrderQueueCard({
+    required this.order,
+    required this.isSelected,
+    required this.isSelecting,
+    required this.priorityColor,
+    required this.statusColor,
+    required this.statusLabel,
+    required this.isDark,
+    required this.cs,
+    required this.l,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final dynamic order;
+  final bool isSelected;
+  final bool isSelecting;
+  final Color priorityColor;
+  final Color statusColor;
+  final String statusLabel;
+  final bool isDark;
+  final ColorScheme cs;
+  final AppLocalizations l;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final textSecondary = cs.onSurface.withValues(alpha: 0.55);
+    final shortId = order.id.length >= 8
+        ? order.id.substring(0, 8).toUpperCase()
+        : order.id.toUpperCase();
+
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF141414) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: isSelected
+              ? Border.all(color: cs.primary, width: 2)
+              : Border.all(color: Colors.transparent, width: 2),
+          boxShadow: isDark
+              ? const []
+              : const [
+                  BoxShadow(
+                    color: Color(0x0A000000),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: priorityColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      order.priority.name.length > 1
+                          ? order.priority.name[1]
+                          : order.priority.name,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '#$shortId',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                order.employeeId,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: textSecondary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: Text(
+                                statusLabel,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: statusColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  _SlaCountdown(deadline: order.slaDeadline),
+
+                  if (isSelecting) ...[
+                    const SizedBox(width: 8),
+                    Icon(
+                      isSelected
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      size: 22,
+                      color: isSelected
+                          ? cs.primary
+                          : cs.onSurface.withValues(alpha: 0.3),
+                    ),
+                  ],
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              Text(
+                l.confirmOrderItems(order.lines.length as int),
+                style: TextStyle(fontSize: 12, color: textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── SLA countdown — self-ticking ──────────────────────────────────────────────
+
+class _SlaCountdown extends StatefulWidget {
+  const _SlaCountdown({required this.deadline});
+
+  final String deadline;
+
+  @override
+  State<_SlaCountdown> createState() => _SlaCountdownState();
+}
+
+class _SlaCountdownState extends State<_SlaCountdown> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final deadline = DateTime.tryParse(widget.deadline);
+    if (deadline == null) return const SizedBox.shrink();
+
+    final remaining = deadline.difference(DateTime.now());
+    final isExpired = remaining.isNegative;
+    final isUrgent = !isExpired && remaining.inMinutes <= 5;
+    final isWarning = !isExpired && remaining.inMinutes <= 10;
+
+    final color = isExpired || isUrgent
+        ? const Color(0xFFFF4D4F)
+        : isWarning
+            ? const Color(0xFFFF991F)
+            : const Color(0xFF36B37E);
+
+    final String text;
+    if (isExpired) {
+      text = l.slaExpired;
+    } else {
+      final h = remaining.inHours;
+      final m = (remaining.inMinutes % 60).toString().padLeft(2, '0');
+      final s = (remaining.inSeconds % 60).toString().padLeft(2, '0');
+      text = h > 0 ? '${h}h $m m' : '$m:$s';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
@@ -418,107 +652,57 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
 
 class _FilterRow extends StatelessWidget {
   const _FilterRow({
-    required this.priorityFilter,
-    required this.statusFilter,
-    required this.onPriorityChanged,
-    required this.onStatusChanged,
+    required this.filter,
+    required this.onChanged,
     required this.l,
+    required this.cs,
   });
-  final String? priorityFilter;
-  final String? statusFilter;
-  final ValueChanged<String?> onPriorityChanged;
-  final ValueChanged<String?> onStatusChanged;
+
+  final String filter;
+  final ValueChanged<String> onChanged;
   final AppLocalizations l;
+  final ColorScheme cs;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 44,
-      child: ListView(
+    final chips = [
+      ('ALL', l.filterAll),
+      ('PENDING', l.orderStatus_PENDING),
+      ('IN_PROGRESS', l.orderStatus_IN_PROGRESS),
+    ];
+
+    return Container(
+      height: 48,
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        children: [
-          // All filter
-          _Chip(
-            label: l.filterAll,
-            selected: priorityFilter == null && statusFilter == null,
-            color: scheme.primary,
-            onTap: () {
-              onPriorityChanged(null);
-              onStatusChanged(null);
-            },
-          ),
-          const SizedBox(width: 8),
-          // Priority filters
-          for (final p in ['P1', 'P2', 'P3']) ...[
-            _Chip(
-              label: p,
-              selected: priorityFilter == p,
-              color: const {
-                'P1': Color(0xFFEF5350),
-                'P2': Color(0xFFFF7043),
-                'P3': Color(0xFFFFA726),
-              }[p]!,
-              onTap: () => onPriorityChanged(priorityFilter == p ? null : p),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemCount: chips.length,
+        itemBuilder: (_, i) {
+          final (value, label) = chips[i];
+          final selected = filter == value;
+          return ChoiceChip(
+            label: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: selected
+                    ? cs.onPrimary
+                    : cs.onSurface.withValues(alpha: 0.7),
+              ),
             ),
-            const SizedBox(width: 8),
-          ],
-          // Status filters
-          _Chip(
-            label: l.orderStatus_PENDING,
-            selected: statusFilter == 'PENDING',
-            color: Colors.orange,
-            onTap: () => onStatusChanged(statusFilter == 'PENDING' ? null : 'PENDING'),
-          ),
-          const SizedBox(width: 8),
-          _Chip(
-            label: l.orderStatus_IN_PROGRESS,
-            selected: statusFilter == 'IN_PROGRESS',
-            color: Colors.blue,
-            onTap: () =>
-                onStatusChanged(statusFilter == 'IN_PROGRESS' ? null : 'IN_PROGRESS'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({
-    required this.label,
-    required this.selected,
-    required this.color,
-    required this.onTap,
-  });
-  final String label;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? color : color.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-              color: selected ? color : color.withValues(alpha: 0.3),
-              width: selected ? 0 : 1),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : color,
-          ),
-        ),
+            selected: selected,
+            onSelected: (_) => onChanged(value),
+            selectedColor: cs.primary,
+            backgroundColor: cs.onSurface.withValues(alpha: 0.06),
+            side: BorderSide.none,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            visualDensity: VisualDensity.compact,
+            showCheckmark: false,
+          );
+        },
       ),
     );
   }
@@ -530,106 +714,74 @@ class _BatchBar extends StatelessWidget {
   const _BatchBar({
     required this.count,
     required this.l,
+    required this.cs,
     required this.onStart,
     required this.onDeliver,
+    required this.onClear,
+    required this.onSelectAll,
   });
+
   final int count;
   final AppLocalizations l;
+  final ColorScheme cs;
   final VoidCallback onStart;
   final VoidCallback onDeliver;
+  final VoidCallback onClear;
+  final VoidCallback onSelectAll;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      color: scheme.primaryContainer,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: cs.onSurface.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: onStart,
-              icon: const Icon(Icons.play_arrow_rounded, size: 16),
-              label: Text(l.batchStart, style: const TextStyle(fontSize: 12)),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 36),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
+          Text(
+            l.nSelected(count),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: onSelectAll,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
+            child: Text(l.selectAll, style: const TextStyle(fontSize: 13)),
           ),
           const SizedBox(width: 8),
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: onDeliver,
-              icon: const Icon(Icons.check_circle_rounded, size: 16),
-              label: Text(l.batchMarkDelivered, style: const TextStyle(fontSize: 12)),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(0, 36),
-                backgroundColor: Colors.green,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
+          FilledButton(
+            onPressed: onStart,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(0, 36),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
+            child: Text(l.batchStart),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: onDeliver,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF36B37E),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(0, 36),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            child: Text(l.batchMarkDelivered),
           ),
         ],
       ),
-    );
-  }
-}
-
-// ── Live countdown ────────────────────────────────────────────────────────────
-
-class _LiveCountdown extends StatelessWidget {
-  const _LiveCountdown({required this.deadline});
-  final DateTime deadline;
-
-  @override
-  Widget build(BuildContext context) {
-    final remaining = deadline.difference(DateTime.now());
-    final color = remaining.inMinutes < 5
-        ? Colors.orange
-        : Theme.of(context).colorScheme.primary;
-    final h = remaining.inHours;
-    final m = remaining.inMinutes % 60;
-    final s = remaining.inSeconds % 60;
-    final text = h > 0 ? '${h}h ${m}m' : '${m}m ${s}s';
-
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w700,
-        color: color,
-        fontFamily: 'monospace',
-      ),
-    );
-  }
-}
-
-class _PriorityMeta {
-  final Color color;
-  final String emoji;
-  const _PriorityMeta(this.color, this.emoji);
-}
-
-class _StatChip extends StatelessWidget {
-  const _StatChip({required this.value, required this.label, required this.color});
-  final String value;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(value,
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: color)),
-        const SizedBox(width: 6),
-        Text(label,
-            style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6))),
-      ],
     );
   }
 }

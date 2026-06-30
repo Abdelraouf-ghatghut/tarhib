@@ -5,6 +5,12 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+export enum StockZone {
+  CENTRAL = 'CENTRAL',
+  BRANCH = 'BRANCH',
+  KITCHEN = 'KITCHEN',
+}
+
 @Entity('inventory_items')
 export class InventoryItem {
   @PrimaryGeneratedColumn('uuid')
@@ -19,6 +25,13 @@ export class InventoryItem {
   @Column({ name: 'product_id' })
   productId!: string;
 
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: StockZone.BRANCH,
+  })
+  zone!: StockZone;
+
   @Column({ type: 'int', default: 0 })
   quantity!: number;
 
@@ -27,6 +40,9 @@ export class InventoryItem {
 
   @Column({ name: 'max_threshold', type: 'int', nullable: true })
   maxThreshold!: number | null;
+
+  @Column({ name: 'location_name', type: 'varchar', nullable: true })
+  locationName!: string | null;
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
