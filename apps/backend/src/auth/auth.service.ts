@@ -28,6 +28,7 @@ import type { PasswordResetDto } from './dto/password-reset.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { InviteEmployeeDto } from './dto/invite-employee.dto';
 import type { AcceptInviteDto } from './dto/accept-invite.dto';
+import { legacyPermissions } from './legacy-permissions';
 
 const LOGIN_ATTEMPTS_PREFIX = 'login_attempts:';
 const LOGIN_BLOCKED_PREFIX = 'login_blocked:';
@@ -113,7 +114,7 @@ export class AuthService {
       permissions = role?.permissions?.map((p) => p.key) ?? [];
     } else {
       // Fallback legacy : mapping rôle string → permissions
-      permissions = AuthService.legacyPermissions(employee.role);
+      permissions = legacyPermissions(employee.role);
     }
 
     return {
@@ -126,63 +127,6 @@ export class AuthService {
       companyId: employee.companyId ?? undefined,
       branchId: employee.branchId ?? undefined,
     };
-  }
-
-  private static legacyPermissions(role: string): string[] {
-    switch (role) {
-      case 'EMPLOYEE':
-        return [
-          'catalog.view',
-          'order.create',
-          'meeting.book',
-          'meeting.order_services',
-          'quota.view',
-          'profile.edit',
-        ];
-      case 'DEPARTMENT_MANAGER':
-        return [
-          'catalog.view',
-          'order.create',
-          'order.approve',
-          'meeting.book',
-          'meeting.order_services',
-          'meeting.manage',
-          'quota.view',
-          'employee.manage',
-          'report.view',
-          'profile.edit',
-        ];
-      case 'HOSPITALITY_AGENT':
-        return [
-          'order.prepare',
-          'order.deliver',
-          'order.queue.manage',
-          'vip.manage',
-          'inventory.manage',
-          'profile.edit',
-        ];
-      case 'INVENTORY_MANAGER':
-        return [
-          'inventory.manage',
-          'vip.manage',
-          'report.view',
-          'profile.edit',
-        ];
-      case 'ADMIN':
-        return [
-          'company.manage',
-          'branch.manage',
-          'employee.manage',
-          'role.manage',
-          'report.view',
-          'order.queue.manage',
-          'inventory.manage',
-          'vip.manage',
-          'profile.edit',
-        ];
-      default:
-        return ['profile.edit'];
-    }
   }
 
   private async recordFailedAttempt(email: string): Promise<void> {
