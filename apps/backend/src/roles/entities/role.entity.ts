@@ -45,6 +45,9 @@ export class Role {
   @Column({ name: 'is_system', type: 'boolean', default: false })
   isSystem!: boolean;
 
+  @Column({ name: 'quotas_enabled', type: 'boolean', default: false })
+  quotasEnabled!: boolean;
+
   @ManyToMany(() => Permission, (p) => p.roles, { eager: true })
   @JoinTable({
     name: 'role_permissions',

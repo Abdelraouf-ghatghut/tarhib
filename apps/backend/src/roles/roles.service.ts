@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Role, RoleScope } from './entities/role.entity.js';
+import { Role, RoleScope, SlaPriority } from './entities/role.entity.js';
 import { Permission } from './entities/permission.entity.js';
 import { RoleQuota, QuotaPeriodType } from './entities/role-quota.entity.js';
 import {
@@ -73,8 +73,9 @@ export class RolesService {
       nameAr: dto.nameAr,
       nameEn: dto.nameEn,
       scope: dto.scope,
-      slaPriority: dto.slaPriority,
+      slaPriority: dto.slaPriority ?? SlaPriority.P5,
       isSystem: false,
+      quotasEnabled: dto.quotasEnabled ?? false,
       permissions,
     });
 
@@ -94,6 +95,7 @@ export class RolesService {
     if (dto.nameAr) role.nameAr = dto.nameAr;
     if (dto.nameEn) role.nameEn = dto.nameEn;
     if (dto.slaPriority) role.slaPriority = dto.slaPriority;
+    if (dto.quotasEnabled !== undefined) role.quotasEnabled = dto.quotasEnabled;
 
     if (dto.permissionKeys) {
       role.permissions = await this.permissionRepo.find({
@@ -149,6 +151,14 @@ export class RolesService {
     return this.roleQuotaRepo.find({ where: { roleId } });
   }
 
+  async removeQuota(roleId: string, quotaId: string): Promise<void> {
+    const quota = await this.roleQuotaRepo.findOne({
+      where: { id: quotaId, roleId },
+    });
+    if (!quota) throw new NotFoundException(`Quota ${quotaId} not found`);
+    await this.roleQuotaRepo.remove(quota);
+  }
+
   toDto = (role: Role): RoleDto => ({
     id: role.id,
     companyId: role.companyId,
@@ -157,6 +167,7 @@ export class RolesService {
     scope: role.scope,
     slaPriority: role.slaPriority,
     isSystem: role.isSystem,
+    quotasEnabled: role.quotasEnabled,
     permissions: (role.permissions ?? []).map((p) => p.key),
   });
 }

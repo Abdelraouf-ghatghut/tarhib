@@ -253,5 +253,10 @@
   "audit.viewDetails": "View",
   "audit.filterEntity": "Filter by entity",
   "audit.reset": "Reset",
-  "audit.entries": "entries"
+  "audit.entries": "entries",
+  "quotasEnabledForRole": "Enable quotas for this role",
+  "quotasEnabledHint": "Quotas will be enforced on orders from employees with this role",
+  "quotasActivated": "Quotas activated",
+  "quotasDeactivated": "Quotas deactivated",
+  "products": "Products"
 }

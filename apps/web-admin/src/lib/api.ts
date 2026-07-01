@@ -1,4 +1,4 @@
-import axios from "axios";
+﻿import axios from "axios";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
@@ -123,6 +123,10 @@ export const rolesApi = {
   remove: (id: string) => api.delete(`/roles/${id}`),
   getQuotas: (id: string) => api.get(`/roles/${id}/quotas`),
   setQuota: (id: string, d: unknown) => api.post(`/roles/${id}/quotas`, d),
+  removeQuota: (roleId: string, quotaId: string) =>
+    api.delete(`/roles/${roleId}/quotas/${quotaId}`),
+  toggleQuotas: (id: string, enabled: boolean) =>
+    api.patch(`/roles/${id}`, { quotasEnabled: enabled }),
 };
 
 export const permissionsApi = {

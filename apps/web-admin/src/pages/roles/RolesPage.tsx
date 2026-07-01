@@ -32,6 +32,7 @@ interface Permission {
 }
 
 interface Role {
+  quotasEnabled: boolean;
   id: string;
   companyId: string | null;
   nameAr: string;
@@ -220,6 +221,12 @@ export function RolesPage() {
               icon={<SettingOutlined />}
               onClick={() => setQuotaRole(r)}
               title={t("quotaPerRole")}
+              type={tab === "client" && r.quotasEnabled ? "primary" : "default"}
+              style={
+                tab === "client" && r.quotasEnabled
+                  ? { background: "#fa8c16", borderColor: "#fa8c16" }
+                  : undefined
+              }
             />
           </Space>
         ),
@@ -379,9 +386,13 @@ export function RolesPage() {
           <Form.Item name="nameEn" label={t("roleNameEn")} rules={[{ required: true }]}>
             <Input dir="ltr" />
           </Form.Item>
-          <Form.Item name="slaPriority" label={t("slaPriority")} rules={[{ required: true }]}>
-            <Select options={["P1", "P2", "P3", "P4", "P5"].map((v) => ({ value: v, label: v }))} />
-          </Form.Item>
+          {activeTab === "client" && (
+            <Form.Item name="slaPriority" label={t("slaPriority")} rules={[{ required: true }]}>
+              <Select
+                options={["P1", "P2", "P3", "P4", "P5"].map((v) => ({ value: v, label: v }))}
+              />
+            </Form.Item>
+          )}
 
           {activeTab === "tarhib" && (
             <Form.Item name="permissionKeys" label={t("permissionsLabel")}>
@@ -408,6 +419,7 @@ export function RolesPage() {
         <RoleQuotasModal
           roleId={quotaRole.id}
           roleName={isAr ? quotaRole.nameAr : quotaRole.nameEn}
+          quotasEnabled={quotaRole.quotasEnabled}
           open={!!quotaRole}
           onClose={() => setQuotaRole(null)}
         />

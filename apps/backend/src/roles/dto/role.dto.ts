@@ -31,9 +31,16 @@ export class CreateRoleDto {
   @IsEnum(RoleScope)
   scope!: RoleScope;
 
-  @ApiProperty({ enum: SlaPriority, default: SlaPriority.P5 })
+  @ApiPropertyOptional({ enum: SlaPriority, default: SlaPriority.P5 })
+  @IsOptional()
   @IsEnum(SlaPriority)
-  slaPriority!: SlaPriority;
+  slaPriority?: SlaPriority;
+
+  @ApiPropertyOptional({
+    description: 'Enable quota enforcement for this role',
+  })
+  @IsOptional()
+  quotasEnabled?: boolean;
 
   @ApiProperty({ description: 'Permission keys to assign', type: [String] })
   @IsArray()
@@ -58,6 +65,10 @@ export class UpdateRoleDto {
   @IsOptional()
   @IsEnum(SlaPriority)
   slaPriority?: SlaPriority;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  quotasEnabled?: boolean;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
@@ -87,6 +98,9 @@ export class RoleDto {
 
   @ApiProperty()
   isSystem!: boolean;
+
+  @ApiProperty()
+  quotasEnabled!: boolean;
 
   @ApiProperty({ type: [String] })
   permissions!: string[];

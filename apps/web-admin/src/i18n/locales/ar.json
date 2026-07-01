@@ -253,5 +253,10 @@
   "audit.viewDetails": "عرض",
   "audit.filterEntity": "تصفية حسب الكيان",
   "audit.reset": "إعادة تعيين",
-  "audit.entries": "إدخالات"
+  "audit.entries": "إدخالات",
+  "quotasEnabledForRole": "تفعيل الحصص لهذا الدور",
+  "quotasEnabledHint": "يتم تطبيق الحصص على الطلبات الواردة من هذا الدور",
+  "quotasActivated": "تم تفعيل الحصص",
+  "quotasDeactivated": "تم إلغاء تفعيل الحصص",
+  "products": "المنتجات"
 }
