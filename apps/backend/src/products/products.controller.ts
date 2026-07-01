@@ -17,7 +17,11 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
-import { CreateProductDto, ProductDto } from './dto/product.dto.js';
+import {
+  CreateProductDto,
+  ProductAdminDto,
+  ProductDto,
+} from './dto/product.dto.js';
 import { ProductsService } from './products.service.js';
 
 @ApiTags('products')
@@ -26,6 +30,15 @@ import { ProductsService } from './products.service.js';
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
+
+  @Get('admin')
+  @ApiOperation({
+    summary: 'Liste admin (inclut unitCost) — ne jamais exposer côté employé',
+  })
+  @ApiResponse({ status: 200, type: [ProductAdminDto] })
+  findAllAdmin(): Promise<ProductAdminDto[]> {
+    return this.productsService.findAllAdmin();
+  }
 
   @Post()
   @ApiOperation({ summary: 'Créer un produit (ADMIN)' })

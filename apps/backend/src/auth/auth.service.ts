@@ -18,6 +18,7 @@ import {
   EmployeeStatus,
 } from '../employees/entities/employee.entity';
 import { Company } from '../companies/entities/company.entity';
+import { Role } from '../roles/entities/role.entity';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { LoginDto } from './dto/login.dto';
 import type { TokenResponseDto } from './dto/token-response.dto';
@@ -49,6 +50,8 @@ export class AuthService {
     private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
   ) {
     this.lockDurationSeconds = config.get<number>(
       'LOGIN_LOCK_DURATION_SECONDS',
@@ -78,7 +81,7 @@ export class AuthService {
         dto.password,
       );
       await this.redis.del(`${LOGIN_ATTEMPTS_PREFIX}${dto.email}`);
-      return tokens;
+      return this.enrichTokens(tokens, dto.email);
     } catch (err) {
       if (err instanceof UnauthorizedException) {
         await this.recordFailedAttempt(dto.email);
@@ -88,6 +91,97 @@ export class AuthService {
         );
       }
       throw err;
+    }
+  }
+
+  /** Enrichit la réponse token avec le contexte employé (rôle, permissions, companyId…) */
+  private async enrichTokens(
+    tokens: TokenResponseDto,
+    email: string,
+  ): Promise<TokenResponseDto> {
+    const employee = await this.employeeRepo.findOne({ where: { email } });
+    if (!employee) return tokens;
+
+    let permissions: string[] = [];
+
+    if (employee.roleId) {
+      // Nouveau RBAC dynamique
+      const role = await this.roleRepo.findOne({
+        where: { id: employee.roleId },
+        relations: ['permissions'],
+      });
+      permissions = role?.permissions?.map((p) => p.key) ?? [];
+    } else {
+      // Fallback legacy : mapping rôle string → permissions
+      permissions = AuthService.legacyPermissions(employee.role);
+    }
+
+    return {
+      ...tokens,
+      email: employee.email,
+      role: employee.role ?? undefined,
+      roleId: employee.roleId ?? undefined,
+      scope: employee.scope ?? undefined,
+      permissions,
+      companyId: employee.companyId ?? undefined,
+      branchId: employee.branchId ?? undefined,
+    };
+  }
+
+  private static legacyPermissions(role: string): string[] {
+    switch (role) {
+      case 'EMPLOYEE':
+        return [
+          'catalog.view',
+          'order.create',
+          'meeting.book',
+          'meeting.order_services',
+          'quota.view',
+          'profile.edit',
+        ];
+      case 'DEPARTMENT_MANAGER':
+        return [
+          'catalog.view',
+          'order.create',
+          'order.approve',
+          'meeting.book',
+          'meeting.order_services',
+          'meeting.manage',
+          'quota.view',
+          'employee.manage',
+          'report.view',
+          'profile.edit',
+        ];
+      case 'HOSPITALITY_AGENT':
+        return [
+          'order.prepare',
+          'order.deliver',
+          'order.queue.manage',
+          'vip.manage',
+          'inventory.manage',
+          'profile.edit',
+        ];
+      case 'INVENTORY_MANAGER':
+        return [
+          'inventory.manage',
+          'vip.manage',
+          'report.view',
+          'profile.edit',
+        ];
+      case 'ADMIN':
+        return [
+          'company.manage',
+          'branch.manage',
+          'employee.manage',
+          'role.manage',
+          'report.view',
+          'order.queue.manage',
+          'inventory.manage',
+          'vip.manage',
+          'profile.edit',
+        ];
+      default:
+        return ['profile.edit'];
     }
   }
 
@@ -288,5 +382,9 @@ export class AuthService {
     if (!employee) throw new NotFoundException('Employee not found');
     await this.redis.del(`pending_pwd:${id}`);
     await this.employeeRepo.remove(employee);
+  }
+
+  async updateDeviceToken(employeeId: string, fcmToken: string): Promise<void> {
+    await this.employeeRepo.update({ id: employeeId }, { fcmToken });
   }
 }

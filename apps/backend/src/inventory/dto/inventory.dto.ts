@@ -1,5 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsUUID, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
+import { StockZone } from '../entities/inventory-item.entity.js';
+
+export { StockZone };
 
 export class CreateInventoryItemDto {
   @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0851' })
@@ -13,6 +23,11 @@ export class CreateInventoryItemDto {
   @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0853' })
   @IsUUID()
   productId!: string;
+
+  @ApiProperty({ enum: StockZone, default: StockZone.BRANCH })
+  @IsEnum(StockZone)
+  @IsOptional()
+  zone?: StockZone;
 
   @ApiProperty({ example: 50, minimum: 0 })
   @IsInt()
@@ -30,6 +45,11 @@ export class CreateInventoryItemDto {
   @Min(1)
   @IsOptional()
   maxThreshold?: number;
+
+  @ApiProperty({ example: 'Frigo — Bureau CFO', required: false })
+  @IsString()
+  @IsOptional()
+  locationName?: string;
 }
 
 export class UpdateInventoryItemDto {
@@ -69,6 +89,9 @@ export class InventoryItemDto {
   @IsUUID()
   productId!: string;
 
+  @ApiProperty({ enum: StockZone })
+  zone!: StockZone;
+
   @ApiProperty({ example: 50 })
   quantity!: number;
 
@@ -77,6 +100,9 @@ export class InventoryItemDto {
 
   @ApiProperty({ example: 100, nullable: true })
   maxThreshold!: number | null;
+
+  @ApiProperty({ example: 'Frigo — Bureau CFO', nullable: true })
+  locationName!: string | null;
 
   @ApiProperty({ description: 'true when quantity <= minThreshold' })
   belowThreshold!: boolean;

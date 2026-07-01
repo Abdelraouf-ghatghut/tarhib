@@ -26,8 +26,47 @@ function AppInner() {
       locale={isAr ? arEG : enUS}
       theme={{
         token: {
-          colorPrimary: "#1b5e20",
+          colorPrimary: "#0052CC",
+          colorLink: "#0052CC",
+          colorSuccess: "#36B37E",
+          colorWarning: "#FF991F",
+          colorError: "#FF4D4F",
+          colorInfo: "#00A3BF",
           borderRadius: 8,
+          borderRadiusLG: 12,
+          fontFamily: "'Inter', 'Cairo', system-ui, sans-serif",
+          colorBgContainer: "#FFFFFF",
+          colorBgLayout: "#F8F9FC",
+          colorText: "#172B4D",
+          colorTextSecondary: "#6B778C",
+          colorBorder: "#EBECF0",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+          boxShadowSecondary: "0 4px 16px rgba(0,0,0,0.1)",
+          colorBgElevated: "#FFFFFF",
+        },
+        components: {
+          Menu: {
+            itemBg: "transparent",
+            itemSelectedBg: "rgba(0, 82, 204, 0.08)",
+            itemSelectedColor: "#0052CC",
+            itemHoverBg: "rgba(0, 82, 204, 0.04)",
+            groupTitleColor: "#6B778C",
+            groupTitleFontSize: 11,
+          },
+          Table: {
+            rowHoverBg: "#F8F9FC",
+          },
+          Card: {
+            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+          },
+          Button: {
+            primaryShadow: "none",
+          },
+          Layout: {
+            siderBg: "#FFFFFF",
+            headerBg: "#FFFFFF",
+            bodyBg: "#F8F9FC",
+          },
         },
       }}
     >

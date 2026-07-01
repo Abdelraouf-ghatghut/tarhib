@@ -27,11 +27,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   static const _filterStatuses = [null, 'IN_PROGRESS', 'DELIVERED', 'REJECTED'];
 
   Color _statusColor(String s) => switch (s) {
-        'DELIVERED' => Colors.green,
-        'REJECTED' => Colors.red,
-        'IN_PROGRESS' => Colors.orange,
-        'APPROVED' => Colors.blue,
-        _ => Colors.grey,
+        'DELIVERED' => const Color(0xFF36B37E),
+        'REJECTED' => const Color(0xFFFF4D4F),
+        'IN_PROGRESS' => const Color(0xFF00A3BF),
+        'APPROVED' => const Color(0xFF0052CC),
+        _ => const Color(0xFF6B778C),
       };
 
   String _fmtDate(String iso) {

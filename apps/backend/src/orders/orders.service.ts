@@ -29,7 +29,10 @@ import { NotificationsGateway } from '../notifications/notifications.gateway.js'
 import { Employee } from '../employees/entities/employee.entity.js';
 import { Product } from '../products/entities/product.entity.js';
 import { ProductType } from '../products/dto/product.dto.js';
-import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
+import {
+  InventoryItem,
+  StockZone,
+} from '../inventory/entities/inventory-item.entity.js';
 import { Quota } from '../quotas/entities/quota.entity.js';
 import { RoleQuota } from '../roles/entities/role-quota.entity.js';
 import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
@@ -96,6 +99,7 @@ export class OrdersService {
           productId: id,
           branchId: caller.branchId || undefined,
           companyId: caller.companyId || undefined,
+          zone: StockZone.BRANCH, // §9 CLAUDE.md : vérification au niveau Branche
         })),
       }),
     ]);
@@ -286,10 +290,8 @@ export class OrdersService {
           OrderStatus.REJECTED,
         ],
         [OrderStatus.APPROVED]: [OrderStatus.IN_PROGRESS, OrderStatus.REJECTED],
-        [OrderStatus.IN_PROGRESS]: [
-          OrderStatus.DELIVERED,
-          OrderStatus.REJECTED,
-        ],
+        [OrderStatus.IN_PROGRESS]: [OrderStatus.READY, OrderStatus.REJECTED],
+        [OrderStatus.READY]: [OrderStatus.DELIVERED, OrderStatus.REJECTED],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
       };
@@ -301,6 +303,7 @@ export class OrdersService {
         [OrderStatus.PENDING]: [OrderStatus.APPROVED, OrderStatus.REJECTED],
         [OrderStatus.APPROVED]: [OrderStatus.REJECTED],
         [OrderStatus.IN_PROGRESS]: [],
+        [OrderStatus.READY]: [],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
       };
@@ -308,13 +311,15 @@ export class OrdersService {
     }
 
     if (canPrepare || canDeliver || legacyAgent) {
+      // Cuisinier (order.prepare) : APPROVED→IN_PROGRESS→READY
+      // Livreur (order.deliver) : READY→DELIVERED
       const agent: Record<OrderStatus, OrderStatus[]> = {
         [OrderStatus.PENDING]: [OrderStatus.IN_PROGRESS],
         [OrderStatus.APPROVED]: [OrderStatus.IN_PROGRESS],
-        [OrderStatus.IN_PROGRESS]: [
-          OrderStatus.DELIVERED,
-          OrderStatus.REJECTED,
-        ],
+        [OrderStatus.IN_PROGRESS]: canPrepare
+          ? [OrderStatus.READY, OrderStatus.REJECTED]
+          : [],
+        [OrderStatus.READY]: canDeliver ? [OrderStatus.DELIVERED] : [],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
       };

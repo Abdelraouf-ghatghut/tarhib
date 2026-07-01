@@ -20,6 +20,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import {
   CreateInventoryItemDto,
   InventoryItemDto,
+  StockZone,
   UpdateInventoryItemDto,
 } from './dto/inventory.dto.js';
 import { InventoryService } from './inventory.service.js';
@@ -42,30 +43,34 @@ export class InventoryController {
 
   @Get()
   @ApiOperation({
-    summary: 'Lister le stock (filtrable par companyId / branchId)',
+    summary: 'Lister le stock (filtrable par companyId / branchId / zone)',
   })
   @ApiQuery({ name: 'companyId', required: false })
   @ApiQuery({ name: 'branchId', required: false })
+  @ApiQuery({ name: 'zone', required: false, enum: StockZone })
   @ApiResponse({ status: 200, type: [InventoryItemDto] })
   findAll(
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
+    @Query('zone') zone?: StockZone,
   ): Promise<InventoryItemDto[]> {
-    return this.inventoryService.findAll(companyId, branchId);
+    return this.inventoryService.findAll(companyId, branchId, zone);
   }
 
   @Get('alerts/below-threshold')
   @ApiOperation({
-    summary: 'Produits sous le seuil minimum (déclenche alerte TARHIB-38/42)',
+    summary: 'Produits sous le seuil minimum (filtrable par zone)',
   })
   @ApiQuery({ name: 'companyId', required: true })
   @ApiQuery({ name: 'branchId', required: false })
+  @ApiQuery({ name: 'zone', required: false, enum: StockZone })
   @ApiResponse({ status: 200, type: [InventoryItemDto] })
   findBelowThreshold(
     @Query('companyId') companyId: string,
     @Query('branchId') branchId?: string,
+    @Query('zone') zone?: StockZone,
   ): Promise<InventoryItemDto[]> {
-    return this.inventoryService.findBelowThreshold(companyId, branchId);
+    return this.inventoryService.findBelowThreshold(companyId, branchId, zone);
   }
 
   @Get(':id')

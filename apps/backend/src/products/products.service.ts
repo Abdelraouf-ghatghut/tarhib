@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity.js';
 import {
   CreateProductDto,
+  ProductAdminDto,
   ProductDto,
   ProductType,
 } from './dto/product.dto.js';
@@ -23,6 +24,7 @@ export class ProductsService {
       type: dto.type,
       allowedRoles: dto.allowedRoles ?? null,
       imageUrl: dto.imageUrl ?? null,
+      unitCost: dto.unitCost ?? null,
     });
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
@@ -75,6 +77,7 @@ export class ProductsService {
     if (dto.allowedRoles !== undefined)
       entity.allowedRoles = dto.allowedRoles ?? null;
     if (dto.imageUrl !== undefined) entity.imageUrl = dto.imageUrl ?? null;
+    if (dto.unitCost !== undefined) entity.unitCost = dto.unitCost ?? null;
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
   }
@@ -86,6 +89,18 @@ export class ProductsService {
     await this.repo.save(entity);
   }
 
+  /** Vue admin — inclut unitCost. Réservé aux endpoints non-employé. */
+  async findAllAdmin(): Promise<ProductAdminDto[]> {
+    const entities = await this.repo.find({ order: { nameEn: 'ASC' } });
+    return entities.map((e) => this.toAdminDto(e));
+  }
+
+  async findOneAdmin(id: string): Promise<ProductAdminDto> {
+    const entity = await this.repo.findOne({ where: { id } });
+    if (!entity) throw new NotFoundException(`Product ${id} not found`);
+    return this.toAdminDto(entity);
+  }
+
   private toDto(e: Product): ProductDto {
     const dto = new ProductDto();
     dto.id = e.id;
@@ -95,6 +110,20 @@ export class ProductsService {
     dto.type = e.type;
     dto.allowedRoles = e.allowedRoles ?? undefined;
     dto.active = e.active;
+    // unitCost délibérément omis — jamais exposé dans le catalogue employé
+    return dto;
+  }
+
+  toAdminDto(e: Product): ProductAdminDto {
+    const dto = new ProductAdminDto();
+    dto.id = e.id;
+    dto.nameAr = e.nameAr;
+    dto.nameEn = e.nameEn;
+    dto.category = e.category;
+    dto.type = e.type;
+    dto.allowedRoles = e.allowedRoles ?? undefined;
+    dto.active = e.active;
+    dto.unitCost = e.unitCost ? Number(e.unitCost) : null;
     return dto;
   }
 }

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -71,5 +72,12 @@ export class RolesController {
   @RequirePermission('role.manage')
   getQuotas(@Param('id') roleId: string) {
     return this.service.getQuotas(roleId);
+  }
+
+  @Delete(':id/quotas/:quotaId')
+  @RequirePermission('role.manage')
+  @HttpCode(204)
+  removeQuota(@Param('id') roleId: string, @Param('quotaId') quotaId: string) {
+    return this.service.removeQuota(roleId, quotaId);
   }
 }

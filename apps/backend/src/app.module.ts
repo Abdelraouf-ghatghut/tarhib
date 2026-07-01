@@ -25,6 +25,12 @@ import { RolesModule } from './roles/roles.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { MeetingRoomsModule } from './meeting-rooms/meeting-rooms.module';
 import { MeetingServicePackagesModule } from './meeting-service-packages/meeting-service-packages.module';
+import { InventoryTransfersModule } from './inventory-transfers/inventory-transfers.module';
+import { VipSelfServiceModule } from './vip-self-service/vip-self-service.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
+import { ProcurementModule } from './procurement/procurement.module';
+import { KitchenModule } from './kitchen/kitchen.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -67,6 +73,12 @@ import { MeetingServicePackagesModule } from './meeting-service-packages/meeting
     PermissionsModule,
     MeetingRoomsModule,
     MeetingServicePackagesModule,
+    InventoryTransfersModule,
+    VipSelfServiceModule,
+    SuppliersModule,
+    ProcurementModule,
+    KitchenModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [

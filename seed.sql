@@ -32,7 +32,7 @@ ON CONFLICT DO NOTHING;
 -- Les keycloak_id correspondent aux user id du realm keycloak/tarhib-realm.json
 INSERT INTO employees (id, keycloak_id, company_id, branch_id, department_id,
                        first_name_ar, first_name_en, last_name_ar, last_name_en,
-                       email, phone_number, role, active)
+                       email, phone_number, role, scope, active)
 VALUES
   -- Sarah : employée normale, quotas généreux
   ('55555501-0000-4000-8000-000000000001',
@@ -41,7 +41,7 @@ VALUES
    '22222222-0000-0000-0000-000000000001',
    '33333333-0000-0000-0000-000000000001',
    'سارة', 'Sarah', 'بنعلي', 'Benali',
-   'sarah@acme.com', '+213600000001', 'EMPLOYEE', true),
+   'sarah@acme.com', '+213600000001', 'EMPLOYEE', 'CLIENT', true),
 
   -- Omar : employée avec quotas serrés (pour tester rejet de quota)
   ('55555502-0000-4000-8000-000000000002',
@@ -50,25 +50,25 @@ VALUES
    '22222222-0000-0000-0000-000000000001',
    '33333333-0000-0000-0000-000000000001',
    'عمر', 'Omar', 'شريف', 'Cherif',
-   'omar@acme.com', '+213600000002', 'EMPLOYEE', true),
+   'omar@acme.com', '+213600000002', 'EMPLOYEE', 'CLIENT', true),
 
-  -- Yassine : agent d'hospitalité
+  -- Yassine : agent d'hospitalité Tarhib (scope TARHIB = staff interne)
   ('55555503-0000-4000-8000-000000000003',
    '00000003-0000-4000-8000-000000000003',
    '11111111-0000-0000-0000-000000000001',
    '22222222-0000-0000-0000-000000000001',
    '33333333-0000-0000-0000-000000000001',
    'ياسين', 'Yassine', 'عجنتلي', 'Agentali',
-   'yassine@acme.com', '+213600000003', 'HOSPITALITY_AGENT', true),
+   'yassine@acme.com', '+213600000003', 'HOSPITALITY_AGENT', 'TARHIB', true),
 
-  -- Karim : department manager
+  -- Karim : manager de département côté client
   ('55555504-0000-4000-8000-000000000004',
    '00000004-0000-4000-8000-000000000004',
    '11111111-0000-0000-0000-000000000001',
    '22222222-0000-0000-0000-000000000001',
    '33333333-0000-0000-0000-000000000002',
    'كريم', 'Karim', 'مناجيري', 'Manageri',
-   'karim@acme.com', '+213600000004', 'DEPARTMENT_MANAGER', true),
+   'karim@acme.com', '+213600000004', 'DEPARTMENT_MANAGER', 'CLIENT', true),
 
   -- Abdelraouf : développeur (ancien seed — conservé pour compatibilité)
   ('44444444-0000-0000-0000-000000000001',
@@ -77,7 +77,17 @@ VALUES
    '22222222-0000-0000-0000-000000000001',
    '33333333-0000-0000-0000-000000000001',
    'عبد الرؤوف', 'Abdelraouf', 'غتغوت', 'Ghatghut',
-   'test@test.test', '+213600000000', 'EMPLOYEE', true)
+   'test@test.test', '+213600000000', 'EMPLOYEE', 'CLIENT', true),
+
+  -- Admin Tarhib : superadmin pour le portail web admin
+  ('55555510-0000-0000-0000-000000000001',
+   '7bd2a70b-7a18-4f95-a7ae-a6ea3063afd1',
+   '11111111-0000-0000-0000-000000000001',
+   '22222222-0000-0000-0000-000000000001',
+   '33333333-0000-0000-0000-000000000001',
+   'مدير النظام', 'Admin',
+   'طرهيب', 'Tarhib',
+   'admin@tarhib.com', '+21399900001', 'ADMIN', 'TARHIB', true)
 ON CONFLICT DO NOTHING;
 
 -- ── 5. Produits ───────────────────────────────────────────────
@@ -284,4 +294,38 @@ ON CONFLICT DO NOTHING;
 INSERT INTO order_lines (id, order_id, product_id, quantity, validation_status) VALUES
   (gen_random_uuid(), 'cc000007-0000-4000-8000-000000000007', 'aaaaaaaa-0000-0000-0000-000000000009', 1, 'APPROVED'),
   (gen_random_uuid(), 'cc000007-0000-4000-8000-000000000007', 'aaaaaaaa-0000-0000-0000-000000000004', 1, 'APPROVED')
+ON CONFLICT DO NOTHING;
+
+-- ── 9. Salles de réunion ──────────────────────────────────────
+INSERT INTO meeting_rooms (id, company_id, branch_id, name_ar, name_en, capacity, amenities, active)
+VALUES
+  ('dd000001-0000-4000-8000-000000000001',
+   '11111111-0000-0000-0000-000000000001',
+   '22222222-0000-0000-0000-000000000001',
+   'قاعة الاجتماعات - الطابق الأول', 'Board Room - Floor 1',
+   12, '["Projecteur", "Tableau blanc", "Visio", "Climatisation"]', true),
+
+  ('dd000002-0000-4000-8000-000000000002',
+   '11111111-0000-0000-0000-000000000001',
+   '22222222-0000-0000-0000-000000000001',
+   'غرفة المناقشة - A', 'Meeting Room A',
+   6, '["Écran TV", "Tableau blanc"]', true),
+
+  ('dd000003-0000-4000-8000-000000000003',
+   '11111111-0000-0000-0000-000000000001',
+   '22222222-0000-0000-0000-000000000001',
+   'غرفة المناقشة - B', 'Meeting Room B',
+   4, '["Écran TV"]', true)
+ON CONFLICT DO NOTHING;
+
+-- ── 10. Réservation de démo (Karim réunit son équipe à 14h) ──
+INSERT INTO room_bookings (id, room_id, employee_id, company_id, start_time, end_time, status)
+VALUES
+  ('ee000001-0000-4000-8000-000000000001',
+   'dd000001-0000-4000-8000-000000000001',
+   '55555504-0000-4000-8000-000000000004',
+   '11111111-0000-0000-0000-000000000001',
+   (CURRENT_DATE + interval '14 hours'),
+   (CURRENT_DATE + interval '16 hours'),
+   'CONFIRMED')
 ON CONFLICT DO NOTHING;

@@ -233,6 +233,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get batchMarkDelivered => 'Deliver all';
 
   @override
+  String get offlineMode => 'Offline — showing cached data';
+
+  @override
   String get markReplenished => 'Mark replenished';
 
   @override

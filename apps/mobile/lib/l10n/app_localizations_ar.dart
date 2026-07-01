@@ -233,6 +233,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get batchMarkDelivered => 'تسليم الكل';
 
   @override
+  String get offlineMode => 'وضع عدم الاتصال — عرض البيانات المحفوظة';
+
+  @override
   String get markReplenished => 'تحديد كمجدد';
 
   @override

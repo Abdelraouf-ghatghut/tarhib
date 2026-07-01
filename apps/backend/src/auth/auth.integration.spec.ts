@@ -41,6 +41,7 @@ function makePayload(role: EmployeeRole): Omit<JwtPayload, 'iat' | 'exp'> {
     role,
     companyId: COMPANY_ID,
     branchId: BRANCH_ID,
+    permissions: [],
   };
 }
 

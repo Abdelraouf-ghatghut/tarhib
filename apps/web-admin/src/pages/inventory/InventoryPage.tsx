@@ -20,11 +20,14 @@ import { inventoryApi, companiesApi, branchesApi, productsApi } from "../../lib/
 
 const { Title } = Typography;
 
+type StockZone = "CENTRAL" | "BRANCH" | "KITCHEN";
+
 interface InventoryItem {
   id: string;
   productId: string;
   branchId: string;
   companyId: string;
+  zone: StockZone;
   quantity: number;
   minThreshold: number;
   maxThreshold: number | null;
@@ -64,10 +67,14 @@ export function InventoryPage() {
   const [adjustSaving, setAdjustSaving] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("stock");
+  const zoneFilter: StockZone | undefined = undefined;
 
   const { data: stockData, isPending: stockPending } = useQuery({
-    queryKey: ["inventory"],
-    queryFn: () => inventoryApi.list().then((r) => r.data as InventoryItem[]),
+    queryKey: ["inventory", zoneFilter],
+    queryFn: () =>
+      inventoryApi
+        .list(zoneFilter ? { zone: zoneFilter } : undefined)
+        .then((r) => r.data as InventoryItem[]),
   });
 
   const { data: alertsData, isPending: alertsPending } = useQuery({

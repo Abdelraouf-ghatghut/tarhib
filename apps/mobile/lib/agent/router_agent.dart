@@ -6,6 +6,9 @@ import '../screens/auth/login_screen.dart';
 import '../screens/agent/order_detail_screen.dart';
 import '../screens/agent/queue_screen.dart';
 import '../screens/agent/vip_stock_screen.dart';
+import '../screens/manager/manager_dashboard_screen.dart';
+import '../screens/manager/manager_order_detail_screen.dart';
+import '../screens/manager/manager_orders_screen.dart';
 import '../screens/profile/profile_screen.dart';
 
 final agentRouterProvider = Provider<GoRouter>((ref) {
@@ -18,13 +21,16 @@ final agentRouterProvider = Provider<GoRouter>((ref) {
       final onLogin = state.matchedLocation == '/login';
 
       if (!loggedIn && !onLogin) return '/login';
-      if (loggedIn && onLogin) return '/agent/queue';
+      if (loggedIn && onLogin) {
+        if (authState.isManager) return '/manager/orders';
+        return '/agent/queue';
+      }
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
 
-      // ── Agent queue ────────────────────────────────────────────────────────
+      // ── Agent d'hospitalité ────────────────────────────────────────────────
       GoRoute(path: '/agent/queue', builder: (_, __) => const QueueScreen()),
       GoRoute(
         path: '/agent/orders/:id',
@@ -36,7 +42,22 @@ final agentRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const VipStockScreen(),
       ),
 
-      // ── Profile ────────────────────────────────────────────────────────────
+      // ── Manager de département ─────────────────────────────────────────────
+      GoRoute(
+        path: '/manager/orders',
+        builder: (_, __) => const ManagerOrdersScreen(),
+      ),
+      GoRoute(
+        path: '/manager/orders/:id',
+        builder: (_, state) =>
+            ManagerOrderDetailScreen(orderId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/manager/dashboard',
+        builder: (_, __) => const ManagerDashboardScreen(),
+      ),
+
+      // ── Profil (partagé) ───────────────────────────────────────────────────
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
     ],
   );

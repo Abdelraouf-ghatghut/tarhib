@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Layout, Menu, Button, Space, Typography, Dropdown, Select } from "antd";
+import { Layout, Menu, Button, Space, Typography, Dropdown, Select, Avatar } from "antd";
 import type { MenuProps } from "antd";
 import {
   DashboardOutlined,
@@ -90,6 +90,26 @@ export function AdminLayout() {
     }
     if (hasPermission("inventory.manage") || hasPermission("company.manage")) {
       configChildren.push({ key: "/inventory", icon: <InboxOutlined />, label: t("inventory") });
+      configChildren.push({
+        key: "/inventory-transfers",
+        icon: <InboxOutlined />,
+        label: t("inventoryTransfers"),
+      });
+      configChildren.push({
+        key: "/vip-tasks",
+        icon: <InboxOutlined />,
+        label: t("vipSelfService"),
+      });
+      configChildren.push({
+        key: "/suppliers",
+        icon: <InboxOutlined />,
+        label: t("suppliers"),
+      });
+      configChildren.push({
+        key: "/procurement",
+        icon: <InboxOutlined />,
+        label: t("procurement"),
+      });
     }
     if (hasPermission("branch.manage") || hasPermission("company.manage")) {
       configChildren.push(
@@ -138,6 +158,15 @@ export function AdminLayout() {
       });
     }
 
+    if (hasPermission("company.manage")) {
+      items.push({
+        key: "system",
+        label: t("audit.menuGroup"),
+        type: "group",
+        children: [{ key: "/audit", icon: <FileTextOutlined />, label: t("audit.title") }],
+      });
+    }
+
     return items;
   }, [t, hasPermission]);
 
@@ -146,60 +175,107 @@ export function AdminLayout() {
     { key: "en", label: t("english") },
   ];
 
+  const siderWidth = collapsed ? 72 : 240;
+
   return (
     <Layout style={{ minHeight: "100vh" }}>
       <Sider
         collapsible
         collapsed={collapsed}
         trigger={null}
-        width={220}
+        width={240}
+        collapsedWidth={72}
         style={{
           position: "fixed",
           insetBlockStart: 0,
           insetBlockEnd: 0,
           overflow: "auto",
           zIndex: 10,
+          background: "#FFFFFF",
+          borderInlineEnd: "1px solid #EBECF0",
         }}
       >
+        {/* Logo */}
         <div
           style={{
-            padding: "16px",
-            color: "white",
-            fontWeight: "bold",
-            fontSize: collapsed ? 14 : 18,
+            height: 56,
+            display: "flex",
+            alignItems: "center",
+            paddingInline: 20,
+            gap: 10,
+            borderBlockEnd: "1px solid #EBECF0",
           }}
         >
-          {collapsed ? "T" : t("appTitle")}
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: "#0052CC",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "white",
+              fontWeight: 800,
+              fontSize: 13,
+              flexShrink: 0,
+            }}
+          >
+            T
+          </div>
+          {!collapsed && (
+            <Text strong style={{ fontSize: 15, color: "#172B4D" }}>
+              {t("appTitle")}
+            </Text>
+          )}
         </div>
+
         <Menu
-          theme="dark"
           mode="inline"
           selectedKeys={[location.pathname]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
+          style={{ border: "none", paddingBlock: 8 }}
         />
+
+        {/* Collapse toggle at bottom */}
+        <div
+          style={{
+            position: "sticky",
+            bottom: 0,
+            padding: "12px 16px",
+            borderBlockStart: "1px solid #EBECF0",
+            background: "#FFFFFF",
+          }}
+        >
+          <Button
+            type="text"
+            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={() => setCollapsed(!collapsed)}
+            style={{ width: "100%", justifyContent: collapsed ? "center" : "flex-start" }}
+          />
+        </div>
       </Sider>
 
-      <Layout style={{ marginInlineStart: collapsed ? 80 : 220, transition: "margin 0.2s" }}>
+      <Layout style={{ marginInlineStart: siderWidth, transition: "margin 0.2s" }}>
         <Header
           style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 9,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             padding: "0 24px",
-            background: "#fff",
-            borderBlockEnd: "1px solid #f0f0f0",
+            height: 56,
+            background: "#FFFFFF",
+            borderBlockEnd: "1px solid #EBECF0",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
             gap: 12,
           }}
         >
-          {/* Left: collapse + scope selectors */}
+          {/* Left: scope selectors */}
           <Space size={8}>
-            <Button
-              type="text"
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed(!collapsed)}
-            />
-
             {isSuperadmin && (
               <Select
                 allowClear
@@ -209,6 +285,7 @@ export function AdminLayout() {
                 onChange={(v) => setCompanyId(v ?? null)}
                 options={companies.map((c) => ({ value: c.id, label: label(c) }))}
                 size="middle"
+                variant="filled"
               />
             )}
 
@@ -221,25 +298,31 @@ export function AdminLayout() {
               options={branches.map((b) => ({ value: b.id, label: label(b) }))}
               disabled={!companyId}
               size="middle"
+              variant="filled"
             />
           </Space>
 
-          {/* Right: email, lang, logout */}
+          {/* Right: lang, avatar, logout */}
           <Space>
-            <Text type="secondary" style={{ fontSize: 13 }}>
-              {email}
-            </Text>
             <Dropdown
               menu={{
                 items: langItems,
                 onClick: ({ key }) => i18n.changeLanguage(key),
               }}
             >
-              <Button icon={<GlobalOutlined />} type="text">
+              <Button icon={<GlobalOutlined />} type="text" size="small">
                 {i18n.language === "ar" ? "AR" : "EN"}
               </Button>
             </Dropdown>
-            <Button icon={<LogoutOutlined />} type="text" onClick={logout}>
+
+            <Avatar
+              size={30}
+              style={{ background: "#0052CC", cursor: "default", fontSize: 12, fontWeight: 700 }}
+            >
+              {(email ?? "U").charAt(0).toUpperCase()}
+            </Avatar>
+
+            <Button icon={<LogoutOutlined />} type="text" size="small" onClick={logout}>
               {t("logout")}
             </Button>
           </Space>

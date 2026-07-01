@@ -105,6 +105,9 @@ export class Employee {
   })
   status!: EmployeeStatus;
 
+  @Column({ name: 'fcm_token', type: 'text', nullable: true })
+  fcmToken!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

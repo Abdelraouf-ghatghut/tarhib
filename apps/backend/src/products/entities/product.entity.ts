@@ -30,6 +30,15 @@ export class Product {
   @Column({ name: 'image_url', type: 'text', nullable: true })
   imageUrl!: string | null;
 
+  @Column({
+    name: 'unit_cost',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  unitCost!: number | null;
+
   @Column({ default: true })
   active!: boolean;
 

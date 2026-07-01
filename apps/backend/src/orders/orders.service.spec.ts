@@ -22,6 +22,7 @@ const caller = (role: EmployeeRole = EmployeeRole.EMPLOYEE): JwtPayload => ({
   role,
   companyId: 'co-1',
   branchId: 'br-1',
+  permissions: [],
 });
 
 const makeOrder = (priority: OrderPriority): Order => ({

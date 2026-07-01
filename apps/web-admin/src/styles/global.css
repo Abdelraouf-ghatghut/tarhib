@@ -1,0 +1,13 @@
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #C1C7D0; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #97A0AF; }
+
+/* Ant Design overrides */
+.ant-menu-item { border-radius: 6px !important; margin-block: 2px !important; }
+.ant-menu-item-group-title { font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
+.ant-table-tbody > tr > td { padding-block: 10px !important; }
+.ant-card { border: 1px solid #EBECF0 !important; }
+.ant-statistic-title { font-size: 12px !important; color: #6B778C !important; }
+.ant-statistic-content-value { color: #172B4D !important; }

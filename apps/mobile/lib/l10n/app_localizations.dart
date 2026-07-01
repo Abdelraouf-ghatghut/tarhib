@@ -536,6 +536,12 @@ abstract class AppLocalizations {
   /// **'Deliver all'**
   String get batchMarkDelivered;
 
+  /// No description provided for @offlineMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline — showing cached data'**
+  String get offlineMode;
+
   /// No description provided for @markReplenished.
   ///
   /// In en, this message translates to:

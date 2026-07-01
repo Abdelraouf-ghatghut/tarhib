@@ -78,6 +78,7 @@
   "batchStart": "بدء الكل",
   "batchMarkDelivered": "تسليم الكل",
 
+  "offlineMode": "وضع عدم الاتصال — عرض البيانات المحفوظة",
   "markReplenished": "تحديد كمجدد",
   "vipLocations": "مواقع VIP",
   "stockBelowThreshold": "تحت الحد الأدنى",

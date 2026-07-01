@@ -78,6 +78,7 @@
   "batchStart": "Start all",
   "batchMarkDelivered": "Deliver all",
 
+  "offlineMode": "Offline — showing cached data",
   "markReplenished": "Mark replenished",
   "vipLocations": "VIP Locations",
   "stockBelowThreshold": "Below threshold",
