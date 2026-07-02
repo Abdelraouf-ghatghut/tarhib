@@ -144,7 +144,7 @@ export function SlaLevelsConfig({ companyId }: Props) {
               flexWrap: "wrap",
               padding: 8,
               borderRadius: 8,
-              background: "#F8FAFC",
+              background: "var(--neutral-secondary-soft)",
               opacity: level.active ? 1 : 0.55,
             }}
           >

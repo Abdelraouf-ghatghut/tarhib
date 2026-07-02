@@ -31,7 +31,7 @@ export function LoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#f5f5f5",
+        background: "var(--neutral-secondary-soft)",
       }}
     >
       <Card style={{ width: 380 }}>

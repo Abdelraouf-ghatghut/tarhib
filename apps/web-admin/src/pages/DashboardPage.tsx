@@ -121,7 +121,7 @@ export function DashboardPage() {
               title={t("pendingCount")}
               value={pending}
               prefix={<ClockCircleOutlined />}
-              valueStyle={pending > 5 ? { color: "#cf1322" } : undefined}
+              valueStyle={pending > 5 ? { color: "var(--fg-danger)" } : undefined}
             />
           </Card>
         </Col>
@@ -131,7 +131,7 @@ export function DashboardPage() {
               title={t("deliveredToday")}
               value={delivered}
               prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: "#52c41a" }}
+              valueStyle={{ color: "var(--fg-success)" }}
             />
           </Card>
         </Col>
@@ -142,7 +142,7 @@ export function DashboardPage() {
               value={slaReport?.complianceRate ?? 100}
               suffix="%"
               valueStyle={
-                (slaReport?.complianceRate ?? 100) < 80 ? { color: "#cf1322" } : undefined
+                (slaReport?.complianceRate ?? 100) < 80 ? { color: "var(--fg-danger)" } : undefined
               }
             />
           </Card>
@@ -158,7 +158,9 @@ export function DashboardPage() {
               value={inventoryReport?.belowThreshold ?? 0}
               prefix={<AlertOutlined />}
               valueStyle={
-                (inventoryReport?.belowThreshold ?? 0) > 0 ? { color: "#faad14" } : undefined
+                (inventoryReport?.belowThreshold ?? 0) > 0
+                  ? { color: "var(--fg-warning-subtle)" }
+                  : undefined
               }
             />
           </Card>
@@ -168,7 +170,9 @@ export function DashboardPage() {
             <Statistic
               title={t("outOfStock")}
               value={inventoryReport?.outOfStock ?? 0}
-              valueStyle={(inventoryReport?.outOfStock ?? 0) > 0 ? { color: "#cf1322" } : undefined}
+              valueStyle={
+                (inventoryReport?.outOfStock ?? 0) > 0 ? { color: "var(--fg-danger)" } : undefined
+              }
             />
           </Card>
         </Col>
@@ -208,7 +212,7 @@ export function DashboardPage() {
             <Statistic
               title={t("confirmedBookings")}
               value={meetingReport?.confirmed ?? 0}
-              valueStyle={{ color: "#52c41a" }}
+              valueStyle={{ color: "var(--fg-success)" }}
             />
           </Card>
         </Col>

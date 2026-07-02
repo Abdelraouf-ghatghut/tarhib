@@ -56,7 +56,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
         fontSize: 13,
         textTransform: "uppercase",
         letterSpacing: 0.4,
-        color: "#64748B",
+        color: "var(--fg-body-subtle)",
         marginBlockEnd: 16,
       }}
     >
@@ -237,7 +237,7 @@ export function RoleForm({
                 <Space size={6}>
                   {t("slaPriority")}
                   <Tooltip title={t("slaPriorityHint")}>
-                    <InfoCircleOutlined style={{ color: "#64748B" }} />
+                    <InfoCircleOutlined style={{ color: "var(--fg-body-subtle)" }} />
                   </Tooltip>
                 </Space>
               }
@@ -296,7 +296,7 @@ export function RoleForm({
                       borderRadius: 8,
                       paddingBlock: 4,
                       paddingInline: 12,
-                      background: "#F8FAFC",
+                      background: "var(--neutral-secondary-soft)",
                     }}
                   >
                     <div>
@@ -409,7 +409,7 @@ export function RoleForm({
             </SectionTitle>
             <Input
               allowClear
-              prefix={<SearchOutlined style={{ color: "#64748B" }} />}
+              prefix={<SearchOutlined style={{ color: "var(--fg-body-subtle)" }} />}
               placeholder={t("searchPermission")}
               value={permSearch}
               onChange={(e) => setPermSearch(e.target.value)}

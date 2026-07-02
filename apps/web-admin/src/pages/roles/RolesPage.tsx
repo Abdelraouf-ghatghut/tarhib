@@ -186,14 +186,14 @@ export function RolesPage() {
               inlineSize: 32,
               blockSize: 32,
               borderRadius: 8,
-              background: "rgba(37, 99, 235, 0.08)",
+              background: "var(--brand-softer)",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
             }}
           >
-            <UserOutlined style={{ color: "#2563EB", fontSize: 15 }} />
+            <UserOutlined style={{ color: "var(--fg-brand)", fontSize: 15 }} />
           </span>
           <Text strong style={{ fontSize: 15 }}>
             {bilingualName(role.nameAr, role.nameEn, isAr)}
@@ -301,7 +301,7 @@ export function RolesPage() {
       >
         <Input
           allowClear
-          prefix={<SearchOutlined style={{ color: "#64748B" }} />}
+          prefix={<SearchOutlined style={{ color: "var(--fg-body-subtle)" }} />}
           placeholder={t("searchRole")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -326,8 +326,10 @@ export function RolesPage() {
   function renderEmptyState(description: string, showCreate: boolean) {
     return (
       <Card variant="borderless" styles={{ body: { textAlign: "center", padding: 48 } }}>
-        <SafetyOutlined style={{ fontSize: 40, color: "#CBD5E1" }} />
-        <Text style={{ display: "block", marginBlock: 16, color: "#64748B" }}>{description}</Text>
+        <SafetyOutlined style={{ fontSize: 40, color: "var(--fg-disabled)" }} />
+        <Text style={{ display: "block", marginBlock: 16, color: "var(--fg-body-subtle)" }}>
+          {description}
+        </Text>
         {showCreate && (
           <Button
             type="primary"
@@ -411,8 +413,8 @@ export function RolesPage() {
     <>
       <div style={{ marginBlockEnd: 24 }}>{companySelect}</div>
       <Card variant="borderless" styles={{ body: { textAlign: "center", padding: 48 } }}>
-        <BankOutlined style={{ fontSize: 40, color: "#CBD5E1" }} />
-        <Text style={{ display: "block", marginBlockStart: 16, color: "#64748B" }}>
+        <BankOutlined style={{ fontSize: 40, color: "var(--fg-disabled)" }} />
+        <Text style={{ display: "block", marginBlockStart: 16, color: "var(--fg-body-subtle)" }}>
           {t("noCompanySelected")}
         </Text>
         <Text type="secondary" style={{ fontSize: 13 }}>
@@ -529,7 +531,7 @@ export function RolesPage() {
             inlineSize: 56,
             blockSize: 56,
             zIndex: 100,
-            boxShadow: "0 4px 12px rgba(15,23,42,0.2)",
+            boxShadow: "var(--shadow-lg)",
           }}
         />
       )}

@@ -1,0 +1,149 @@
+/**
+ * Design system tokens — source de vérité visuelle.
+ * Les valeurs résolvent automatiquement en light/dark via prefers-color-scheme :
+ * ne jamais échanger les couleurs manuellement dans les composants.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap");
+
+:root {
+  color-scheme: light dark;
+
+  /* ── Backgrounds : neutres ─────────────────────────────────────────── */
+  --neutral-primary-soft: #ffffff;
+  --neutral-primary: #ffffff;
+  --neutral-primary-medium: #ffffff;
+  --neutral-secondary-soft: #f9fafb;
+  --neutral-secondary-medium: #f9fafb;
+  --neutral-tertiary-soft: #f3f4f6;
+  --neutral-tertiary: #f3f4f6;
+  --neutral-tertiary-medium: #f3f4f6;
+  --neutral-quaternary: #e5e7eb;
+  --gray: #d1d5dc;
+
+  /* ── Backgrounds : brand ───────────────────────────────────────────── */
+  --brand-softer: #eef6ff;
+  --brand-soft: #dbeafe;
+  --brand: #1447e6;
+  --brand-medium: #bedbff;
+  --brand-strong: #193cb8;
+
+  /* ── Backgrounds : statuts ─────────────────────────────────────────── */
+  --success-soft: #ecfdf5;
+  --success: #007a55;
+  --success-medium: #d0fae5;
+  --success-strong: #006045;
+  --danger-soft: #fef0f2;
+  --danger: #c70036;
+  --danger-medium: #ffe4e6;
+  --danger-strong: #a50036;
+  --warning-soft: #fff7ed;
+  --warning: #f97316;
+  --warning-medium: #ffedd5;
+  --warning-strong: #c2410c;
+
+  /* ── Utilitaires ───────────────────────────────────────────────────── */
+  --dark: #1f2937;
+  --dark-strong: #111827;
+  --disabled: #f3f4f6;
+
+  /* ── Texte ─────────────────────────────────────────────────────────── */
+  --fg-heading: #111827;
+  --fg-body: #4b5563;
+  --fg-body-subtle: #6b7280;
+  --fg-brand: #1447e6;
+  --fg-brand-strong: #193cb8;
+  --fg-success: #047857;
+  --fg-success-strong: #065f46;
+  --fg-danger: #be123c;
+  --fg-danger-strong: #881337;
+  --fg-warning-subtle: #ea580c;
+  --fg-warning: #7c2d12;
+  --fg-disabled: #9ca3af;
+
+  /* ── Bordures ──────────────────────────────────────────────────────── */
+  --border-default: #e5e7eb;
+  --border-default-medium: #e5e7eb;
+  --border-default-strong: #e5e7eb;
+  --border-buffer: #ffffff;
+  --border-brand: #1447e6;
+  --border-brand-subtle: #bedbff;
+  --border-success-subtle: #a7f3d0;
+  --border-danger-subtle: #fecdd3;
+  --border-warning-subtle: #fed7aa;
+
+  /* ── Ombres ────────────────────────────────────────────────────────── */
+  --shadow-2xs: 0 1px rgb(0 0 0 / 0.05);
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* ── Rayons ────────────────────────────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius-base: 8px;
+  --radius-full: 9999px;
+
+  /* ── Glint boutons ─────────────────────────────────────────────────── */
+  --color-1-400: rgba(255, 255, 255, 0.25);
+  --color-1-700: rgba(0, 0, 0, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --neutral-primary-soft: #101828;
+    --neutral-primary: #030712;
+    --neutral-primary-medium: #1e2939;
+    --neutral-secondary-soft: #101828;
+    --neutral-secondary-medium: #1e2939;
+    --neutral-tertiary-soft: #101828;
+    --neutral-tertiary: #1e2939;
+    --neutral-tertiary-medium: #333e4f;
+    --neutral-quaternary: #333e4f;
+    --gray: #4a5565;
+
+    --brand-softer: #162455;
+    --brand-soft: #1c398e;
+    --brand: #155dfc;
+    --brand-medium: #1c398e;
+    --brand-strong: #1447e6;
+
+    --success-soft: #002c22;
+    --success: #009966;
+    --success-medium: #004f3b;
+    --success-strong: #007a55;
+    --danger-soft: #4d0218;
+    --danger-medium: #8b0836;
+    --warning-soft: #7c2d12;
+    --warning-medium: #7c2d12;
+
+    --dark-strong: #374151;
+    --disabled: #1f2937;
+
+    --fg-heading: #ffffff;
+    --fg-body: #9ca3af;
+    --fg-body-subtle: #9ca3af;
+    --fg-brand: #51a2ff;
+    --fg-brand-strong: #bedbff;
+    --fg-success: #065f46;
+    --fg-success-strong: #10b981;
+    --fg-danger: #f43f5e;
+    --fg-danger-strong: #f87171;
+    --fg-warning-subtle: #f97316;
+    --fg-warning: #fbbf24;
+    --fg-disabled: #6b7280;
+
+    --border-default: #1f2937;
+    --border-default-medium: #374151;
+    --border-default-strong: #4b5563;
+    --border-buffer: #030712;
+    --border-brand: #51a2ff;
+    --border-brand-subtle: #1c398e;
+    --border-success-subtle: #064e3b;
+    --border-danger-subtle: #881337;
+    --border-warning-subtle: #7c2d12;
+
+    --color-1-400: rgba(255, 255, 255, 0.12);
+    --color-1-700: rgba(0, 0, 0, 0.25);
+  }
+}

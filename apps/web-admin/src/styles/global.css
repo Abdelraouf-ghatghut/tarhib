@@ -1,13 +1,38 @@
+@import "./tokens.css";
+
+html,
+body {
+  margin: 0;
+  background: var(--neutral-secondary-soft);
+  color: var(--fg-body);
+  font-family: "Inter", "Cairo", system-ui, sans-serif;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #C1C7D0; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #97A0AF; }
+::-webkit-scrollbar-thumb { background: var(--gray); border-radius: var(--radius-sm); }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-body-subtle); }
 
-/* Ant Design overrides */
-.ant-menu-item { border-radius: 6px !important; margin-block: 2px !important; }
-.ant-menu-item-group-title { font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
-.ant-table-tbody > tr > td { padding-block: 10px !important; }
-.ant-card { border: 1px solid #EBECF0 !important; }
-.ant-statistic-title { font-size: 12px !important; color: #6B778C !important; }
-.ant-statistic-content-value { color: #172B4D !important; }
+/*
+ * Glint boutons (buttons.md) : ombre de base + reflet interne haut + halo bas.
+ * Tous les boutons SAUF ghost (type text/link) et disabled.
+ */
+.ant-btn:not(.ant-btn-text):not(.ant-btn-link):not(:disabled) {
+  box-shadow:
+    var(--shadow-xs),
+    inset var(--color-1-400) 0 6px 0px -5px,
+    var(--color-1-700) 0 4px 10px -5px;
+}
+.ant-btn:disabled,
+.ant-btn.ant-btn-text,
+.ant-btn.ant-btn-link {
+  box-shadow: none;
+}
+
+/* Ant Design overrides — tokens uniquement, pas de hex en dur */
+.ant-menu-item { border-radius: var(--radius-base) !important; margin-block: 2px !important; }
+.ant-menu-item-group-title { font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase !important; letter-spacing: 0.4px !important; }
+.ant-card { border: 1px solid var(--border-default) !important; box-shadow: var(--shadow-xs); }
+.ant-statistic-title { font-size: 12px !important; color: var(--fg-body-subtle) !important; }
+.ant-statistic-content-value { color: var(--fg-heading) !important; }

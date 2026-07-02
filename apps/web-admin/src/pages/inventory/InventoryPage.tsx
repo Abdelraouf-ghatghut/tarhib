@@ -171,7 +171,7 @@ export function InventoryPage() {
       title: t("quantity"),
       dataIndex: "quantity",
       render: (v: number, row: InventoryItem) => (
-        <span style={{ color: v < row.minThreshold ? "#cf1322" : undefined }}>
+        <span style={{ color: v < row.minThreshold ? "var(--fg-danger)" : undefined }}>
           {v < row.minThreshold && <WarningOutlined style={{ marginInlineEnd: 4 }} />}
           {v}
         </span>

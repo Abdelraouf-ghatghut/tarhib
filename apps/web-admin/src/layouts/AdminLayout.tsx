@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Layout,
   Menu,
@@ -226,8 +226,8 @@ export function AdminLayout() {
           insetBlockEnd: 0,
           overflow: "auto",
           zIndex: 10,
-          background: "#FFFFFF",
-          borderInlineEnd: "1px solid #E2E8F0",
+          background: "var(--neutral-primary-soft)",
+          borderInlineEnd: "1px solid var(--border-default)",
         }}
       >
         {/* Logo */}
@@ -238,7 +238,7 @@ export function AdminLayout() {
             alignItems: "center",
             paddingInline: 20,
             gap: 10,
-            borderBlockEnd: "1px solid #E2E8F0",
+            borderBlockEnd: "1px solid var(--border-default)",
           }}
         >
           <div
@@ -246,7 +246,7 @@ export function AdminLayout() {
               width: 28,
               height: 28,
               borderRadius: 8,
-              background: "#2563EB",
+              background: "var(--brand)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -259,7 +259,7 @@ export function AdminLayout() {
             T
           </div>
           {!collapsed && (
-            <Text strong style={{ fontSize: 15, color: "#0F172A" }}>
+            <Text strong style={{ fontSize: 15, color: "var(--fg-heading)" }}>
               {t("appTitle")}
             </Text>
           )}
@@ -279,8 +279,8 @@ export function AdminLayout() {
             position: "sticky",
             bottom: 0,
             padding: "12px 16px",
-            borderBlockStart: "1px solid #E2E8F0",
-            background: "#FFFFFF",
+            borderBlockStart: "1px solid var(--border-default)",
+            background: "var(--neutral-primary-soft)",
           }}
         >
           <Button
@@ -303,9 +303,9 @@ export function AdminLayout() {
             justifyContent: "space-between",
             padding: "0 24px",
             height: 56,
-            background: "#FFFFFF",
-            borderBlockEnd: "1px solid #E2E8F0",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+            background: "var(--neutral-primary-soft)",
+            borderBlockEnd: "1px solid var(--border-default)",
+            boxShadow: "var(--shadow-xs)",
             gap: 12,
           }}
         >
@@ -352,7 +352,12 @@ export function AdminLayout() {
 
             <Avatar
               size={30}
-              style={{ background: "#2563EB", cursor: "default", fontSize: 12, fontWeight: 700 }}
+              style={{
+                background: "var(--brand)",
+                cursor: "default",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
             >
               {(email ?? "U").charAt(0).toUpperCase()}
             </Avatar>

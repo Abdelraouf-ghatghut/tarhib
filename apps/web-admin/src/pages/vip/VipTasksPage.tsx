@@ -215,7 +215,7 @@ export default function VipTasksPage() {
             <Statistic
               title={t("openTasks")}
               value={openCount}
-              valueStyle={{ color: openCount > 0 ? "#FF991F" : undefined }}
+              valueStyle={{ color: openCount > 0 ? "var(--fg-warning-subtle)" : undefined }}
             />
           </Card>
         </Col>
@@ -225,7 +225,7 @@ export default function VipTasksPage() {
               title={t("belowThreshold")}
               value={belowThresholdCount}
               valueStyle={{
-                color: belowThresholdCount > 0 ? "#FF4D4F" : undefined,
+                color: belowThresholdCount > 0 ? "var(--fg-danger)" : undefined,
               }}
             />
           </Card>

@@ -188,7 +188,7 @@ export function ReportsPage() {
             <Statistic
               title={t("onTime")}
               value={slaData?.onTime ?? 0}
-              valueStyle={{ color: "#52c41a" }}
+              valueStyle={{ color: "var(--fg-success)" }}
             />
           </Card>
         </Col>
@@ -197,7 +197,7 @@ export function ReportsPage() {
             <Statistic
               title={t("late")}
               value={slaData?.late ?? 0}
-              valueStyle={slaData?.late ? { color: "#cf1322" } : undefined}
+              valueStyle={slaData?.late ? { color: "var(--fg-danger)" } : undefined}
             />
           </Card>
         </Col>
@@ -221,7 +221,11 @@ export function ReportsPage() {
               percent={complianceRate}
               size={100}
               strokeColor={
-                complianceRate >= 90 ? "#52c41a" : complianceRate >= 70 ? "#faad14" : "#cf1322"
+                complianceRate >= 90
+                  ? "var(--fg-success)"
+                  : complianceRate >= 70
+                    ? "var(--fg-warning-subtle)"
+                    : "var(--fg-danger)"
               }
             />
           </Card>
@@ -242,7 +246,9 @@ export function ReportsPage() {
           <Statistic
             title={t("restockAlert")}
             value={inventoryData?.belowThreshold ?? 0}
-            valueStyle={inventoryData?.belowThreshold ? { color: "#faad14" } : undefined}
+            valueStyle={
+              inventoryData?.belowThreshold ? { color: "var(--fg-warning-subtle)" } : undefined
+            }
           />
         </Card>
       </Col>
@@ -251,7 +257,7 @@ export function ReportsPage() {
           <Statistic
             title={t("outOfStock")}
             value={inventoryData?.outOfStock ?? 0}
-            valueStyle={inventoryData?.outOfStock ? { color: "#cf1322" } : undefined}
+            valueStyle={inventoryData?.outOfStock ? { color: "var(--fg-danger)" } : undefined}
           />
         </Card>
       </Col>
@@ -313,7 +319,9 @@ export function ReportsPage() {
             title={t("cancellationRate")}
             value={meetingData?.cancellationRate ?? 0}
             suffix="%"
-            valueStyle={meetingData?.cancellationRate ? { color: "#faad14" } : undefined}
+            valueStyle={
+              meetingData?.cancellationRate ? { color: "var(--fg-warning-subtle)" } : undefined
+            }
           />
         </Card>
       </Col>

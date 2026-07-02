@@ -54,23 +54,30 @@ export interface SlaLevel {
 }
 
 /**
- * Couleurs de statut du guide (rouge/orange/bleu/vert/gris) pour les défauts
- * P1..P5 ; les niveaux personnalisés reçoivent une couleur selon leur rang.
+ * Couleurs de statut du design system (tokens CSS, résolution light/dark
+ * automatique) pour les défauts P1..P5 ; les niveaux personnalisés reçoivent
+ * une couleur selon leur rang.
  */
 const SLA_COLORS: Record<string, string> = {
-  P1: "#EF4444",
-  P2: "#F59E0B",
-  P3: "#2563EB",
-  P4: "#22C55E",
-  P5: "#64748B",
+  P1: "var(--danger)",
+  P2: "var(--warning)",
+  P3: "var(--brand)",
+  P4: "var(--success)",
+  P5: "var(--fg-body-subtle)",
 };
 
-const SLA_PALETTE = ["#EF4444", "#F59E0B", "#2563EB", "#22C55E", "#64748B"];
+const SLA_PALETTE = [
+  "var(--danger)",
+  "var(--warning)",
+  "var(--brand)",
+  "var(--success)",
+  "var(--fg-body-subtle)",
+];
 
 export function slaColor(code: string, levels?: SlaLevel[]): string {
   if (SLA_COLORS[code]) return SLA_COLORS[code];
   const idx = levels?.findIndex((l) => l.code === code) ?? -1;
-  if (idx < 0) return "#64748B";
+  if (idx < 0) return "var(--fg-body-subtle)";
   return SLA_PALETTE[Math.min(idx, SLA_PALETTE.length - 1)];
 }
 
