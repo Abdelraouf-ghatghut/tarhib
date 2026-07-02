@@ -6,12 +6,12 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
-import { SlaPriority } from '../../roles/entities/role.entity.js';
 
 /**
- * Personnalisation par entreprise des 5 niveaux de priorité SLA (P1..P5) :
- * libellés bilingues, durée cible en minutes et activation par niveau.
- * En l'absence de configuration, les défauts globaux s'appliquent.
+ * Niveaux de priorité SLA personnalisés par entreprise : nombre illimité,
+ * code libre (ex. P1, VIP, URGENT), libellés bilingues, durée cible en
+ * minutes, activation et ordre d'affichage. En l'absence de configuration,
+ * les 5 défauts globaux (P1..P5) s'appliquent.
  */
 @Entity('company_sla_levels')
 @Unique(['companyId', 'code'])
@@ -22,8 +22,8 @@ export class CompanySlaLevel {
   @Column({ name: 'company_id', type: 'uuid' })
   companyId!: string;
 
-  @Column({ type: 'varchar', length: 2 })
-  code!: SlaPriority;
+  @Column({ type: 'varchar', length: 20 })
+  code!: string;
 
   @Column({ name: 'name_ar', type: 'varchar', length: 100, nullable: true })
   nameAr!: string | null;
@@ -36,6 +36,9 @@ export class CompanySlaLevel {
 
   @Column({ type: 'boolean', default: true })
   active!: boolean;
+
+  @Column({ name: 'sort_order', type: 'int', default: 0 })
+  sortOrder!: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

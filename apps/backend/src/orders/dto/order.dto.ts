@@ -5,6 +5,7 @@ import {
   IsArray,
   IsDateString,
   IsEnum,
+  IsString,
   IsUUID,
   ValidateNested,
 } from 'class-validator';
@@ -58,11 +59,11 @@ export class OrderDto {
   status!: OrderStatus;
 
   @ApiProperty({
-    enum: OrderPriority,
-    description: 'Dérivée du rôle employé et du contexte (réunion, urgence)',
+    description:
+      'Code du niveau SLA hérité du rôle (défauts P1..P5 ou code personnalisé entreprise)',
   })
-  @IsEnum(OrderPriority)
-  priority!: OrderPriority;
+  @IsString()
+  priority!: string;
 
   @ApiProperty({
     example: '2026-06-26T14:00:00.000Z',

@@ -42,8 +42,9 @@ export class Role {
   @Column({ type: 'varchar', length: 20 })
   scope!: RoleScope;
 
-  @Column({ name: 'sla_priority', type: 'varchar', length: 2, default: 'P5' })
-  slaPriority!: SlaPriority;
+  // Code libre référençant un niveau SLA de l'entreprise (défauts : P1..P5)
+  @Column({ name: 'sla_priority', type: 'varchar', length: 20, default: 'P5' })
+  slaPriority!: string;
 
   @Column({ name: 'is_system', type: 'boolean', default: false })
   isSystem!: boolean;

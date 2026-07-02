@@ -37,14 +37,13 @@ import { Quota } from '../quotas/entities/quota.entity.js';
 import { RoleQuota } from '../roles/entities/role-quota.entity.js';
 import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
 import { PrioritySlaService } from '../priority-sla/priority-sla.service.js';
-import { SlaPriority } from '../roles/entities/role.entity.js';
 
-function resolveOrderPriority(caller: JwtPayload): OrderPriority {
+function resolveOrderPriority(caller: JwtPayload): string {
   // Use the role's sla_priority if carried in JWT (set via EnrichUserInterceptor from role.slaPriority)
+  // Any company SLA level code is accepted (defaults P1..P5 or custom codes)
   // Fallback to legacy role string for backward compat
-  const slaPriority = (caller as { slaPriority?: string }).slaPriority;
-  if (slaPriority && slaPriority in OrderPriority)
-    return slaPriority as OrderPriority;
+  const slaPriority = caller.slaPriority;
+  if (slaPriority?.trim()) return slaPriority;
 
   const legacyMap: Record<string, OrderPriority> = {
     ADMIN: OrderPriority.P1,
@@ -142,7 +141,7 @@ export class OrdersService {
     // SLA personnalisé par entreprise (company_sla_levels), sinon défauts globaux
     const slaMinutes = await this.prioritySla.getSlaMinutes(
       caller.companyId,
-      priority as unknown as SlaPriority,
+      priority,
     );
     const slaDeadline = new Date(Date.now() + slaMinutes * 60_000);
 

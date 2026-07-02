@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { OrderLine } from './order-line.entity.js';
-import { OrderPriority, OrderStatus } from '../dto/order.dto.js';
+import { OrderStatus } from '../dto/order.dto.js';
 
 @Entity('orders')
 export class Order {
@@ -25,8 +25,9 @@ export class Order {
   @Column({ type: 'varchar', length: 20, default: OrderStatus.PENDING })
   status!: OrderStatus;
 
-  @Column({ type: 'varchar', length: 2 })
-  priority!: OrderPriority;
+  // Code du niveau SLA (défauts P1..P5 ou code personnalisé de l'entreprise)
+  @Column({ type: 'varchar', length: 20 })
+  priority!: string;
 
   @Column({ name: 'sla_deadline', type: 'timestamptz' })
   slaDeadline!: Date;

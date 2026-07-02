@@ -1,24 +1,29 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
-  IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { SlaPriority } from '../../roles/entities/role.entity.js';
 
 export class SlaLevelInputDto {
-  @ApiProperty({ enum: SlaPriority })
-  @IsEnum(SlaPriority)
-  code!: SlaPriority;
+  @ApiProperty({
+    example: 'P1',
+    description:
+      'Identifiant court libre, unique par entreprise (ex. P1, VIP, URGENT)',
+  })
+  @IsString()
+  @Matches(/^[\p{L}\p{N}_-]{1,20}$/u, {
+    message: 'code must be 1-20 letters, digits, dashes or underscores',
+  })
+  code!: string;
 
   @ApiPropertyOptional({ example: 'حرج' })
   @IsOptional()
@@ -41,21 +46,30 @@ export class SlaLevelInputDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
 }
 
 export class UpsertSlaLevelsDto {
-  @ApiProperty({ type: [SlaLevelInputDto] })
+  @ApiProperty({
+    type: [SlaLevelInputDto],
+    description:
+      "Remplace intégralement le set de niveaux de l'entreprise (nombre illimité). " +
+      'Un niveau absent du payload est supprimé, sauf si un rôle le référence.',
+  })
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(5)
   @ValidateNested({ each: true })
   @Type(() => SlaLevelInputDto)
   levels!: SlaLevelInputDto[];
 }
 
 export class SlaLevelDto {
-  @ApiProperty({ enum: SlaPriority })
-  code!: SlaPriority;
+  @ApiProperty()
+  code!: string;
 
   @ApiProperty({ nullable: true, type: String })
   nameAr!: string | null;
@@ -68,6 +82,9 @@ export class SlaLevelDto {
 
   @ApiProperty()
   active!: boolean;
+
+  @ApiProperty()
+  sortOrder!: number;
 
   @ApiProperty({ description: 'True when no company override exists yet' })
   isDefault!: boolean;

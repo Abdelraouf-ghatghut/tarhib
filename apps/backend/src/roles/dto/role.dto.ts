@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   Min,
   MinLength,
   ValidateNested,
@@ -54,10 +55,14 @@ export class CreateRoleDto {
   @IsEnum(RoleScope)
   scope!: RoleScope;
 
-  @ApiPropertyOptional({ enum: SlaPriority, default: SlaPriority.P5 })
+  @ApiPropertyOptional({
+    default: SlaPriority.P5,
+    description: "Code d'un niveau SLA de l'entreprise (défauts : P1..P5)",
+  })
   @IsOptional()
-  @IsEnum(SlaPriority)
-  slaPriority?: SlaPriority;
+  @IsString()
+  @MaxLength(20)
+  slaPriority?: string;
 
   @ApiPropertyOptional({
     description: 'Permission keys to assign',
@@ -92,10 +97,13 @@ export class UpdateRoleDto {
   @IsString()
   nameEn?: string | null;
 
-  @ApiPropertyOptional({ enum: SlaPriority })
+  @ApiPropertyOptional({
+    description: "Code d'un niveau SLA de l'entreprise (défauts : P1..P5)",
+  })
   @IsOptional()
-  @IsEnum(SlaPriority)
-  slaPriority?: SlaPriority;
+  @IsString()
+  @MaxLength(20)
+  slaPriority?: string;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
@@ -145,8 +153,8 @@ export class RoleDto {
   @ApiProperty({ enum: RoleScope })
   scope!: RoleScope;
 
-  @ApiProperty({ enum: SlaPriority })
-  slaPriority!: SlaPriority;
+  @ApiProperty({ description: 'Code du niveau SLA (défauts : P1..P5)' })
+  slaPriority!: string;
 
   @ApiProperty()
   isSystem!: boolean;

@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CompanySlaLevel } from './entities/company-sla-level.entity.js';
 import { SlaLevelDto, UpsertSlaLevelsDto } from './dto/sla-level.dto.js';
-import { SlaPriority } from '../roles/entities/role.entity.js';
+import { Role, SlaPriority } from '../roles/entities/role.entity.js';
 
 /** Durées SLA par défaut (minutes) quand l'entreprise n'a rien personnalisé. */
 export const DEFAULT_SLA_MINUTES: Record<SlaPriority, number> = {
@@ -14,31 +14,57 @@ export const DEFAULT_SLA_MINUTES: Record<SlaPriority, number> = {
   [SlaPriority.P5]: 60,
 };
 
-const ALL_CODES = Object.values(SlaPriority);
+/** Durée appliquée quand un code ne correspond à aucun niveau connu. */
+export const FALLBACK_SLA_MINUTES = 60;
 
 @Injectable()
 export class PrioritySlaService {
   constructor(
     @InjectRepository(CompanySlaLevel)
     private readonly levelRepo: Repository<CompanySlaLevel>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
   ) {}
 
-  /** Retourne toujours les 5 niveaux : overrides de l'entreprise + défauts. */
+  /**
+   * Niveaux de l'entreprise (nombre illimité, triés). Si elle n'a encore
+   * rien configuré, retourne les 5 défauts P1..P5 marqués isDefault.
+   */
   async getLevels(companyId: string): Promise<SlaLevelDto[]> {
-    const overrides = await this.levelRepo.find({ where: { companyId } });
-    return ALL_CODES.map((code) => {
-      const custom = overrides.find((l) => l.code === code);
-      return {
-        code,
-        nameAr: custom?.nameAr ?? null,
-        nameEn: custom?.nameEn ?? null,
-        targetMinutes: custom?.targetMinutes ?? DEFAULT_SLA_MINUTES[code],
-        active: custom?.active ?? true,
-        isDefault: !custom,
-      };
+    const levels = await this.levelRepo.find({
+      where: { companyId },
+      order: { sortOrder: 'ASC', targetMinutes: 'ASC' },
     });
+
+    if (levels.length === 0) {
+      return Object.entries(DEFAULT_SLA_MINUTES).map(
+        ([code, targetMinutes], i) => ({
+          code,
+          nameAr: null,
+          nameEn: null,
+          targetMinutes,
+          active: true,
+          sortOrder: i,
+          isDefault: true,
+        }),
+      );
+    }
+
+    return levels.map((l) => ({
+      code: l.code,
+      nameAr: l.nameAr,
+      nameEn: l.nameEn,
+      targetMinutes: l.targetMinutes,
+      active: l.active,
+      sortOrder: l.sortOrder,
+      isDefault: false,
+    }));
   }
 
+  /**
+   * Remplace intégralement le set de niveaux : upsert des codes présents,
+   * suppression des codes absents (refusée si un rôle les référence).
+   */
   async setLevels(
     companyId: string,
     dto: UpsertSlaLevelsDto,
@@ -53,25 +79,41 @@ export class PrioritySlaService {
       );
     }
 
-    for (const input of dto.levels) {
-      const existing = await this.levelRepo.findOne({
-        where: { companyId, code: input.code },
+    const existing = await this.levelRepo.find({ where: { companyId } });
+    const removed = existing.filter((l) => !codes.includes(l.code));
+
+    if (removed.length) {
+      const removedCodes = removed.map((l) => l.code);
+      const usedBy = await this.roleRepo.find({
+        where: { companyId, slaPriority: In(removedCodes) },
       });
+      if (usedBy.length) {
+        const used = [...new Set(usedBy.map((r) => r.slaPriority))];
+        throw new BadRequestException(
+          `SLA levels still referenced by roles: ${used.join(', ')}`,
+        );
+      }
+      await this.levelRepo.remove(removed);
+    }
+
+    for (const [index, input] of dto.levels.entries()) {
       const level =
-        existing ?? this.levelRepo.create({ companyId, code: input.code });
+        existing.find((l) => l.code === input.code) ??
+        this.levelRepo.create({ companyId, code: input.code });
       level.nameAr = input.nameAr?.trim() || null;
       level.nameEn = input.nameEn?.trim() || null;
       level.targetMinutes = input.targetMinutes;
       level.active = input.active ?? true;
+      level.sortOrder = input.sortOrder ?? index;
       await this.levelRepo.save(level);
     }
     return this.getLevels(companyId);
   }
 
-  /** Durée SLA effective pour une commande (override entreprise sinon défaut). */
+  /** Durée SLA effective pour une commande (niveau entreprise sinon défaut). */
   async getSlaMinutes(
     companyId: string | undefined,
-    code: SlaPriority,
+    code: string,
   ): Promise<number> {
     if (companyId) {
       const custom = await this.levelRepo.findOne({
@@ -79,6 +121,6 @@ export class PrioritySlaService {
       });
       if (custom) return custom.targetMinutes;
     }
-    return DEFAULT_SLA_MINUTES[code];
+    return DEFAULT_SLA_MINUTES[code as SlaPriority] ?? FALLBACK_SLA_MINUTES;
   }
 }
