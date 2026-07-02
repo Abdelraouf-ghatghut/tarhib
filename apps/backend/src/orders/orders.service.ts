@@ -36,14 +36,8 @@ import {
 import { Quota } from '../quotas/entities/quota.entity.js';
 import { RoleQuota } from '../roles/entities/role-quota.entity.js';
 import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
-
-const PRIORITY_SLA_MINUTES: Record<OrderPriority, number> = {
-  [OrderPriority.P1]: 10,
-  [OrderPriority.P2]: 20,
-  [OrderPriority.P3]: 30,
-  [OrderPriority.P4]: 45,
-  [OrderPriority.P5]: 60,
-};
+import { PrioritySlaService } from '../priority-sla/priority-sla.service.js';
+import { SlaPriority } from '../roles/entities/role.entity.js';
 
 function resolveOrderPriority(caller: JwtPayload): OrderPriority {
   // Use the role's sla_priority if carried in JWT (set via EnrichUserInterceptor from role.slaPriority)
@@ -86,6 +80,7 @@ export class OrdersService {
     private readonly validationEngine: ValidationEngineService,
     private readonly notificationsService: NotificationsService,
     private readonly notificationsGateway: NotificationsGateway,
+    private readonly prioritySla: PrioritySlaService,
   ) {}
 
   async create(dto: CreateOrderDto, caller: JwtPayload): Promise<OrderDto> {
@@ -144,7 +139,11 @@ export class OrdersService {
     }
 
     const priority = resolveOrderPriority(caller);
-    const slaMinutes = PRIORITY_SLA_MINUTES[priority];
+    // SLA personnalisé par entreprise (company_sla_levels), sinon défauts globaux
+    const slaMinutes = await this.prioritySla.getSlaMinutes(
+      caller.companyId,
+      priority as unknown as SlaPriority,
+    );
     const slaDeadline = new Date(Date.now() + slaMinutes * 60_000);
 
     const order = this.orderRepo.create({

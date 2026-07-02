@@ -31,6 +31,7 @@ import { SuppliersModule } from './suppliers/suppliers.module';
 import { ProcurementModule } from './procurement/procurement.module';
 import { KitchenModule } from './kitchen/kitchen.module';
 import { AuditModule } from './audit/audit.module';
+import { PrioritySlaModule } from './priority-sla/priority-sla.module.js';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { AuditModule } from './audit/audit.module';
     ProcurementModule,
     KitchenModule,
     AuditModule,
+    PrioritySlaModule,
   ],
   controllers: [AppController],
   providers: [

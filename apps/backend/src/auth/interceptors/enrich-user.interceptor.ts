@@ -49,10 +49,11 @@ export class EnrichUserInterceptor implements NestInterceptor {
       });
       if (role) {
         user.roleId = role.id;
-        user.roleName = role.nameEn;
+        user.roleName = role.nameEn ?? role.nameAr;
         user.scope = role.scope;
         user.permissions = role.permissions.map((p) => p.key);
-        user.role = role.nameEn;
+        user.role = role.nameEn ?? role.nameAr;
+        user.slaPriority = role.slaPriority;
         return next.handle();
       }
     }

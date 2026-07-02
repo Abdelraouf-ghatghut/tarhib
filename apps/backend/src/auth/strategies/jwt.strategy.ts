@@ -86,9 +86,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       });
       if (role) {
         base.roleId = role.id;
-        base.roleName = role.nameEn;
+        base.roleName = role.nameEn ?? role.nameAr;
         base.scope = role.scope;
-        base.role = role.nameEn;
+        base.role = role.nameEn ?? role.nameAr;
+        base.slaPriority = role.slaPriority;
         base.permissions = role.permissions.map((p) => p.key);
         return base;
       }

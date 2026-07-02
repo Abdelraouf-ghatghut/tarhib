@@ -1,13 +1,33 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsArray,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { RoleScope, SlaPriority } from '../entities/role.entity.js';
+import { QuotaPeriodType } from '../entities/role-quota.entity.js';
+
+export class RoleQuotaInputDto {
+  @ApiProperty()
+  @IsUUID()
+  productId!: string;
+
+  @ApiProperty({ enum: QuotaPeriodType })
+  @IsEnum(QuotaPeriodType)
+  periodType!: QuotaPeriodType;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  maxQuantity!: number;
+}
 
 export class CreateRoleDto {
   @ApiPropertyOptional({
@@ -22,10 +42,13 @@ export class CreateRoleDto {
   @MinLength(1)
   nameAr!: string;
 
-  @ApiProperty({ example: 'Responsable achats' })
+  @ApiPropertyOptional({
+    example: 'Procurement manager',
+    description: 'Optional — Arabic name is used as fallback when absent',
+  })
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  nameEn!: string;
+  nameEn?: string;
 
   @ApiProperty({ enum: RoleScope })
   @IsEnum(RoleScope)
@@ -37,15 +60,24 @@ export class CreateRoleDto {
   slaPriority?: SlaPriority;
 
   @ApiPropertyOptional({
-    description: 'Enable quota enforcement for this role',
+    description: 'Permission keys to assign',
+    type: [String],
   })
   @IsOptional()
-  quotasEnabled?: boolean;
-
-  @ApiProperty({ description: 'Permission keys to assign', type: [String] })
   @IsArray()
   @IsString({ each: true })
-  permissionKeys!: string[];
+  permissionKeys?: string[];
+
+  @ApiPropertyOptional({
+    type: [RoleQuotaInputDto],
+    description:
+      'Quotas du rôle (CLIENT uniquement). quotasEnabled est dérivé automatiquement : au moins 1 quota = activé.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoleQuotaInputDto)
+  quotas?: RoleQuotaInputDto[];
 }
 
 export class UpdateRoleDto {
@@ -55,26 +87,46 @@ export class UpdateRoleDto {
   @MinLength(1)
   nameAr?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
-  @MinLength(1)
-  nameEn?: string;
+  nameEn?: string | null;
 
   @ApiPropertyOptional({ enum: SlaPriority })
   @IsOptional()
   @IsEnum(SlaPriority)
   slaPriority?: SlaPriority;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  quotasEnabled?: boolean;
-
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   permissionKeys?: string[];
+
+  @ApiPropertyOptional({
+    type: [RoleQuotaInputDto],
+    description:
+      'Remplace intégralement les quotas du rôle. quotasEnabled est dérivé automatiquement.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoleQuotaInputDto)
+  quotas?: RoleQuotaInputDto[];
+}
+
+export class RoleQuotaDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  productId!: string;
+
+  @ApiProperty({ enum: QuotaPeriodType })
+  periodType!: QuotaPeriodType;
+
+  @ApiProperty()
+  maxQuantity!: number;
 }
 
 export class RoleDto {
@@ -87,8 +139,8 @@ export class RoleDto {
   @ApiProperty()
   nameAr!: string;
 
-  @ApiProperty()
-  nameEn!: string;
+  @ApiProperty({ nullable: true, type: String })
+  nameEn!: string | null;
 
   @ApiProperty({ enum: RoleScope })
   scope!: RoleScope;
@@ -104,6 +156,15 @@ export class RoleDto {
 
   @ApiProperty({ type: [String] })
   permissions!: string[];
+
+  @ApiProperty({ type: [RoleQuotaDto] })
+  quotas!: RoleQuotaDto[];
+
+  @ApiProperty()
+  createdAt!: string;
+
+  @ApiProperty()
+  updatedAt!: string;
 }
 
 export class CreateRoleQuotaDto {
