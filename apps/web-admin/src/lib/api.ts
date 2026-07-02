@@ -121,12 +121,11 @@ export const rolesApi = {
   create: (d: unknown) => api.post("/roles", d),
   update: (id: string, d: unknown) => api.patch(`/roles/${id}`, d),
   remove: (id: string) => api.delete(`/roles/${id}`),
-  getQuotas: (id: string) => api.get(`/roles/${id}/quotas`),
-  setQuota: (id: string, d: unknown) => api.post(`/roles/${id}/quotas`, d),
-  removeQuota: (roleId: string, quotaId: string) =>
-    api.delete(`/roles/${roleId}/quotas/${quotaId}`),
-  toggleQuotas: (id: string, enabled: boolean) =>
-    api.patch(`/roles/${id}`, { quotasEnabled: enabled }),
+};
+
+export const slaLevelsApi = {
+  list: (companyId: string) => api.get("/sla-levels", { params: { companyId } }),
+  save: (companyId: string, levels: unknown[]) => api.put(`/sla-levels/${companyId}`, { levels }),
 };
 
 export const permissionsApi = {

@@ -54,7 +54,9 @@ const today = new Date().toISOString().slice(0, 10);
 export function DashboardPage() {
   const { t } = useTranslation();
   const { companyId } = useAuth();
-  const params = companyId ? { companyId, from: today, to: today } : { from: today, to: today };
+  const params: Record<string, string> = companyId
+    ? { companyId, from: today, to: today }
+    : { from: today, to: today };
 
   const { data: companies } = useQuery({
     queryKey: ["companies"],
