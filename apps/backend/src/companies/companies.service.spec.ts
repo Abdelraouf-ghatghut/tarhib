@@ -36,6 +36,8 @@ describe('CompaniesService', () => {
       const entity = {
         id: 'uuid-1',
         name: 'Sonatrach',
+        nameAr: 'سوناطراك',
+        nameEn: 'Sonatrach',
         slug: 'sonatrach',
         active: true,
       };
@@ -43,13 +45,17 @@ describe('CompaniesService', () => {
       repo.save.mockResolvedValue(entity);
 
       const result = await service.create({
-        name: 'Sonatrach',
+        nameAr: 'سوناطراك',
+        nameEn: 'Sonatrach',
         slug: 'sonatrach',
       });
 
       expect(repo.create).toHaveBeenCalledWith({
         name: 'Sonatrach',
+        nameAr: 'سوناطراك',
+        nameEn: 'Sonatrach',
         slug: 'sonatrach',
+        active: true,
       });
       expect(result.id).toBe('uuid-1');
       expect(result.slug).toBe('sonatrach');

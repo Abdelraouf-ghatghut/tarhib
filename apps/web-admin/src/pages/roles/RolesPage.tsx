@@ -45,7 +45,8 @@ interface Role {
 
 interface Company {
   id: string;
-  name: string;
+  nameAr: string;
+  nameEn: string;
 }
 
 type ActiveTab = "tarhib" | "client";
@@ -88,7 +89,11 @@ export function RolesPage() {
   );
 
   const selectedCompany = companies?.find((c) => c.id === selectedCompanyId);
-  const selectedCompanyName = selectedCompany ? selectedCompany.name : null;
+  const selectedCompanyName = selectedCompany
+    ? isAr
+      ? selectedCompany.nameAr
+      : selectedCompany.nameEn
+    : null;
 
   function openCreate() {
     setEditing(null);
@@ -166,7 +171,11 @@ export function RolesPage() {
               key: "company",
               render: (_: unknown, r: Role) => {
                 const co = companies?.find((c) => c.id === r.companyId);
-                return co ? <Text strong>{co.name}</Text> : <Text type="secondary">{"—"}</Text>;
+                return co ? (
+                  <Text strong>{isAr ? co.nameAr : co.nameEn}</Text>
+                ) : (
+                  <Text type="secondary">{"—"}</Text>
+                );
               },
             },
           ]
@@ -321,7 +330,7 @@ export function RolesPage() {
                     }
                     options={(companies ?? []).map((c) => ({
                       value: c.id,
-                      label: c.name,
+                      label: isAr ? c.nameAr : c.nameEn,
                     }))}
                   />
                   <Button

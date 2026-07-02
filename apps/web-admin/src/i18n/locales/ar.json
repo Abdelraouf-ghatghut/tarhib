@@ -7,6 +7,8 @@
   "logout": "تسجيل الخروج",
   "dashboard": "لوحة التحكم",
   "companies": "الشركات",
+  "slug": "المعرّف",
+  "slugFormat": "أحرف صغيرة وأرقام وشرطات فقط",
   "branches": "الفروع",
   "departments": "الأقسام",
   "employees": "الموظفون",

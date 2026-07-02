@@ -75,7 +75,7 @@ const STATUS_COLOR: Record<PoStatus, string> = {
 export default function ProcurementPage() {
   const { t, i18n } = useTranslation();
   const isRtl = i18n.dir() === "rtl";
-  const { selectedCompany, selectedBranch } = useScope();
+  const { companyId: selectedCompany, branchId: selectedBranch } = useScope();
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();

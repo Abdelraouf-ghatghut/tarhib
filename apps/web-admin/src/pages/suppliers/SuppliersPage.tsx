@@ -33,7 +33,7 @@ interface Supplier {
 
 export default function SuppliersPage() {
   const { t } = useTranslation();
-  const { selectedCompany } = useScope();
+  const { companyId: selectedCompany } = useScope();
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [modalOpen, setModalOpen] = useState(false);

@@ -4,8 +4,8 @@
 -- ============================================================
 
 -- ── 1. Société ───────────────────────────────────────────────
-INSERT INTO companies (id, name, slug, active)
-VALUES ('11111111-0000-0000-0000-000000000001', 'Acme Corp', 'acme-corp', true)
+INSERT INTO companies (id, name, name_ar, name_en, slug, active)
+VALUES ('11111111-0000-0000-0000-000000000001', 'Acme Corp', 'شركة أكمي', 'Acme Corp', 'acme-corp', true)
 ON CONFLICT DO NOTHING;
 
 -- ── 2. Branche ───────────────────────────────────────────────

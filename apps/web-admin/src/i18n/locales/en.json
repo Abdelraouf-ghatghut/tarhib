@@ -7,6 +7,8 @@
   "logout": "Logout",
   "dashboard": "Dashboard",
   "companies": "Companies",
+  "slug": "Slug",
+  "slugFormat": "Lowercase letters, digits and hyphens only",
   "branches": "Branches",
   "departments": "Departments",
   "employees": "Employees",
