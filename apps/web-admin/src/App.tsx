@@ -25,39 +25,45 @@ function AppInner() {
       direction={isAr ? "rtl" : "ltr"}
       locale={isAr ? arEG : enUS}
       theme={{
+        // Palette du guide UI 2026 : une seule couleur principale (#2563EB),
+        // fonds clairs, ombres discrètes, grille 8px
         token: {
-          colorPrimary: "#0052CC",
-          colorLink: "#0052CC",
-          colorSuccess: "#36B37E",
-          colorWarning: "#FF991F",
-          colorError: "#FF4D4F",
-          colorInfo: "#00A3BF",
+          colorPrimary: "#2563EB",
+          colorLink: "#2563EB",
+          colorSuccess: "#22C55E",
+          colorWarning: "#F59E0B",
+          colorError: "#EF4444",
+          colorInfo: "#2563EB",
           borderRadius: 8,
           borderRadiusLG: 12,
           fontFamily: "'Inter', 'Cairo', system-ui, sans-serif",
           colorBgContainer: "#FFFFFF",
-          colorBgLayout: "#F8F9FC",
-          colorText: "#172B4D",
-          colorTextSecondary: "#6B778C",
-          colorBorder: "#EBECF0",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-          boxShadowSecondary: "0 4px 16px rgba(0,0,0,0.1)",
+          colorBgLayout: "#F8FAFC",
+          colorText: "#0F172A",
+          colorTextSecondary: "#64748B",
+          colorBorder: "#E2E8F0",
+          colorBorderSecondary: "#E2E8F0",
+          boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
+          boxShadowSecondary: "0 4px 12px rgba(15,23,42,0.08)",
           colorBgElevated: "#FFFFFF",
+          motionDurationMid: "0.18s",
+          motionDurationSlow: "0.2s",
         },
         components: {
           Menu: {
             itemBg: "transparent",
-            itemSelectedBg: "rgba(0, 82, 204, 0.08)",
-            itemSelectedColor: "#0052CC",
-            itemHoverBg: "rgba(0, 82, 204, 0.04)",
-            groupTitleColor: "#6B778C",
+            itemSelectedBg: "rgba(37, 99, 235, 0.08)",
+            itemSelectedColor: "#2563EB",
+            itemHoverBg: "rgba(37, 99, 235, 0.04)",
+            groupTitleColor: "#64748B",
             groupTitleFontSize: 11,
           },
           Table: {
-            rowHoverBg: "#F8F9FC",
+            rowHoverBg: "#F8FAFC",
+            cellPaddingBlock: 16,
           },
           Card: {
-            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+            boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
           },
           Button: {
             primaryShadow: "none",
@@ -65,7 +71,7 @@ function AppInner() {
           Layout: {
             siderBg: "#FFFFFF",
             headerBg: "#FFFFFF",
-            bodyBg: "#F8F9FC",
+            bodyBg: "#F8FAFC",
           },
         },
       }}

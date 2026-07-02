@@ -49,22 +49,30 @@ export interface SlaLevel {
   nameEn: string | null;
   targetMinutes: number;
   active: boolean;
+  sortOrder: number;
   isDefault: boolean;
 }
 
-export const SLA_CODES = ["P1", "P2", "P3", "P4", "P5"] as const;
-
-export const SLA_COLORS: Record<string, string> = {
-  P1: "#f5222d",
-  P2: "#fa8c16",
-  P3: "#1677ff",
-  P4: "#52c41a",
-  P5: "#8c8c8c",
+/**
+ * Couleurs de statut du guide (rouge/orange/bleu/vert/gris) pour les défauts
+ * P1..P5 ; les niveaux personnalisés reçoivent une couleur selon leur rang.
+ */
+const SLA_COLORS: Record<string, string> = {
+  P1: "#EF4444",
+  P2: "#F59E0B",
+  P3: "#2563EB",
+  P4: "#22C55E",
+  P5: "#64748B",
 };
 
-export const TARHIB_COLOR = "#1677ff";
-export const CLIENT_COLOR = "#52c41a";
-export const QUOTA_COLOR = "#fa8c16";
+const SLA_PALETTE = ["#EF4444", "#F59E0B", "#2563EB", "#22C55E", "#64748B"];
+
+export function slaColor(code: string, levels?: SlaLevel[]): string {
+  if (SLA_COLORS[code]) return SLA_COLORS[code];
+  const idx = levels?.findIndex((l) => l.code === code) ?? -1;
+  if (idx < 0) return "#64748B";
+  return SLA_PALETTE[Math.min(idx, SLA_PALETTE.length - 1)];
+}
 
 /** L'anglais est optionnel : s'il est absent, l'arabe est affiché par défaut. */
 export function bilingualName(

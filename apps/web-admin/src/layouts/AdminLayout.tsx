@@ -1,5 +1,15 @@
-import { useMemo, useState } from "react";
-import { Layout, Menu, Button, Space, Typography, Dropdown, Select, Avatar } from "antd";
+﻿import { useMemo, useState } from "react";
+import {
+  Layout,
+  Menu,
+  Button,
+  Space,
+  Typography,
+  Dropdown,
+  Select,
+  Avatar,
+  Breadcrumb,
+} from "antd";
 import type { MenuProps } from "antd";
 import {
   DashboardOutlined,
@@ -175,6 +185,31 @@ export function AdminLayout() {
     { key: "en", label: t("english") },
   ];
 
+  // Breadcrumb: Dashboard > groupe > page, derive du menu (guide section 5)
+  const breadcrumbItems = useMemo(() => {
+    const items: Array<{ title: React.ReactNode }> = [
+      {
+        title:
+          location.pathname === "/" ? (
+            t("dashboard")
+          ) : (
+            <a onClick={() => navigate("/")}>{t("dashboard")}</a>
+          ),
+      },
+    ];
+    for (const item of menuItems ?? []) {
+      if (item && "children" in item && item.children) {
+        const child = item.children.find((c) => c && c.key === location.pathname);
+        if (child && "label" in child) {
+          if ("label" in item && item.label) items.push({ title: item.label });
+          items.push({ title: child.label });
+          break;
+        }
+      }
+    }
+    return items;
+  }, [menuItems, location.pathname, navigate, t]);
+
   const siderWidth = collapsed ? 72 : 240;
 
   return (
@@ -192,7 +227,7 @@ export function AdminLayout() {
           overflow: "auto",
           zIndex: 10,
           background: "#FFFFFF",
-          borderInlineEnd: "1px solid #EBECF0",
+          borderInlineEnd: "1px solid #E2E8F0",
         }}
       >
         {/* Logo */}
@@ -203,7 +238,7 @@ export function AdminLayout() {
             alignItems: "center",
             paddingInline: 20,
             gap: 10,
-            borderBlockEnd: "1px solid #EBECF0",
+            borderBlockEnd: "1px solid #E2E8F0",
           }}
         >
           <div
@@ -211,7 +246,7 @@ export function AdminLayout() {
               width: 28,
               height: 28,
               borderRadius: 8,
-              background: "#0052CC",
+              background: "#2563EB",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -224,7 +259,7 @@ export function AdminLayout() {
             T
           </div>
           {!collapsed && (
-            <Text strong style={{ fontSize: 15, color: "#172B4D" }}>
+            <Text strong style={{ fontSize: 15, color: "#0F172A" }}>
               {t("appTitle")}
             </Text>
           )}
@@ -244,7 +279,7 @@ export function AdminLayout() {
             position: "sticky",
             bottom: 0,
             padding: "12px 16px",
-            borderBlockStart: "1px solid #EBECF0",
+            borderBlockStart: "1px solid #E2E8F0",
             background: "#FFFFFF",
           }}
         >
@@ -269,7 +304,7 @@ export function AdminLayout() {
             padding: "0 24px",
             height: 56,
             background: "#FFFFFF",
-            borderBlockEnd: "1px solid #EBECF0",
+            borderBlockEnd: "1px solid #E2E8F0",
             boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
             gap: 12,
           }}
@@ -317,7 +352,7 @@ export function AdminLayout() {
 
             <Avatar
               size={30}
-              style={{ background: "#0052CC", cursor: "default", fontSize: 12, fontWeight: 700 }}
+              style={{ background: "#2563EB", cursor: "default", fontSize: 12, fontWeight: 700 }}
             >
               {(email ?? "U").charAt(0).toUpperCase()}
             </Avatar>
@@ -329,6 +364,7 @@ export function AdminLayout() {
         </Header>
 
         <Content style={{ margin: "24px", overflow: "initial" }}>
+          <Breadcrumb items={breadcrumbItems} style={{ marginBlockEnd: 16 }} />
           <Outlet />
         </Content>
       </Layout>

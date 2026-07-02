@@ -2,13 +2,12 @@ import { useState } from "react";
 import {
   Button,
   Card,
-  Empty,
   Grid,
   Input,
   Popconfirm,
-  Segmented,
   Select,
   Space,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -38,10 +37,8 @@ import { useAuth } from "../../hooks/useAuth";
 import { RoleForm, type RoleFormPayload } from "./RoleForm";
 import { SlaLevelsConfig } from "./SlaLevelsConfig";
 import {
-  CLIENT_COLOR,
-  SLA_COLORS,
-  TARHIB_COLOR,
   bilingualName,
+  slaColor,
   slaLevelLabel,
   type Company,
   type Permission,
@@ -175,22 +172,34 @@ export function RolesPage() {
   // Fonctions de rendu (pas des composants imbriqués : un composant défini dans
   // le render serait remonté à chaque frappe et l'input de recherche perdrait le focus)
   function renderRoleCard(role: Role) {
-    const accent = activeTab === "tarhib" ? TARHIB_COLOR : CLIENT_COLOR;
     const editDisabled = role.isSystem;
     return (
       <Card
         key={role.id}
         size="small"
-        style={{ borderInlineStart: `3px solid ${accent}` }}
-        styles={{ body: { display: "flex", flexDirection: "column", gap: 8 } }}
+        variant="borderless"
+        styles={{ body: { display: "flex", flexDirection: "column", gap: 8, padding: 16 } }}
       >
         <Space align="center">
-          <UserOutlined style={{ color: accent, fontSize: 18 }} />
+          <span
+            style={{
+              inlineSize: 32,
+              blockSize: 32,
+              borderRadius: 8,
+              background: "rgba(37, 99, 235, 0.08)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <UserOutlined style={{ color: "#2563EB", fontSize: 15 }} />
+          </span>
           <Text strong style={{ fontSize: 15 }}>
             {bilingualName(role.nameAr, role.nameEn, isAr)}
           </Text>
           {role.isSystem && (
-            <Tag icon={<LockOutlined />} color="default">
+            <Tag icon={<LockOutlined />} bordered={false}>
               {t("systemRole")}
             </Tag>
           )}
@@ -198,14 +207,16 @@ export function RolesPage() {
 
         <Space size={8} wrap>
           {activeTab === "tarhib" ? (
-            <Tag color="blue">{t("permissionsCount", { count: role.permissions.length })}</Tag>
+            <Tag bordered={false} color="blue">
+              {t("permissionsCount", { count: role.permissions.length })}
+            </Tag>
           ) : (
             <>
-              <Tag color={SLA_COLORS[role.slaPriority]}>
+              <Tag bordered={false} color={slaColor(role.slaPriority, slaLevels)}>
                 {slaLevelLabel(role.slaPriority, slaLevels, isAr)}
               </Tag>
               {role.quotas.length > 0 ? (
-                <Tag icon={<InboxOutlined />} color="orange">
+                <Tag bordered={false} icon={<InboxOutlined />}>
                   {t("quotasCount", { count: role.quotas.length })}
                 </Tag>
               ) : (
@@ -215,41 +226,54 @@ export function RolesPage() {
           )}
         </Space>
 
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {activeTab === "tarhib"
-            ? t("createdOn", { date: formatDate(role.createdAt) })
-            : t("updatedOn", { date: formatDate(role.updatedAt) })}
-        </Text>
-
-        <Space style={{ justifyContent: "flex-end", display: "flex" }}>
-          <Tooltip title={editDisabled ? t("systemRoleTooltip") : undefined}>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              disabled={editDisabled}
-              onClick={() => setView({ mode: "edit", role })}
-            >
-              {t("edit")}
-            </Button>
-          </Tooltip>
-          <Popconfirm
-            title={t("deleteConfirm")}
-            onConfirm={() => void handleDelete(role.id)}
-            okText={t("confirm")}
-            cancelText={t("cancel")}
-            disabled={editDisabled}
-          >
-            <Tooltip title={editDisabled ? t("systemRoleTooltip") : undefined}>
-              <Button size="small" danger icon={<DeleteOutlined />} disabled={editDisabled}>
-                {t("delete")}
-              </Button>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {activeTab === "tarhib"
+              ? t("createdOn", { date: formatDate(role.createdAt) })
+              : t("updatedOn", { date: formatDate(role.updatedAt) })}
+          </Text>
+          <Space size={4}>
+            <Tooltip title={editDisabled ? t("systemRoleTooltip") : t("edit")}>
+              <Button
+                size="small"
+                type="text"
+                icon={<EditOutlined />}
+                disabled={editDisabled}
+                onClick={() => setView({ mode: "edit", role })}
+              />
             </Tooltip>
-          </Popconfirm>
-        </Space>
+            <Popconfirm
+              title={t("deleteConfirm")}
+              onConfirm={() => void handleDelete(role.id)}
+              okText={t("confirm")}
+              cancelText={t("cancel")}
+              okButtonProps={{ danger: true }}
+              disabled={editDisabled}
+            >
+              <Tooltip title={editDisabled ? t("systemRoleTooltip") : t("delete")}>
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={editDisabled}
+                />
+              </Tooltip>
+            </Popconfirm>
+          </Space>
+        </div>
       </Card>
     );
   }
 
+  // Filtres rapides en chips (guide §16)
   function renderSearchAndFilters(withSla: boolean) {
     const options: Array<{ value: RoleFilter; label: string }> = [
       { value: "all", label: t("filterAll") },
@@ -269,33 +293,63 @@ export function RolesPage() {
       <div
         style={{
           display: "flex",
-          gap: 12,
+          gap: 16,
           flexWrap: "wrap",
           alignItems: "center",
-          marginBlockEnd: 16,
+          marginBlockEnd: 24,
         }}
       >
         <Input
           allowClear
-          prefix={<SearchOutlined />}
+          prefix={<SearchOutlined style={{ color: "#64748B" }} />}
           placeholder={t("searchRole")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ maxInlineSize: 260 }}
+          style={{ maxInlineSize: 280 }}
         />
-        <Segmented
-          size="small"
-          value={filter}
-          onChange={(v) => setFilter(v as RoleFilter)}
-          options={options}
-        />
+        <Space size={4} wrap>
+          {options.map((o) => (
+            <Tag.CheckableTag
+              key={o.value}
+              checked={filter === o.value}
+              onChange={() => setFilter(o.value)}
+              style={{ paddingInline: 12, paddingBlock: 2, borderRadius: 16, fontSize: 13 }}
+            >
+              {o.label}
+            </Tag.CheckableTag>
+          ))}
+        </Space>
       </div>
     );
   }
 
-  function renderCards(list: Role[]) {
-    if (isPending) return <Card loading style={{ minBlockSize: 120 }} />;
-    if (list.length === 0) return <Empty description={t("noData")} />;
+  function renderEmptyState(description: string, showCreate: boolean) {
+    return (
+      <Card variant="borderless" styles={{ body: { textAlign: "center", padding: 48 } }}>
+        <SafetyOutlined style={{ fontSize: 40, color: "#CBD5E1" }} />
+        <Text style={{ display: "block", marginBlock: 16, color: "#64748B" }}>{description}</Text>
+        {showCreate && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setView({ mode: "create" })}
+          >
+            {activeTab === "tarhib" ? t("newRole") : t("createClientRole")}
+          </Button>
+        )}
+      </Card>
+    );
+  }
+
+  function renderCards(list: Role[], canCreateHere: boolean) {
+    if (isPending) return <Card loading variant="borderless" style={{ minBlockSize: 120 }} />;
+    if (list.length === 0) {
+      const hasAny =
+        activeTab === "tarhib"
+          ? (roles ?? []).some((r) => r.scope === "TARHIB")
+          : (roles ?? []).some((r) => r.scope === "CLIENT" && r.companyId === selectedCompanyId);
+      return renderEmptyState(hasAny ? t("noData") : t("noRolesYet"), !hasAny && canCreateHere);
+    }
     return (
       <div
         style={{
@@ -315,29 +369,8 @@ export function RolesPage() {
   const tarhibContent =
     view.mode === "list" ? (
       <>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-            marginBlockEnd: 12,
-          }}
-        >
-          <Text type="secondary">{t("tarhibRolesDescription")}</Text>
-          {isSuperadmin && !isMobile && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setView({ mode: "create" })}
-            >
-              {t("newRole")}
-            </Button>
-          )}
-        </div>
         {renderSearchAndFilters(false)}
-        {renderCards(tarhibRoles)}
+        {renderCards(tarhibRoles, isSuperadmin)}
       </>
     ) : (
       <RoleForm
@@ -351,86 +384,63 @@ export function RolesPage() {
       />
     );
 
+  const companySelect = (
+    <Select
+      allowClear
+      showSearch
+      placeholder={t("searchCompany")}
+      style={{ minInlineSize: 240 }}
+      value={selectedCompanyId ?? undefined}
+      onChange={(v: string | undefined) => {
+        setSelectedCompanyId(v ?? null);
+        resetList();
+      }}
+      filterOption={(input, opt) =>
+        String(opt?.label ?? "")
+          .toLowerCase()
+          .includes(input.toLowerCase())
+      }
+      options={(companies ?? []).map((c) => ({
+        value: c.id,
+        label: bilingualName(c.nameAr, c.nameEn, isAr),
+      }))}
+    />
+  );
+
   const clientContent = !selectedCompanyId ? (
     <>
-      <div style={{ maxInlineSize: 360, marginBlockEnd: 24 }}>
-        <Text strong style={{ display: "block", marginBlockEnd: 8 }}>
-          {t("selectCompany")}
+      <div style={{ marginBlockEnd: 24 }}>{companySelect}</div>
+      <Card variant="borderless" styles={{ body: { textAlign: "center", padding: 48 } }}>
+        <BankOutlined style={{ fontSize: 40, color: "#CBD5E1" }} />
+        <Text style={{ display: "block", marginBlockStart: 16, color: "#64748B" }}>
+          {t("noCompanySelected")}
         </Text>
-        <Select
-          allowClear
-          showSearch
-          placeholder={t("searchCompany")}
-          style={{ inlineSize: "100%" }}
-          value={selectedCompanyId ?? undefined}
-          onChange={(v: string | undefined) => {
-            setSelectedCompanyId(v ?? null);
-            resetList();
-          }}
-          filterOption={(input, opt) =>
-            String(opt?.label ?? "")
-              .toLowerCase()
-              .includes(input.toLowerCase())
-          }
-          options={(companies ?? []).map((c) => ({
-            value: c.id,
-            label: bilingualName(c.nameAr, c.nameEn, isAr),
-          }))}
-        />
-      </div>
-      <Empty description={t("noCompanySelected")} />
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          {t("selectCompanyToSeeRoles")}
+        </Text>
+      </Card>
     </>
   ) : view.mode === "list" ? (
     <>
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
-          gap: 12,
+          gap: 16,
           flexWrap: "wrap",
-          marginBlockEnd: 16,
+          marginBlockEnd: 24,
         }}
       >
-        <Space wrap>
-          <Select
-            showSearch
-            style={{ minInlineSize: 220 }}
-            value={selectedCompanyId}
-            onChange={(v: string) => {
-              setSelectedCompanyId(v);
-              resetList();
-            }}
-            filterOption={(input, opt) =>
-              String(opt?.label ?? "")
-                .toLowerCase()
-                .includes(input.toLowerCase())
-            }
-            options={(companies ?? []).map((c) => ({
-              value: c.id,
-              label: bilingualName(c.nameAr, c.nameEn, isAr),
-            }))}
-          />
-          <Title level={5} style={{ margin: 0, color: CLIENT_COLOR }}>
-            {t("clientRolesFor", { company: selectedCompanyName })}
-          </Title>
-        </Space>
-        {!isMobile && (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            style={{ background: CLIENT_COLOR, borderColor: CLIENT_COLOR }}
-            onClick={() => setView({ mode: "create" })}
-          >
-            {t("createClientRole")}
-          </Button>
-        )}
+        {companySelect}
+        <Title level={5} style={{ margin: 0 }}>
+          {t("clientRolesFor", { company: selectedCompanyName })}
+        </Title>
       </div>
 
       <SlaLevelsConfig companyId={selectedCompanyId} />
 
       {renderSearchAndFilters(true)}
-      {renderCards(clientRoles)}
+      {renderCards(clientRoles, true)}
     </>
   ) : (
     <RoleForm
@@ -447,39 +457,59 @@ export function RolesPage() {
 
   return (
     <>
-      <Title level={4} style={{ marginBlockEnd: 4 }}>
-        {t("roles")}
-      </Title>
-      <Text type="secondary" style={{ display: "block", marginBlockEnd: 16 }}>
-        {t("rolesSubtitle")}
-      </Text>
+      {/* En-tête de page (guide §6) : titre, description, UNE action principale à droite */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 16,
+          flexWrap: "wrap",
+          marginBlockEnd: 24,
+        }}
+      >
+        <div>
+          <Title level={3} style={{ marginBlock: 0, fontWeight: 600 }}>
+            {t("roles")}
+          </Title>
+          <Text type="secondary">
+            {activeTab === "tarhib" ? t("tarhibRolesDescription") : t("rolesSubtitle")}
+          </Text>
+        </div>
+        {view.mode === "list" && canCreate && !isMobile && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setView({ mode: "create" })}
+          >
+            {createLabel}
+          </Button>
+        )}
+      </div>
 
-      <Segmented
-        block={isMobile}
-        size="large"
-        value={activeTab}
-        onChange={(v) => switchTab(v as ActiveTab)}
-        options={[
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => switchTab(k as ActiveTab)}
+        items={[
           {
-            value: "tarhib",
+            key: "tarhib",
             label: (
-              <Space>
-                <SafetyOutlined style={{ color: TARHIB_COLOR }} />
+              <Space size={6}>
+                <SafetyOutlined />
                 {t("roleScopeTarhib")}
               </Space>
             ),
           },
           {
-            value: "client",
+            key: "client",
             label: (
-              <Space>
-                <BankOutlined style={{ color: CLIENT_COLOR }} />
+              <Space size={6}>
+                <BankOutlined />
                 {t("roleScopeClient")}
               </Space>
             ),
           },
         ]}
-        style={{ marginBlockEnd: 20 }}
       />
 
       {activeTab === "tarhib" ? tarhibContent : clientContent}
@@ -499,9 +529,7 @@ export function RolesPage() {
             inlineSize: 56,
             blockSize: 56,
             zIndex: 100,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
-            background: activeTab === "client" ? CLIENT_COLOR : TARHIB_COLOR,
-            borderColor: activeTab === "client" ? CLIENT_COLOR : TARHIB_COLOR,
+            boxShadow: "0 4px 12px rgba(15,23,42,0.2)",
           }}
         />
       )}

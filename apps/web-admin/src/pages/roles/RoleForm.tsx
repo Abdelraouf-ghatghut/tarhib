@@ -16,11 +16,8 @@ import {
 import { CloseOutlined, InfoCircleOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import {
-  CLIENT_COLOR,
-  QUOTA_COLOR,
-  SLA_COLORS,
-  TARHIB_COLOR,
   bilingualName,
+  slaColor,
   slaLevelLabel,
   type Permission,
   type Product,
@@ -50,8 +47,27 @@ interface Props {
   onSubmit: (payload: RoleFormPayload) => void;
 }
 
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <Text
+      strong
+      style={{
+        display: "block",
+        fontSize: 13,
+        textTransform: "uppercase",
+        letterSpacing: 0.4,
+        color: "#64748B",
+        marginBlockEnd: 16,
+      }}
+    >
+      {children}
+    </Text>
+  );
+}
+
 /**
  * Formulaire inline unique (création + modification) — aucun modal ni drawer.
+ * Organisé en sections (guide §10) : Informations / Configuration / Permissions.
  * Pour les rôles CLIENT, les quotas font partie intégrante du rôle :
  * quotasEnabled est dérivé côté serveur (≥1 quota = activé).
  */
@@ -172,33 +188,32 @@ export function RoleForm({
     }
   }
 
-  const accentColor = scope === "TARHIB" ? TARHIB_COLOR : CLIENT_COLOR;
   const activeLevels = (slaLevels ?? []).filter((l) => l.active);
+  const defaultSla = activeLevels[0]?.code;
 
   return (
-    <Card
-      style={{ borderBlockStart: `3px solid ${accentColor}` }}
-      title={
-        <Title level={5} style={{ margin: 0 }}>
-          {editing ? t("editRole") : t("createRoleTitle")}
-        </Title>
-      }
-    >
+    <Card style={{ maxInlineSize: 880 }}>
+      <Title level={5} style={{ marginBlockStart: 0, marginBlockEnd: 24 }}>
+        {editing ? t("editRole") : t("createRoleTitle")}
+      </Title>
+
       <Form
         form={form}
         layout="vertical"
+        requiredMark={false}
         initialValues={{
           nameAr: editing?.nameAr,
           nameEn: editing?.nameEn ?? undefined,
-          slaPriority: editing?.slaPriority ?? "P3",
+          slaPriority: editing?.slaPriority ?? defaultSla,
         }}
       >
+        <SectionTitle>{t("formSectionInfo")}</SectionTitle>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <Form.Item
             name="nameAr"
             label={t("roleNameAr")}
             rules={[{ required: true, message: t("roleNameArRequired") }]}
-            style={{ flex: "1 1 220px" }}
+            style={{ flex: "1 1 240px" }}
           >
             <Input dir="rtl" />
           </Form.Item>
@@ -206,7 +221,7 @@ export function RoleForm({
             name="nameEn"
             label={t("roleNameEnOptional")}
             tooltip={t("roleNameEnHint")}
-            style={{ flex: "1 1 220px" }}
+            style={{ flex: "1 1 240px" }}
           >
             <Input dir="ltr" />
           </Form.Item>
@@ -214,18 +229,20 @@ export function RoleForm({
 
         {scope === "CLIENT" && (
           <>
+            <Divider style={{ marginBlock: 24 }} />
+            <SectionTitle>{t("formSectionConfig")}</SectionTitle>
             <Form.Item
               name="slaPriority"
               label={
                 <Space size={6}>
                   {t("slaPriority")}
                   <Tooltip title={t("slaPriorityHint")}>
-                    <InfoCircleOutlined style={{ color: "#8c8c8c" }} />
+                    <InfoCircleOutlined style={{ color: "#64748B" }} />
                   </Tooltip>
                 </Space>
               }
               rules={[{ required: true }]}
-              style={{ maxInlineSize: 320 }}
+              style={{ maxInlineSize: 360 }}
             >
               <Select
                 options={activeLevels.map((l) => ({
@@ -238,7 +255,7 @@ export function RoleForm({
                           inlineSize: 8,
                           blockSize: 8,
                           borderRadius: "50%",
-                          background: SLA_COLORS[l.code],
+                          background: slaColor(l.code, slaLevels),
                         }}
                       />
                       {slaLevelLabel(l.code, slaLevels, isAr)}
@@ -251,10 +268,8 @@ export function RoleForm({
               />
             </Form.Item>
 
-            <Divider style={{ marginBlock: 12 }} />
-            <Text strong style={{ display: "block", marginBlockEnd: 8 }}>
-              {t("quotasOptional")}
-            </Text>
+            <Divider style={{ marginBlock: 24 }} />
+            <SectionTitle>{t("quotasOptional")}</SectionTitle>
 
             {quotas.length === 0 && !quotaFormOpen && (
               <Text type="secondary" style={{ display: "block", marginBlockEnd: 8 }}>
@@ -268,7 +283,7 @@ export function RoleForm({
                   display: "flex",
                   flexWrap: "wrap",
                   gap: 8,
-                  marginBlockEnd: 12,
+                  marginBlockEnd: 16,
                 }}
               >
                 {quotas.map((q) => (
@@ -278,11 +293,10 @@ export function RoleForm({
                       display: "flex",
                       alignItems: "center",
                       gap: 8,
-                      border: `1px solid ${QUOTA_COLOR}`,
                       borderRadius: 8,
                       paddingBlock: 4,
-                      paddingInline: 10,
-                      background: "#fff7e6",
+                      paddingInline: 12,
+                      background: "#F8FAFC",
                     }}
                   >
                     <div>
@@ -313,7 +327,7 @@ export function RoleForm({
                   gap: 8,
                   flexWrap: "wrap",
                   alignItems: "flex-end",
-                  marginBlockEnd: 12,
+                  marginBlockEnd: 16,
                 }}
               >
                 <div style={{ flex: "1 1 220px" }}>
@@ -364,7 +378,6 @@ export function RoleForm({
                 <Space>
                   <Button
                     type="primary"
-                    style={{ background: QUOTA_COLOR, borderColor: QUOTA_COLOR }}
                     disabled={!quotaDraft.productId || !quotaDraft.maxQuantity}
                     onClick={addQuota}
                   >
@@ -378,7 +391,6 @@ export function RoleForm({
                 icon={<PlusOutlined />}
                 onClick={() => setQuotaFormOpen(true)}
                 disabled={availableProducts.length === 0}
-                style={{ color: QUOTA_COLOR, borderColor: QUOTA_COLOR }}
               >
                 {t("addQuota")}
               </Button>
@@ -388,20 +400,24 @@ export function RoleForm({
 
         {scope === "TARHIB" && (
           <>
-            <Divider style={{ marginBlock: 12 }} />
-            <Text strong style={{ display: "block", marginBlockEnd: 8 }}>
-              {t("permissionsLabel")} <Text type="secondary">({selectedPerms.size})</Text>
-            </Text>
+            <Divider style={{ marginBlock: 24 }} />
+            <SectionTitle>
+              {t("permissionsLabel")}{" "}
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                ({selectedPerms.size})
+              </Text>
+            </SectionTitle>
             <Input
               allowClear
-              prefix={<SearchOutlined />}
+              prefix={<SearchOutlined style={{ color: "#64748B" }} />}
               placeholder={t("searchPermission")}
               value={permSearch}
               onChange={(e) => setPermSearch(e.target.value)}
-              style={{ maxInlineSize: 320, marginBlockEnd: 12 }}
+              style={{ maxInlineSize: 320, marginBlockEnd: 16 }}
             />
             <Collapse
               size="small"
+              ghost
               items={permGroups.map(([group, perms]) => {
                 const selectedInGroup = perms.filter((p) => selectedPerms.has(p.key)).length;
                 return {
@@ -445,14 +461,9 @@ export function RoleForm({
           </>
         )}
 
-        <Divider style={{ marginBlock: 16 }} />
+        <Divider style={{ marginBlock: 24 }} />
         <Space>
-          <Button
-            type="primary"
-            loading={saving}
-            onClick={() => void handleSubmit()}
-            style={{ background: accentColor, borderColor: accentColor }}
-          >
+          <Button type="primary" loading={saving} onClick={() => void handleSubmit()}>
             {editing ? t("save") : t("createRoleBtn")}
           </Button>
           <Button onClick={onCancel}>{t("cancel")}</Button>
