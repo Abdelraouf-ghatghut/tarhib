@@ -68,6 +68,7 @@
   "totalOrders": "Orders today",
   "totalPending": "Pending orders",
   "language": "Language",
+  "toggleTheme": "Toggle light/dark mode",
   "arabic": "العربية",
   "english": "English",
   "invalidCredentials": "Invalid credentials",

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -7,11 +7,29 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Anti-FOUC : pose le thème avant le premier rendu (localStorage sinon système)
+      (function () {
+        try {
+          var stored = localStorage.getItem("tarhib_theme");
+          var mode =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = mode;
+        } catch (e) {
+          /* défaut light */
+        }
+      })();
+    </script>
     <style>
       *, *::before, *::after { box-sizing: border-box; }
-      :root { font-family: 'Inter', 'Cairo', system-ui, sans-serif; }
-      [lang="ar"], [dir="rtl"] { font-family: 'Cairo', 'Inter', system-ui, sans-serif; }
-      body { margin: 0; background: #F8F9FC; }
+      :root { font-family: 'Thmanyah', 'Inter', 'Cairo', system-ui, sans-serif; }
+      [lang="ar"], [dir="rtl"] { font-family: 'Thmanyah', 'Cairo', 'Inter', system-ui, sans-serif; }
+      body { margin: 0; background: #F7F8FC; }
+      [data-theme="dark"] body { background: #0B1220; }
       #root { min-height: 100vh; }
     </style>
     <title>Tarhib Admin</title>

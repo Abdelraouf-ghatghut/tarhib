@@ -8,63 +8,71 @@ import enUS from "antd/locale/en_US";
 import { queryClient } from "./lib/queryClient";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ScopeProvider } from "./contexts/ScopeContext";
-import { useSystemDark } from "./hooks/useSystemDark";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import { useTheme } from "./hooks/useTheme";
 import { router } from "./router";
 
 /**
- * Mapping du design system (tokens.css) vers les tokens antd.
+ * Mapping SnowUI (tokens.css) vers les tokens antd.
  * antd a besoin de valeurs concrètes pour dériver les états hover/actif,
- * donc les deux palettes sont déclarées ici avec les MÊMES valeurs que les
- * CSS custom properties — la bascule light/dark suit prefers-color-scheme.
+ * donc les deux ambiances sont déclarées ici avec les MÊMES valeurs que les
+ * CSS custom properties — la bascule light/dark suit <html data-theme>.
+ * Règle pastel : primary/success/warning/danger restent pastel dans les
+ * deux modes, seule la luminosité s'adapte.
  */
 const LIGHT = {
-  colorPrimary: "#2E2E2E", // brand (zinc monochrome)
-  colorLink: "#2E2E2E", // fg-brand
-  colorSuccess: "#16A34A", // success
-  colorWarning: "#F59E0B", // warning
-  colorError: "#DC2626", // danger
-  colorInfo: "#2E2E2E",
-  colorTextHeading: "#09090B", // heading
-  colorText: "#09090B", // heading (contrôles / valeurs)
-  colorTextSecondary: "#71717A", // body
-  colorTextTertiary: "#A1A1AA", // body-subtle
-  colorTextDisabled: "#A1A1AA", // fg-disabled
-  colorBgLayout: "#FAFAFA", // neutral-secondary-soft
-  colorBgContainer: "#FFFFFF", // neutral-primary-soft
-  colorBgElevated: "#FFFFFF", // neutral-primary
-  colorBorder: "#E4E4E7", // border-default
-  colorBorderSecondary: "#E4E4E7",
-  colorBgContainerDisabled: "#F4F4F5", // disabled
+  colorPrimary: "#6C7CFF", // brand pastel
+  colorLink: "#5A6AF0", // fg-brand
+  colorSuccess: "#22C55E", // success-strong (texte lisible, fills pastel via tokens)
+  colorWarning: "#F59E0B",
+  colorError: "#F43F5E", // danger-strong
+  colorInfo: "#6C7CFF",
+  colorTextHeading: "#0F172A", // text
+  colorText: "#0F172A",
+  colorTextSecondary: "#475569", // body
+  colorTextTertiary: "#94A3B8", // muted
+  colorTextDisabled: "#A3AEC2",
+  colorBgLayout: "#F7F8FC", // bg
+  colorBgContainer: "#FFFFFF", // surface / card
+  colorBgElevated: "#FFFFFF",
+  colorBorder: "rgba(15, 23, 42, 0.10)",
+  colorBorderSecondary: "rgba(15, 23, 42, 0.06)", // border
+  colorBgContainerDisabled: "#EEF1F8",
 };
 
 const DARK = {
-  colorPrimary: "#D4D4D4",
-  colorLink: "#D4D4D4",
-  colorSuccess: "#22C55E",
-  colorWarning: "#F59E0B",
-  colorError: "#EF4444",
-  colorInfo: "#D4D4D4",
-  colorTextHeading: "#FAFAFA",
-  colorText: "#FAFAFA",
-  colorTextSecondary: "#A1A1AA",
-  colorTextTertiary: "#71717A",
-  colorTextDisabled: "#52525B",
-  colorBgLayout: "#09090B", // neutral-secondary-soft (dark)
-  colorBgContainer: "#09090B", // neutral-primary-soft (dark)
-  colorBgElevated: "#18181B", // neutral-primary-medium (dropdowns, modals)
-  colorBorder: "#27272A",
-  colorBorderSecondary: "#27272A",
-  colorBgContainerDisabled: "#18181B",
+  colorPrimary: "#7C8BFF",
+  colorLink: "#7C8BFF",
+  colorSuccess: "#34D399",
+  colorWarning: "#FBBF24",
+  colorError: "#FB7185",
+  colorInfo: "#7C8BFF",
+  colorTextHeading: "#E5E7EB",
+  colorText: "#E5E7EB",
+  colorTextSecondary: "#94A3B8",
+  colorTextTertiary: "#64748B",
+  colorTextDisabled: "#475569",
+  colorBgLayout: "#0B1220", // bg
+  colorBgContainer: "#111827", // card
+  colorBgElevated: "#1E293B",
+  colorBorder: "rgba(255, 255, 255, 0.10)",
+  colorBorderSecondary: "rgba(255, 255, 255, 0.06)",
+  colorBgContainerDisabled: "#1E293B",
 };
 
-const SHADOW_SM = "0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08)";
-const SHADOW_MD = "0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.08)";
-const SHADOW_LG = "0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08)";
+const CARD_SHADOW_LIGHT = "0 6px 16px rgba(15, 23, 42, 0.06)";
+const CARD_SHADOW_DARK = "0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.35)";
+const SHADOW_MD_LIGHT =
+  "0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.07)";
+const SHADOW_MD_DARK = "0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -2px rgba(0, 0, 0, 0.35)";
+const SHADOW_LG_LIGHT =
+  "0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.08)";
+const SHADOW_LG_DARK = "0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4)";
 
 function AppInner() {
   const { i18n } = useTranslation();
   const isAr = i18n.language === "ar";
-  const isDark = useSystemDark();
+  const { isDark } = useTheme();
   const palette = isDark ? DARK : LIGHT;
 
   // TARHIB-8/50: sync HTML dir + lang so CSS logical properties and browser layout apply RTL
@@ -81,61 +89,61 @@ function AppInner() {
         algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token: {
           ...palette,
-          borderRadius: 8, // radius base (boutons, cartes, modals)
-          borderRadiusSM: 6, // radius default (inputs, badges, petits contrôles)
-          borderRadiusXS: 4, // radius sm (checkboxes)
-          borderRadiusLG: 8,
+          borderRadius: 8,
+          borderRadiusSM: 6,
+          borderRadiusXS: 4,
+          borderRadiusLG: 12, // cartes SnowUI plus douces
           // Thmanyah = police produit (CLAUDE.md §18) ; Cairo/Inter en fallback
           fontFamily: isAr
             ? "'Thmanyah', 'Cairo', 'Inter', system-ui, sans-serif"
             : "'Thmanyah', 'Inter', 'Cairo', system-ui, sans-serif",
-          fontWeightStrong: 600, // headings semibold
-          boxShadow: SHADOW_SM,
-          boxShadowSecondary: SHADOW_MD, // dropdowns / popovers
+          fontWeightStrong: 600,
+          boxShadow: isDark ? CARD_SHADOW_DARK : CARD_SHADOW_LIGHT,
+          boxShadowSecondary: isDark ? SHADOW_MD_DARK : SHADOW_MD_LIGHT,
           motionDurationMid: "0.15s",
           motionDurationSlow: "0.2s",
         },
         components: {
           Menu: {
             itemBg: "transparent",
-            itemSelectedBg: isDark ? "#27272A" : "#F4F4F5", // neutral-secondary-strong
-            itemSelectedColor: isDark ? "#E5E5E5" : "#1A1A1A", // fg-brand-strong
-            itemHoverBg: isDark ? "#18181B" : "#F4F4F5", // neutral-secondary-medium
+            // Actif : remplissage pastel (light) / lueur bleu-violet (dark)
+            itemSelectedBg: isDark ? "rgba(124, 139, 255, 0.16)" : "rgba(108, 124, 255, 0.12)",
+            itemSelectedColor: isDark ? "#A5B0FF" : "#5A6AF0",
+            itemHoverBg: isDark ? "rgba(255, 255, 255, 0.04)" : "rgba(108, 124, 255, 0.06)",
             groupTitleColor: palette.colorTextTertiary,
             groupTitleFontSize: 11,
           },
           Table: {
-            headerBg: isDark ? "#09090B" : "#FAFAFA", // neutral-secondary-soft
+            headerBg: isDark ? "#0F172A" : "#F7F8FC",
             headerColor: palette.colorTextSecondary,
-            rowHoverBg: isDark ? "#09090B" : "#FAFAFA",
+            rowHoverBg: isDark ? "#1E293B" : "#F1F3FA",
             cellPaddingInline: 16,
             cellPaddingBlock: 12,
           },
           Card: {
-            boxShadow: SHADOW_SM,
+            boxShadow: isDark ? CARD_SHADOW_DARK : CARD_SHADOW_LIGHT,
           },
           Input: {
-            borderRadius: 6,
+            borderRadius: 8,
           },
           Select: {
-            borderRadius: 6,
+            borderRadius: 8,
           },
           InputNumber: {
-            borderRadius: 6,
+            borderRadius: 8,
           },
           Button: {
             primaryShadow: "none",
             fontWeight: 500,
-            // Brand monochrome : texte contrasté sur le bouton primaire
-            primaryColor: isDark ? "#09090B" : "#FFFFFF",
           },
           Layout: {
-            siderBg: palette.colorBgContainer,
-            headerBg: palette.colorBgContainer,
+            // Sidebar = fond de page (SnowUI §5), header géré en glass dans AdminLayout
+            siderBg: palette.colorBgLayout,
+            headerBg: "transparent",
             bodyBg: palette.colorBgLayout,
           },
           Modal: {
-            boxShadow: SHADOW_LG,
+            boxShadow: isDark ? SHADOW_LG_DARK : SHADOW_LG_LIGHT,
           },
           Tag: {
             borderRadiusSM: 6,
@@ -155,7 +163,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <ScopeProvider>
-          <AppInner />
+          <ThemeProvider>
+            <AppInner />
+          </ThemeProvider>
         </ScopeProvider>
       </AuthProvider>
     </QueryClientProvider>

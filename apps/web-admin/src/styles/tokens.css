@@ -1,90 +1,97 @@
 /**
- * Design system tokens (zinc / shadcn-style) — source de vérité visuelle.
- * Les valeurs résolvent automatiquement en light/dark via prefers-color-scheme :
- * ne jamais échanger les couleurs manuellement dans les composants.
+ * Design system tokens — SnowUI unifié (light pastel / dark premium).
+ * Règle d'or : même UI, seule l'ambiance change. La bascule est manuelle
+ * via <html data-theme="light|dark"> (persistée, instantanée) — les pastels
+ * (primary/success/warning/danger) restent stables entre les deux modes,
+ * seule leur luminosité s'adapte.
  */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap");
 
-:root {
-  color-scheme: light dark;
+:root,
+[data-theme="light"] {
+  color-scheme: light;
 
-  /* ── Backgrounds : neutres (zinc) ──────────────────────────────────── */
-  --neutral-primary-soft: #ffffff;
-  --neutral-primary: #ffffff;
-  --neutral-primary-medium: #ffffff;
-  --neutral-secondary-soft: #fafafa;
-  --neutral-secondary-medium: #f4f4f5;
-  --neutral-secondary-strong: #f4f4f5;
-  --neutral-tertiary-soft: #f4f4f5;
-  --neutral-tertiary: #f4f4f5;
-  --neutral-tertiary-medium: #e4e4e7;
-  --neutral-quaternary: #e4e4e7;
-  --gray: #a1a1aa;
+  /* ── Surfaces (bg #F7F8FC / surface & card blanc) ─────────────────── */
+  --neutral-primary-soft: #ffffff; /* card */
+  --neutral-primary: #ffffff; /* surface */
+  --neutral-primary-medium: #ffffff; /* élevé (dropdown, modal) */
+  --neutral-secondary-soft: #f7f8fc; /* fond de page */
+  --neutral-secondary-medium: #eef1f8; /* hover */
+  --neutral-secondary-strong: #e4e8f4;
+  --neutral-tertiary-soft: #f1f3fa;
+  --neutral-tertiary: #eef1f8;
+  --neutral-tertiary-medium: #e4e8f4;
+  --neutral-quaternary: #dde2f0;
+  --gray: #94a3b8;
 
-  /* ── Backgrounds : brand (monochrome) ──────────────────────────────── */
-  --brand-softer: #f5f5f5;
-  --brand-soft: #e5e5e5;
-  --brand: #2e2e2e;
-  --brand-medium: #d4d4d4;
-  --brand-strong: #1a1a1a;
+  /* ── Brand pastel (#6C7CFF) ────────────────────────────────────────── */
+  --brand-softer: #eef0ff;
+  --brand-soft: #dfe3ff;
+  --brand: #6c7cff;
+  --brand-medium: #c7ceff;
+  --brand-strong: #5a6af0;
 
-  /* ── Backgrounds : statuts ─────────────────────────────────────────── */
-  --success-soft: #f0fdf4;
-  --success: #16a34a;
-  --success-medium: #dcfce7;
-  --success-strong: #15803d;
-  --danger-soft: #fef2f2;
-  --danger: #dc2626;
-  --danger-medium: #fee2e2;
-  --danger-strong: #b91c1c;
-  --warning-soft: #fffbeb;
-  --warning: #f59e0b;
+  /* ── Statuts pastel ────────────────────────────────────────────────── */
+  --success-soft: #ecfdf3;
+  --success: #4ade80;
+  --success-medium: #d1fae0;
+  --success-strong: #22c55e;
+  --danger-soft: #fff1f3;
+  --danger: #fb7185;
+  --danger-medium: #ffe0e5;
+  --danger-strong: #f43f5e;
+  --warning-soft: #fff8e6;
+  --warning: #fbbf24;
   --warning-medium: #fef3c7;
-  --warning-strong: #d97706;
+  --warning-strong: #f59e0b;
 
-  /* ── Accents (identiques light/dark) ───────────────────────────────── */
-  --sky: #0ea5e9;
-  --teal: #0d9488;
-  --indigo: #4f46e5;
-  --orange: #f97316;
+  /* ── Accents (stables entre modes) ─────────────────────────────────── */
+  --sky: #38bdf8;
+  --teal: #2dd4bf;
+  --indigo: #818cf8;
+  --orange: #fb923c;
 
   /* ── Utilitaires ───────────────────────────────────────────────────── */
-  --dark: #18181b;
-  --dark-strong: #09090b;
-  --disabled: #f4f4f5;
+  --dark: #0f172a;
+  --dark-strong: #0b1220;
+  --disabled: #eef1f8;
 
   /* ── Texte ─────────────────────────────────────────────────────────── */
-  --fg-heading: #09090b;
-  --fg-body: #71717a;
-  --fg-body-subtle: #a1a1aa;
-  --fg-brand: #2e2e2e;
-  --fg-brand-strong: #1a1a1a;
+  --fg-heading: #0f172a;
+  --fg-body: #475569;
+  --fg-body-subtle: #94a3b8;
+  --fg-brand: #5a6af0;
+  --fg-brand-strong: #4553d6;
   --fg-success: #16a34a;
   --fg-success-strong: #15803d;
-  --fg-danger: #dc2626;
-  --fg-danger-strong: #b91c1c;
+  --fg-danger: #e11d48;
+  --fg-danger-strong: #be123c;
   --fg-warning-subtle: #d97706;
   --fg-warning: #92400e;
-  --fg-disabled: #a1a1aa;
+  --fg-disabled: #a3aec2;
 
-  /* ── Bordures ──────────────────────────────────────────────────────── */
-  --border-default: #e4e4e7;
-  --border-default-medium: #e4e4e7;
-  --border-default-strong: #d4d4d8;
+  /* ── Bordures (très légères — SnowUI airy) ─────────────────────────── */
+  --border-default: rgba(15, 23, 42, 0.06);
+  --border-default-medium: rgba(15, 23, 42, 0.1);
+  --border-default-strong: rgba(15, 23, 42, 0.16);
   --border-buffer: #ffffff;
-  --border-brand: #2e2e2e;
-  --border-brand-subtle: #d4d4d4;
+  --border-brand: #6c7cff;
+  --border-brand-subtle: #c7ceff;
   --border-success-subtle: #bbf7d0;
-  --border-danger-subtle: #fecaca;
+  --border-danger-subtle: #fecdd3;
   --border-warning-subtle: #fde68a;
 
-  /* ── Ombres ────────────────────────────────────────────────────────── */
-  --shadow-2xs: 0 1px rgb(0 0 0 / 0.05);
-  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.08);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.08);
+  /* ── Ombres (douces, teintées ardoise) ─────────────────────────────── */
+  --shadow-2xs: 0 1px rgb(15 23 42 / 0.04);
+  --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.06);
+  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.07), 0 2px 4px -2px rgb(15 23 42 / 0.07);
+  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.08);
+  --shadow-xl: 0 20px 25px -5px rgb(15 23 42 / 0.08), 0 8px 10px -6px rgb(15 23 42 / 0.08);
+  --shadow-card: 0 6px 16px rgb(15 23 42 / 0.06);
+
+  /* ── Header glass ──────────────────────────────────────────────────── */
+  --header-glass: rgba(255, 255, 255, 0.7);
 
   /* ── Rayons ────────────────────────────────────────────────────────── */
   --radius-sm: 4px;
@@ -92,69 +99,84 @@
   --radius-base: 8px;
   --radius-full: 9999px;
 
-  /* ── Glint boutons (subtil) ────────────────────────────────────────── */
-  --color-1-400: rgba(255, 255, 255, 0.06);
-  --color-1-700: rgba(0, 0, 0, 0.04);
+  /* ── Glint boutons ─────────────────────────────────────────────────── */
+  --color-1-400: rgba(255, 255, 255, 0.18);
+  --color-1-700: rgba(15, 23, 42, 0.06);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --neutral-primary-soft: #09090b;
-    --neutral-primary: #09090b;
-    --neutral-primary-medium: #18181b;
-    --neutral-secondary-soft: #09090b;
-    --neutral-secondary-medium: #18181b;
-    --neutral-secondary-strong: #27272a;
-    --neutral-tertiary-soft: #09090b;
-    --neutral-tertiary: #18181b;
-    --neutral-tertiary-medium: #27272a;
-    --neutral-quaternary: #27272a;
-    --gray: #3f3f46;
+[data-theme="dark"] {
+  color-scheme: dark;
 
-    --brand-softer: #1a1a1a;
-    --brand-soft: #252525;
-    --brand: #d4d4d4;
-    --brand-medium: #252525;
-    --brand-strong: #2e2e2e;
+  /* Surfaces : bg #0B1220 / surface #0F172A / card #111827 */
+  --neutral-primary-soft: #111827;
+  --neutral-primary: #0f172a;
+  --neutral-primary-medium: #1e293b;
+  --neutral-secondary-soft: #0b1220;
+  --neutral-secondary-medium: #1e293b;
+  --neutral-secondary-strong: #273349;
+  --neutral-tertiary-soft: #0f172a;
+  --neutral-tertiary: #1e293b;
+  --neutral-tertiary-medium: #273349;
+  --neutral-quaternary: #334155;
+  --gray: #334155;
 
-    --success-soft: #052e16;
-    --success: #22c55e;
-    --success-medium: #14532d;
-    --success-strong: #16a34a;
-    --danger-soft: #450a0a;
-    --danger: #ef4444;
-    --danger-medium: #991b1b;
-    --danger-strong: #dc2626;
-    --warning-soft: #78350f;
-    --warning-medium: #92400e;
+  --brand-softer: rgba(124, 139, 255, 0.14);
+  --brand-soft: rgba(124, 139, 255, 0.22);
+  --brand: #7c8bff;
+  --brand-medium: rgba(124, 139, 255, 0.35);
+  --brand-strong: #8d9aff;
 
-    --dark-strong: #27272a;
-    --disabled: #18181b;
+  --success-soft: rgba(52, 211, 153, 0.12);
+  --success: #34d399;
+  --success-medium: rgba(52, 211, 153, 0.25);
+  --success-strong: #10b981;
+  --danger-soft: rgba(251, 113, 133, 0.12);
+  --danger: #fb7185;
+  --danger-medium: rgba(251, 113, 133, 0.25);
+  --danger-strong: #f43f5e;
+  --warning-soft: rgba(251, 191, 36, 0.12);
+  --warning: #fbbf24;
+  --warning-medium: rgba(251, 191, 36, 0.25);
+  --warning-strong: #f59e0b;
 
-    --fg-heading: #fafafa;
-    --fg-body: #a1a1aa;
-    --fg-body-subtle: #71717a;
-    --fg-brand: #d4d4d4;
-    --fg-brand-strong: #e5e5e5;
-    --fg-success: #22c55e;
-    --fg-success-strong: #4ade80;
-    --fg-danger: #ef4444;
-    --fg-danger-strong: #fca5a5;
-    --fg-warning-subtle: #f59e0b;
-    --fg-warning: #fde68a;
-    --fg-disabled: #52525b;
+  --dark: #0f172a;
+  --dark-strong: #1e293b;
+  --disabled: #1e293b;
 
-    --border-default: #27272a;
-    --border-default-medium: #3f3f46;
-    --border-default-strong: #52525b;
-    --border-buffer: #09090b;
-    --border-brand: #a3a3a3;
-    --border-brand-subtle: #252525;
-    --border-success-subtle: #14532d;
-    --border-danger-subtle: #991b1b;
-    --border-warning-subtle: #92400e;
+  --fg-heading: #e5e7eb;
+  --fg-body: #94a3b8;
+  --fg-body-subtle: #64748b;
+  --fg-brand: #7c8bff;
+  --fg-brand-strong: #a5b0ff;
+  --fg-success: #34d399;
+  --fg-success-strong: #6ee7b7;
+  --fg-danger: #fb7185;
+  --fg-danger-strong: #fda4af;
+  --fg-warning-subtle: #fbbf24;
+  --fg-warning: #fde68a;
+  --fg-disabled: #475569;
 
-    --color-1-400: rgba(255, 255, 255, 0.04);
-    --color-1-700: rgba(0, 0, 0, 0.06);
-  }
+  --border-default: rgba(255, 255, 255, 0.06);
+  --border-default-medium: rgba(255, 255, 255, 0.1);
+  --border-default-strong: rgba(255, 255, 255, 0.16);
+  --border-buffer: #0b1220;
+  --border-brand: #7c8bff;
+  --border-brand-subtle: rgba(124, 139, 255, 0.3);
+  --border-success-subtle: rgba(52, 211, 153, 0.3);
+  --border-danger-subtle: rgba(251, 113, 133, 0.3);
+  --border-warning-subtle: rgba(251, 191, 36, 0.3);
+
+  /* Ombres : profondeur + halo subtil (premium) */
+  --shadow-2xs: 0 1px rgb(0 0 0 / 0.3);
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.35), 0 1px 2px -1px rgb(0 0 0 / 0.35);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.35);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.45), 0 8px 10px -6px rgb(0 0 0 / 0.45);
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgb(0 0 0 / 0.35);
+
+  --header-glass: rgba(15, 23, 42, 0.6);
+
+  --color-1-400: rgba(255, 255, 255, 0.08);
+  --color-1-700: rgba(0, 0, 0, 0.3);
 }

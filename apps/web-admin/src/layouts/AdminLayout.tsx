@@ -9,6 +9,7 @@ import {
   Select,
   Avatar,
   Breadcrumb,
+  Tooltip,
 } from "antd";
 import type { MenuProps } from "antd";
 import {
@@ -26,6 +27,8 @@ import {
   GlobalOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MoonOutlined,
+  SunOutlined,
   SafetyOutlined,
   CalendarOutlined,
   UserAddOutlined,
@@ -35,6 +38,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
 import { useScope } from "../contexts/ScopeContext";
+import { useTheme } from "../hooks/useTheme";
 import { companiesApi, branchesApi } from "../lib/api";
 
 const { Sider, Header, Content } = Layout;
@@ -50,6 +54,7 @@ export function AdminLayout() {
   const { t, i18n } = useTranslation();
   const { logout, email, hasPermission, isSuperadmin } = useAuth();
   const { companyId, branchId, setCompanyId, setBranchId } = useScope();
+  const { isDark, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
@@ -226,7 +231,8 @@ export function AdminLayout() {
           insetBlockEnd: 0,
           overflow: "auto",
           zIndex: 10,
-          background: "var(--neutral-primary-soft)",
+          // SnowUI §5 : la sidebar reprend le fond de page, pas de surface blanche
+          background: "var(--neutral-secondary-soft)",
           borderInlineEnd: "1px solid var(--border-default)",
         }}
       >
@@ -280,7 +286,7 @@ export function AdminLayout() {
             bottom: 0,
             padding: "12px 16px",
             borderBlockStart: "1px solid var(--border-default)",
-            background: "var(--neutral-primary-soft)",
+            background: "var(--neutral-secondary-soft)",
           }}
         >
           <Button
@@ -303,14 +309,17 @@ export function AdminLayout() {
             justifyContent: "space-between",
             padding: "0 24px",
             height: 56,
-            background: "var(--neutral-primary-soft)",
+            // Header glass adaptatif (SnowUI §4)
+            background: "var(--header-glass)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
             borderBlockEnd: "1px solid var(--border-default)",
-            boxShadow: "var(--shadow-xs)",
             gap: 12,
           }}
         >
-          {/* Left: scope selectors */}
-          <Space size={8}>
+          {/* Left: breadcrumb + scope selectors */}
+          <Space size={16} wrap>
+            <Breadcrumb items={breadcrumbItems} />
             {isSuperadmin && (
               <Select
                 allowClear
@@ -337,7 +346,7 @@ export function AdminLayout() {
             />
           </Space>
 
-          {/* Right: lang, avatar, logout */}
+          {/* Right: lang, theme, avatar, logout */}
           <Space>
             <Dropdown
               menu={{
@@ -349,6 +358,16 @@ export function AdminLayout() {
                 {i18n.language === "ar" ? "AR" : "EN"}
               </Button>
             </Dropdown>
+
+            <Tooltip title={t("toggleTheme")}>
+              <Button
+                type="text"
+                size="small"
+                aria-label={t("toggleTheme")}
+                icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+                onClick={toggleTheme}
+              />
+            </Tooltip>
 
             <Avatar
               size={30}
@@ -369,7 +388,6 @@ export function AdminLayout() {
         </Header>
 
         <Content style={{ margin: "24px", overflow: "initial" }}>
-          <Breadcrumb items={breadcrumbItems} style={{ marginBlockEnd: 16 }} />
           <Outlet />
         </Content>
       </Layout>

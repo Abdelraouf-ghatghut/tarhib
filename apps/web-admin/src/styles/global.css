@@ -39,6 +39,11 @@ html[dir="rtl"] body {
 /* Ant Design overrides — tokens uniquement, pas de hex en dur */
 .ant-menu-item { border-radius: var(--radius-base) !important; margin-block: 2px !important; }
 .ant-menu-item-group-title { font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase !important; letter-spacing: 0.4px !important; }
-.ant-card { border: 1px solid var(--border-default) !important; box-shadow: var(--shadow-xs); }
+.ant-card { border: 1px solid var(--border-default) !important; box-shadow: var(--shadow-card); }
 .ant-statistic-title { font-size: 12px !important; color: var(--fg-body-subtle) !important; }
 .ant-statistic-content-value { color: var(--fg-heading) !important; }
+
+/* SnowUI dark : item de menu actif avec lueur bleu-violet subtile */
+[data-theme="dark"] .ant-menu-item-selected {
+  box-shadow: 0 0 14px rgba(124, 139, 255, 0.22);
+}
