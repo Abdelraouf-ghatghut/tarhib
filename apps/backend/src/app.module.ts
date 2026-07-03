@@ -50,7 +50,10 @@ import { PrioritySlaModule } from './priority-sla/priority-sla.module.js';
           type: 'postgres',
           url: databaseUrl,
           autoLoadEntities: true,
-          synchronize: true,
+          // Schéma piloté exclusivement par les migrations versionnées (CLAUDE.md §5).
+          // synchronize:true réécrivait des colonnes au boot (ex. orders.priority)
+          // et crashait l'app — interdit.
+          synchronize: false,
           logging: false,
         };
       },
