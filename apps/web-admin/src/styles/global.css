@@ -1,16 +1,17 @@
 @import "./tokens.css";
+@import "./fonts.css";
 
+/* Thmanyah d'abord (police produit, AR + latin) ; Cairo/Inter en fallback */
 html,
 body {
   margin: 0;
   background: var(--neutral-secondary-soft);
   color: var(--fg-body);
-  font-family: "Inter", "Cairo", system-ui, sans-serif;
+  font-family: "Thmanyah", "Inter", "Cairo", system-ui, sans-serif;
 }
 
-/* Arabe : Cairo en premier pour un rendu correct des glyphes et lignes */
 html[dir="rtl"] body {
-  font-family: "Cairo", "Inter", system-ui, sans-serif;
+  font-family: "Thmanyah", "Cairo", "Inter", system-ui, sans-serif;
 }
 
 /* Custom scrollbar */

@@ -85,10 +85,10 @@ function AppInner() {
           borderRadiusSM: 6, // radius default (inputs, badges, petits contrôles)
           borderRadiusXS: 4, // radius sm (checkboxes)
           borderRadiusLG: 8,
-          // Cairo en premier pour l'arabe : rendu des glyphes + hauteurs de ligne corrects
+          // Thmanyah = police produit (CLAUDE.md §18) ; Cairo/Inter en fallback
           fontFamily: isAr
-            ? "'Cairo', 'Inter', system-ui, sans-serif"
-            : "'Inter', 'Cairo', system-ui, sans-serif",
+            ? "'Thmanyah', 'Cairo', 'Inter', system-ui, sans-serif"
+            : "'Thmanyah', 'Inter', 'Cairo', system-ui, sans-serif",
           fontWeightStrong: 600, // headings semibold
           boxShadow: SHADOW_SM,
           boxShadowSecondary: SHADOW_MD, // dropdowns / popovers
