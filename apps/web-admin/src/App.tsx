@@ -18,47 +18,48 @@ import { router } from "./router";
  * CSS custom properties — la bascule light/dark suit prefers-color-scheme.
  */
 const LIGHT = {
-  colorPrimary: "#1447E6", // brand
-  colorLink: "#1447E6", // fg-brand
-  colorSuccess: "#007A55", // success
-  colorWarning: "#F97316", // warning
-  colorError: "#C70036", // danger
-  colorInfo: "#1447E6",
-  colorTextHeading: "#111827", // heading
-  colorText: "#111827", // heading (contrôles / valeurs)
-  colorTextSecondary: "#4B5563", // body
-  colorTextTertiary: "#6B7280", // body-subtle
-  colorTextDisabled: "#9CA3AF", // fg-disabled
-  colorBgLayout: "#F9FAFB", // neutral-secondary-soft
+  colorPrimary: "#2E2E2E", // brand (zinc monochrome)
+  colorLink: "#2E2E2E", // fg-brand
+  colorSuccess: "#16A34A", // success
+  colorWarning: "#F59E0B", // warning
+  colorError: "#DC2626", // danger
+  colorInfo: "#2E2E2E",
+  colorTextHeading: "#09090B", // heading
+  colorText: "#09090B", // heading (contrôles / valeurs)
+  colorTextSecondary: "#71717A", // body
+  colorTextTertiary: "#A1A1AA", // body-subtle
+  colorTextDisabled: "#A1A1AA", // fg-disabled
+  colorBgLayout: "#FAFAFA", // neutral-secondary-soft
   colorBgContainer: "#FFFFFF", // neutral-primary-soft
   colorBgElevated: "#FFFFFF", // neutral-primary
-  colorBorder: "#E5E7EB", // border-default
-  colorBorderSecondary: "#E5E7EB",
-  colorBgContainerDisabled: "#F3F4F6", // disabled
+  colorBorder: "#E4E4E7", // border-default
+  colorBorderSecondary: "#E4E4E7",
+  colorBgContainerDisabled: "#F4F4F5", // disabled
 };
 
 const DARK = {
-  colorPrimary: "#155DFC",
-  colorLink: "#51A2FF",
-  colorSuccess: "#009966",
-  colorWarning: "#F97316",
-  colorError: "#C70036",
-  colorInfo: "#155DFC",
-  colorTextHeading: "#FFFFFF",
-  colorText: "#FFFFFF",
-  colorTextSecondary: "#9CA3AF",
-  colorTextTertiary: "#9CA3AF",
-  colorTextDisabled: "#6B7280",
-  colorBgLayout: "#030712", // neutral-secondary (dark)
-  colorBgContainer: "#101828", // neutral-primary-soft (dark)
-  colorBgElevated: "#101828",
-  colorBorder: "#1F2937",
-  colorBorderSecondary: "#1F2937",
-  colorBgContainerDisabled: "#1F2937",
+  colorPrimary: "#D4D4D4",
+  colorLink: "#D4D4D4",
+  colorSuccess: "#22C55E",
+  colorWarning: "#F59E0B",
+  colorError: "#EF4444",
+  colorInfo: "#D4D4D4",
+  colorTextHeading: "#FAFAFA",
+  colorText: "#FAFAFA",
+  colorTextSecondary: "#A1A1AA",
+  colorTextTertiary: "#71717A",
+  colorTextDisabled: "#52525B",
+  colorBgLayout: "#09090B", // neutral-secondary-soft (dark)
+  colorBgContainer: "#09090B", // neutral-primary-soft (dark)
+  colorBgElevated: "#18181B", // neutral-primary-medium (dropdowns, modals)
+  colorBorder: "#27272A",
+  colorBorderSecondary: "#27272A",
+  colorBgContainerDisabled: "#18181B",
 };
 
-const SHADOW_XS = "0 1px 2px 0 rgb(0 0 0 / 0.05)";
-const SHADOW_LG = "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)";
+const SHADOW_SM = "0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08)";
+const SHADOW_MD = "0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.08)";
+const SHADOW_LG = "0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08)";
 
 function AppInner() {
   const { i18n } = useTranslation();
@@ -80,47 +81,53 @@ function AppInner() {
         algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token: {
           ...palette,
-          borderRadius: 8, // radius base
-          borderRadiusSM: 4, // radius sm (checkboxes, petits éléments)
-          borderRadiusLG: 8, // le DS n'a qu'un seul rayon de base
-          fontFamily: "'Inter', 'Cairo', system-ui, sans-serif",
+          borderRadius: 8, // radius base (boutons, cartes, modals)
+          borderRadiusSM: 6, // radius default (inputs, badges, petits contrôles)
+          borderRadiusXS: 4, // radius sm (checkboxes)
+          borderRadiusLG: 8,
+          // Cairo en premier pour l'arabe : rendu des glyphes + hauteurs de ligne corrects
+          fontFamily: isAr
+            ? "'Cairo', 'Inter', system-ui, sans-serif"
+            : "'Inter', 'Cairo', system-ui, sans-serif",
           fontWeightStrong: 600, // headings semibold
-          boxShadow: SHADOW_XS,
-          boxShadowSecondary: SHADOW_LG, // dropdowns / popovers
+          boxShadow: SHADOW_SM,
+          boxShadowSecondary: SHADOW_MD, // dropdowns / popovers
           motionDurationMid: "0.15s",
           motionDurationSlow: "0.2s",
         },
         components: {
           Menu: {
             itemBg: "transparent",
-            itemSelectedBg: isDark ? "#333E4F" : "#F9FAFB", // neutral-secondary-strong / soft
-            itemSelectedColor: isDark ? "#BEDBFF" : "#193CB8", // fg-brand-strong
-            itemHoverBg: isDark ? "#1E2939" : "#F9FAFB", // neutral-secondary-medium
+            itemSelectedBg: isDark ? "#27272A" : "#F4F4F5", // neutral-secondary-strong
+            itemSelectedColor: isDark ? "#E5E5E5" : "#1A1A1A", // fg-brand-strong
+            itemHoverBg: isDark ? "#18181B" : "#F4F4F5", // neutral-secondary-medium
             groupTitleColor: palette.colorTextTertiary,
             groupTitleFontSize: 11,
           },
           Table: {
-            headerBg: isDark ? "#101828" : "#F9FAFB", // neutral-secondary-soft
+            headerBg: isDark ? "#09090B" : "#FAFAFA", // neutral-secondary-soft
             headerColor: palette.colorTextSecondary,
-            rowHoverBg: isDark ? "#101828" : "#F9FAFB",
-            cellPaddingInline: 24,
-            cellPaddingBlock: 16,
+            rowHoverBg: isDark ? "#09090B" : "#FAFAFA",
+            cellPaddingInline: 16,
+            cellPaddingBlock: 12,
           },
           Card: {
-            boxShadow: SHADOW_XS,
+            boxShadow: SHADOW_SM,
           },
           Input: {
-            colorBgContainer: isDark ? "#1E2939" : "#F9FAFB", // neutral-secondary-medium
+            borderRadius: 6,
           },
           Select: {
-            colorBgContainer: isDark ? "#1E2939" : "#F9FAFB",
+            borderRadius: 6,
           },
           InputNumber: {
-            colorBgContainer: isDark ? "#1E2939" : "#F9FAFB",
+            borderRadius: 6,
           },
           Button: {
             primaryShadow: "none",
             fontWeight: 500,
+            // Brand monochrome : texte contrasté sur le bouton primaire
+            primaryColor: isDark ? "#09090B" : "#FFFFFF",
           },
           Layout: {
             siderBg: palette.colorBgContainer,
@@ -128,7 +135,10 @@ function AppInner() {
             bodyBg: palette.colorBgLayout,
           },
           Modal: {
-            boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)", // shadow-xl
+            boxShadow: SHADOW_LG,
+          },
+          Tag: {
+            borderRadiusSM: 6,
           },
         },
       }}

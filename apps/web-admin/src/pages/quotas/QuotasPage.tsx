@@ -122,7 +122,7 @@ export function QuotasPage() {
               <Select
                 allowClear
                 options={ROLES.map((r) => ({ value: r, label: r }))}
-                placeholder="Par rôle (ou laisser vide pour un employé spécifique)"
+                placeholder={t("quotaByRolePlaceholder")}
               />
             </Form.Item>
             <Form.Item name="employeeId" label={t("employees")}>
@@ -138,7 +138,7 @@ export function QuotasPage() {
                     .toLowerCase()
                     .includes(input.toLowerCase())
                 }
-                placeholder="Par employé (ou laisser vide pour un rôle)"
+                placeholder={t("quotaByEmployeePlaceholder")}
               />
             </Form.Item>
             <Form.Item name="period" label={t("period")} rules={[{ required: true }]}>

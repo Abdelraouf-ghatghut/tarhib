@@ -168,6 +168,8 @@
   "quotaPerRole": "Quota per role",
   "addQuota": "Add quota",
   "periodType": "Period",
+  "quotaByRolePlaceholder": "By role (or leave empty for a specific employee)",
+  "quotaByEmployeePlaceholder": "By employee (or leave empty for a role)",
   "quotaPeriodDaily": "Daily",
   "quotaPeriodWeekly": "Weekly",
   "quotaPeriodMonthly": "Monthly",

@@ -168,6 +168,8 @@
   "quotaPerRole": "الحصة حسب الدور",
   "addQuota": "إضافة حصة",
   "periodType": "الفترة",
+  "quotaByRolePlaceholder": "حسب الدور (أو اتركه فارغاً لموظف محدد)",
+  "quotaByEmployeePlaceholder": "حسب الموظف (أو اتركه فارغاً لدور)",
   "quotaPeriodDaily": "يومي",
   "quotaPeriodWeekly": "أسبوعي",
   "quotaPeriodMonthly": "شهري",

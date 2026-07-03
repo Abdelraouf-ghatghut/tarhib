@@ -61,17 +61,17 @@ export interface SlaLevel {
 const SLA_COLORS: Record<string, string> = {
   P1: "var(--danger)",
   P2: "var(--warning)",
-  P3: "var(--brand)",
+  P3: "var(--sky)",
   P4: "var(--success)",
-  P5: "var(--fg-body-subtle)",
+  P5: "var(--gray)",
 };
 
 const SLA_PALETTE = [
   "var(--danger)",
   "var(--warning)",
-  "var(--brand)",
+  "var(--sky)",
   "var(--success)",
-  "var(--fg-body-subtle)",
+  "var(--gray)",
 ];
 
 export function slaColor(code: string, levels?: SlaLevel[]): string {

@@ -1,5 +1,5 @@
 /**
- * Design system tokens — source de vérité visuelle.
+ * Design system tokens (zinc / shadcn-style) — source de vérité visuelle.
  * Les valeurs résolvent automatiquement en light/dark via prefers-color-scheme :
  * ne jamais échanger les couleurs manuellement dans les composants.
  */
@@ -8,142 +8,153 @@
 :root {
   color-scheme: light dark;
 
-  /* ── Backgrounds : neutres ─────────────────────────────────────────── */
+  /* ── Backgrounds : neutres (zinc) ──────────────────────────────────── */
   --neutral-primary-soft: #ffffff;
   --neutral-primary: #ffffff;
   --neutral-primary-medium: #ffffff;
-  --neutral-secondary-soft: #f9fafb;
-  --neutral-secondary-medium: #f9fafb;
-  --neutral-tertiary-soft: #f3f4f6;
-  --neutral-tertiary: #f3f4f6;
-  --neutral-tertiary-medium: #f3f4f6;
-  --neutral-quaternary: #e5e7eb;
-  --gray: #d1d5dc;
+  --neutral-secondary-soft: #fafafa;
+  --neutral-secondary-medium: #f4f4f5;
+  --neutral-secondary-strong: #f4f4f5;
+  --neutral-tertiary-soft: #f4f4f5;
+  --neutral-tertiary: #f4f4f5;
+  --neutral-tertiary-medium: #e4e4e7;
+  --neutral-quaternary: #e4e4e7;
+  --gray: #a1a1aa;
 
-  /* ── Backgrounds : brand ───────────────────────────────────────────── */
-  --brand-softer: #eef6ff;
-  --brand-soft: #dbeafe;
-  --brand: #1447e6;
-  --brand-medium: #bedbff;
-  --brand-strong: #193cb8;
+  /* ── Backgrounds : brand (monochrome) ──────────────────────────────── */
+  --brand-softer: #f5f5f5;
+  --brand-soft: #e5e5e5;
+  --brand: #2e2e2e;
+  --brand-medium: #d4d4d4;
+  --brand-strong: #1a1a1a;
 
   /* ── Backgrounds : statuts ─────────────────────────────────────────── */
-  --success-soft: #ecfdf5;
-  --success: #007a55;
-  --success-medium: #d0fae5;
-  --success-strong: #006045;
-  --danger-soft: #fef0f2;
-  --danger: #c70036;
-  --danger-medium: #ffe4e6;
-  --danger-strong: #a50036;
-  --warning-soft: #fff7ed;
-  --warning: #f97316;
-  --warning-medium: #ffedd5;
-  --warning-strong: #c2410c;
+  --success-soft: #f0fdf4;
+  --success: #16a34a;
+  --success-medium: #dcfce7;
+  --success-strong: #15803d;
+  --danger-soft: #fef2f2;
+  --danger: #dc2626;
+  --danger-medium: #fee2e2;
+  --danger-strong: #b91c1c;
+  --warning-soft: #fffbeb;
+  --warning: #f59e0b;
+  --warning-medium: #fef3c7;
+  --warning-strong: #d97706;
+
+  /* ── Accents (identiques light/dark) ───────────────────────────────── */
+  --sky: #0ea5e9;
+  --teal: #0d9488;
+  --indigo: #4f46e5;
+  --orange: #f97316;
 
   /* ── Utilitaires ───────────────────────────────────────────────────── */
-  --dark: #1f2937;
-  --dark-strong: #111827;
-  --disabled: #f3f4f6;
+  --dark: #18181b;
+  --dark-strong: #09090b;
+  --disabled: #f4f4f5;
 
   /* ── Texte ─────────────────────────────────────────────────────────── */
-  --fg-heading: #111827;
-  --fg-body: #4b5563;
-  --fg-body-subtle: #6b7280;
-  --fg-brand: #1447e6;
-  --fg-brand-strong: #193cb8;
-  --fg-success: #047857;
-  --fg-success-strong: #065f46;
-  --fg-danger: #be123c;
-  --fg-danger-strong: #881337;
-  --fg-warning-subtle: #ea580c;
-  --fg-warning: #7c2d12;
-  --fg-disabled: #9ca3af;
+  --fg-heading: #09090b;
+  --fg-body: #71717a;
+  --fg-body-subtle: #a1a1aa;
+  --fg-brand: #2e2e2e;
+  --fg-brand-strong: #1a1a1a;
+  --fg-success: #16a34a;
+  --fg-success-strong: #15803d;
+  --fg-danger: #dc2626;
+  --fg-danger-strong: #b91c1c;
+  --fg-warning-subtle: #d97706;
+  --fg-warning: #92400e;
+  --fg-disabled: #a1a1aa;
 
   /* ── Bordures ──────────────────────────────────────────────────────── */
-  --border-default: #e5e7eb;
-  --border-default-medium: #e5e7eb;
-  --border-default-strong: #e5e7eb;
+  --border-default: #e4e4e7;
+  --border-default-medium: #e4e4e7;
+  --border-default-strong: #d4d4d8;
   --border-buffer: #ffffff;
-  --border-brand: #1447e6;
-  --border-brand-subtle: #bedbff;
-  --border-success-subtle: #a7f3d0;
-  --border-danger-subtle: #fecdd3;
-  --border-warning-subtle: #fed7aa;
+  --border-brand: #2e2e2e;
+  --border-brand-subtle: #d4d4d4;
+  --border-success-subtle: #bbf7d0;
+  --border-danger-subtle: #fecaca;
+  --border-warning-subtle: #fde68a;
 
   /* ── Ombres ────────────────────────────────────────────────────────── */
   --shadow-2xs: 0 1px rgb(0 0 0 / 0.05);
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.08);
 
   /* ── Rayons ────────────────────────────────────────────────────────── */
   --radius-sm: 4px;
+  --radius-default: 6px;
   --radius-base: 8px;
   --radius-full: 9999px;
 
-  /* ── Glint boutons ─────────────────────────────────────────────────── */
-  --color-1-400: rgba(255, 255, 255, 0.25);
-  --color-1-700: rgba(0, 0, 0, 0.12);
+  /* ── Glint boutons (subtil) ────────────────────────────────────────── */
+  --color-1-400: rgba(255, 255, 255, 0.06);
+  --color-1-700: rgba(0, 0, 0, 0.04);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --neutral-primary-soft: #101828;
-    --neutral-primary: #030712;
-    --neutral-primary-medium: #1e2939;
-    --neutral-secondary-soft: #101828;
-    --neutral-secondary-medium: #1e2939;
-    --neutral-tertiary-soft: #101828;
-    --neutral-tertiary: #1e2939;
-    --neutral-tertiary-medium: #333e4f;
-    --neutral-quaternary: #333e4f;
-    --gray: #4a5565;
+    --neutral-primary-soft: #09090b;
+    --neutral-primary: #09090b;
+    --neutral-primary-medium: #18181b;
+    --neutral-secondary-soft: #09090b;
+    --neutral-secondary-medium: #18181b;
+    --neutral-secondary-strong: #27272a;
+    --neutral-tertiary-soft: #09090b;
+    --neutral-tertiary: #18181b;
+    --neutral-tertiary-medium: #27272a;
+    --neutral-quaternary: #27272a;
+    --gray: #3f3f46;
 
-    --brand-softer: #162455;
-    --brand-soft: #1c398e;
-    --brand: #155dfc;
-    --brand-medium: #1c398e;
-    --brand-strong: #1447e6;
+    --brand-softer: #1a1a1a;
+    --brand-soft: #252525;
+    --brand: #d4d4d4;
+    --brand-medium: #252525;
+    --brand-strong: #2e2e2e;
 
-    --success-soft: #002c22;
-    --success: #009966;
-    --success-medium: #004f3b;
-    --success-strong: #007a55;
-    --danger-soft: #4d0218;
-    --danger-medium: #8b0836;
-    --warning-soft: #7c2d12;
-    --warning-medium: #7c2d12;
+    --success-soft: #052e16;
+    --success: #22c55e;
+    --success-medium: #14532d;
+    --success-strong: #16a34a;
+    --danger-soft: #450a0a;
+    --danger: #ef4444;
+    --danger-medium: #991b1b;
+    --danger-strong: #dc2626;
+    --warning-soft: #78350f;
+    --warning-medium: #92400e;
 
-    --dark-strong: #374151;
-    --disabled: #1f2937;
+    --dark-strong: #27272a;
+    --disabled: #18181b;
 
-    --fg-heading: #ffffff;
-    --fg-body: #9ca3af;
-    --fg-body-subtle: #9ca3af;
-    --fg-brand: #51a2ff;
-    --fg-brand-strong: #bedbff;
-    --fg-success: #065f46;
-    --fg-success-strong: #10b981;
-    --fg-danger: #f43f5e;
-    --fg-danger-strong: #f87171;
-    --fg-warning-subtle: #f97316;
-    --fg-warning: #fbbf24;
-    --fg-disabled: #6b7280;
+    --fg-heading: #fafafa;
+    --fg-body: #a1a1aa;
+    --fg-body-subtle: #71717a;
+    --fg-brand: #d4d4d4;
+    --fg-brand-strong: #e5e5e5;
+    --fg-success: #22c55e;
+    --fg-success-strong: #4ade80;
+    --fg-danger: #ef4444;
+    --fg-danger-strong: #fca5a5;
+    --fg-warning-subtle: #f59e0b;
+    --fg-warning: #fde68a;
+    --fg-disabled: #52525b;
 
-    --border-default: #1f2937;
-    --border-default-medium: #374151;
-    --border-default-strong: #4b5563;
-    --border-buffer: #030712;
-    --border-brand: #51a2ff;
-    --border-brand-subtle: #1c398e;
-    --border-success-subtle: #064e3b;
-    --border-danger-subtle: #881337;
-    --border-warning-subtle: #7c2d12;
+    --border-default: #27272a;
+    --border-default-medium: #3f3f46;
+    --border-default-strong: #52525b;
+    --border-buffer: #09090b;
+    --border-brand: #a3a3a3;
+    --border-brand-subtle: #252525;
+    --border-success-subtle: #14532d;
+    --border-danger-subtle: #991b1b;
+    --border-warning-subtle: #92400e;
 
-    --color-1-400: rgba(255, 255, 255, 0.12);
-    --color-1-700: rgba(0, 0, 0, 0.25);
+    --color-1-400: rgba(255, 255, 255, 0.04);
+    --color-1-700: rgba(0, 0, 0, 0.06);
   }
 }

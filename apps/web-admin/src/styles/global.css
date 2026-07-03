@@ -8,6 +8,11 @@ body {
   font-family: "Inter", "Cairo", system-ui, sans-serif;
 }
 
+/* Arabe : Cairo en premier pour un rendu correct des glyphes et lignes */
+html[dir="rtl"] body {
+  font-family: "Cairo", "Inter", system-ui, sans-serif;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -20,7 +25,7 @@ body {
  */
 .ant-btn:not(.ant-btn-text):not(.ant-btn-link):not(:disabled) {
   box-shadow:
-    var(--shadow-xs),
+    var(--shadow-2xs),
     inset var(--color-1-400) 0 6px 0px -5px,
     var(--color-1-700) 0 4px 10px -5px;
 }
