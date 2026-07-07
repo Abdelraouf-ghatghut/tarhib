@@ -7,6 +7,8 @@ export interface JwtPayload {
   roleId?: string;
   roleName?: string;
   scope?: 'TARHIB' | 'CLIENT';
+  /** SLA priority (P1..P5) inherited from the role — drives order slaDeadline */
+  slaPriority?: string;
   /** Resolved permission keys from the role */
   permissions: string[];
   companyId: string;

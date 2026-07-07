@@ -15,8 +15,12 @@ import {
   PurchaseOrderDto,
   PurchaseOrderLineDto,
   ReceivePurchaseOrderDto,
+  RejectPurchaseOrderDto,
 } from './dto/procurement.dto.js';
 import { InventoryService } from '../inventory/inventory.service.js';
+import { Branch } from '../branches/entities/branch.entity.js';
+import { Employee } from '../employees/entities/employee.entity.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 @Injectable()
 export class ProcurementService {
@@ -25,7 +29,12 @@ export class ProcurementService {
     private readonly poRepo: Repository<PurchaseOrder>,
     @InjectRepository(PurchaseOrderLine)
     private readonly lineRepo: Repository<PurchaseOrderLine>,
+    @InjectRepository(Branch)
+    private readonly branchRepo: Repository<Branch>,
+    @InjectRepository(Employee)
+    private readonly employeeRepo: Repository<Employee>,
     private readonly inventoryService: InventoryService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(
@@ -75,17 +84,117 @@ export class ProcurementService {
     return this.toDto(po);
   }
 
-  async send(id: string): Promise<PurchaseOrderDto> {
+  /**
+   * Soumet un bon de commande DRAFT pour validation — notifie le
+   * validateur configuré sur la branche (sans effet si aucun n'est défini,
+   * la chaîne de validation étant entièrement optionnelle).
+   */
+  async submit(id: string): Promise<PurchaseOrderDto> {
     const po = await this.poRepo.findOne({ where: { id } });
     if (!po) throw new NotFoundException(`PurchaseOrder ${id} not found`);
     if (po.status !== PurchaseOrderStatus.DRAFT) {
-      throw new BadRequestException('Only DRAFT orders can be sent');
+      throw new BadRequestException('onlyDraftOrdersCanBeSubmitted');
+    }
+    po.status = PurchaseOrderStatus.PENDING_VALIDATION;
+    const saved = await this.poRepo.save(po);
+
+    const branch = await this.branchRepo.findOne({
+      where: { id: po.branchId },
+    });
+    if (branch?.orderValidatorId) {
+      await this.notificationsService.notifyEmployee(
+        branch.orderValidatorId,
+        'Bon de commande à valider',
+        `#${po.id.slice(0, 8).toUpperCase()} en attente de votre validation`,
+      );
+    }
+    return this.toDto(saved);
+  }
+
+  /**
+   * Valide un bon de commande PENDING_VALIDATION — notifie le responsable
+   * achats configuré sur la branche pour qu'il achète et livre.
+   */
+  async validate(id: string, validatedBy: string): Promise<PurchaseOrderDto> {
+    const po = await this.poRepo.findOne({ where: { id } });
+    if (!po) throw new NotFoundException(`PurchaseOrder ${id} not found`);
+    if (po.status !== PurchaseOrderStatus.PENDING_VALIDATION) {
+      throw new BadRequestException('onlyPendingOrdersCanBeValidated');
+    }
+    po.status = PurchaseOrderStatus.VALIDATED;
+    po.validatedBy = validatedBy;
+    po.validatedAt = new Date();
+    const saved = await this.poRepo.save(po);
+
+    const branch = await this.branchRepo.findOne({
+      where: { id: po.branchId },
+    });
+    if (branch?.purchasingManagerId) {
+      await this.notificationsService.notifyEmployee(
+        branch.purchasingManagerId,
+        'Bon de commande validé — à acheter',
+        `#${po.id.slice(0, 8).toUpperCase()} validé, à acheter et livrer à la branche`,
+      );
+    }
+    return this.toDto(saved);
+  }
+
+  /**
+   * Rejette un bon de commande PENDING_VALIDATION — repart en DRAFT avec le
+   * motif, et notifie son créateur (responsable stock).
+   */
+  async reject(
+    id: string,
+    dto: RejectPurchaseOrderDto,
+    rejectedBy: string,
+  ): Promise<PurchaseOrderDto> {
+    const po = await this.poRepo.findOne({ where: { id } });
+    if (!po) throw new NotFoundException(`PurchaseOrder ${id} not found`);
+    if (po.status !== PurchaseOrderStatus.PENDING_VALIDATION) {
+      throw new BadRequestException('onlyPendingOrdersCanBeRejected');
+    }
+    po.status = PurchaseOrderStatus.DRAFT;
+    po.rejectionReason = dto.reason;
+    po.rejectedBy = rejectedBy;
+    po.rejectedAt = new Date();
+    const saved = await this.poRepo.save(po);
+
+    // createdBy porte l'identité Keycloak de l'appelant (JwtPayload.sub),
+    // pas employees.id (convention du code — cf. orders.employeeId) : on la
+    // résout ici pour retrouver le vrai employé à notifier.
+    const creator = await this.employeeRepo.findOne({
+      where: { keycloakId: po.createdBy },
+    });
+    if (creator) {
+      await this.notificationsService.notifyEmployee(
+        creator.id,
+        `Bon de commande #${po.id.slice(0, 8).toUpperCase()} rejeté`,
+        dto.reason,
+      );
+    }
+    return this.toDto(saved);
+  }
+
+  /**
+   * Achat effectif : DRAFT (chaîne non configurée) ou VALIDATED peuvent
+   * être envoyés au fournisseur.
+   */
+  async send(id: string, sentBy: string): Promise<PurchaseOrderDto> {
+    const po = await this.poRepo.findOne({ where: { id } });
+    if (!po) throw new NotFoundException(`PurchaseOrder ${id} not found`);
+    if (
+      po.status !== PurchaseOrderStatus.DRAFT &&
+      po.status !== PurchaseOrderStatus.VALIDATED
+    ) {
+      throw new BadRequestException('onlyDraftOrValidatedOrdersCanBeSent');
     }
     po.status = PurchaseOrderStatus.SENT;
+    po.sentBy = sentBy;
+    po.sentAt = new Date();
     return this.toDto(await this.poRepo.save(po));
   }
 
-  async cancel(id: string): Promise<PurchaseOrderDto> {
+  async cancel(id: string, cancelledBy: string): Promise<PurchaseOrderDto> {
     const po = await this.poRepo.findOne({ where: { id } });
     if (!po) throw new NotFoundException(`PurchaseOrder ${id} not found`);
     if (
@@ -97,6 +206,8 @@ export class ProcurementService {
       );
     }
     po.status = PurchaseOrderStatus.CANCELLED;
+    po.cancelledBy = cancelledBy;
+    po.cancelledAt = new Date();
     return this.toDto(await this.poRepo.save(po));
   }
 
@@ -108,6 +219,7 @@ export class ProcurementService {
   async receive(
     id: string,
     dto: ReceivePurchaseOrderDto,
+    receivedBy: string,
   ): Promise<PurchaseOrderDto> {
     const po = await this.poRepo.findOne({ where: { id } });
     if (!po) throw new NotFoundException(`PurchaseOrder ${id} not found`);
@@ -149,6 +261,10 @@ export class ProcurementService {
       : anyReceived
         ? PurchaseOrderStatus.PARTIALLY_RECEIVED
         : po.status;
+    if (allReceived) {
+      po.receivedBy = receivedBy;
+      po.receivedAt = new Date();
+    }
 
     const saved = await this.poRepo.save(po);
     return this.toDto(saved);
@@ -163,6 +279,17 @@ export class ProcurementService {
     dto.status = o.status;
     dto.notes = o.notes;
     dto.createdBy = o.createdBy;
+    dto.validatedBy = o.validatedBy;
+    dto.validatedAt = o.validatedAt;
+    dto.rejectionReason = o.rejectionReason;
+    dto.rejectedBy = o.rejectedBy;
+    dto.rejectedAt = o.rejectedAt;
+    dto.sentBy = o.sentBy;
+    dto.sentAt = o.sentAt;
+    dto.receivedBy = o.receivedBy;
+    dto.receivedAt = o.receivedAt;
+    dto.cancelledBy = o.cancelledBy;
+    dto.cancelledAt = o.cancelledAt;
     dto.createdAt = o.createdAt;
     dto.updatedAt = o.updatedAt;
     dto.lines = (o.lines ?? []).map((l) => {

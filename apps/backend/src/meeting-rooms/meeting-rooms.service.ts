@@ -30,7 +30,7 @@ export class MeetingRoomsService {
   async createRoom(dto: CreateMeetingRoomDto): Promise<MeetingRoomDto> {
     const room = this.roomRepo.create({
       nameAr: dto.nameAr,
-      nameEn: dto.nameEn,
+      nameEn: dto.nameEn?.trim() || dto.nameAr,
       branchId: dto.branchId,
       companyId: dto.companyId,
       capacity: dto.capacity ?? 10,
@@ -82,12 +82,11 @@ export class MeetingRoomsService {
     const room = await this.roomRepo.findOne({ where: { id: roomId } });
     if (!room) throw new NotFoundException(`Room ${roomId} not found`);
     if (room.companyId !== caller.companyId)
-      throw new ForbiddenException('Cross-tenant access denied');
+      throw new ForbiddenException('crossTenantAccessDenied');
 
     const start = new Date(dto.startTime);
     const end = new Date(dto.endTime);
-    if (start >= end)
-      throw new BadRequestException('startTime must be before endTime');
+    if (start >= end) throw new BadRequestException('startTimeBeforeEndTime');
 
     const conflict = await this.bookingRepo.findOne({
       where: {
@@ -97,8 +96,7 @@ export class MeetingRoomsService {
         endTime: MoreThan(start),
       },
     });
-    if (conflict)
-      throw new BadRequestException('Room already booked for this time slot');
+    if (conflict) throw new BadRequestException('roomAlreadyBooked');
 
     const booking = this.bookingRepo.create({
       roomId,
@@ -129,7 +127,7 @@ export class MeetingRoomsService {
       booking.employeeId !== caller.sub &&
       !caller.permissions?.includes('meeting.manage')
     ) {
-      throw new ForbiddenException('You can only cancel your own bookings');
+      throw new ForbiddenException('canOnlyCancelOwnBookings');
     }
     booking.status = BookingStatus.CANCELLED;
     await this.bookingRepo.save(booking);
@@ -148,7 +146,7 @@ export class MeetingRoomsService {
       booking.employeeId !== caller.sub &&
       !caller.permissions?.includes('meeting.manage')
     ) {
-      throw new ForbiddenException('Permission denied');
+      throw new ForbiddenException('permissionDenied');
     }
     if (booking.status !== BookingStatus.CONFIRMED) {
       throw new BadRequestException(

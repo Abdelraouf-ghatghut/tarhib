@@ -9,9 +9,12 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import {
+  ExecutiveReport,
+  InventoryDetailReport,
   InventoryReport,
   MeetingRoomsReport,
   OrdersReport,
+  PurchasingReport,
   ReportingService,
   SlaReport,
   UserActivityReport,
@@ -130,5 +133,92 @@ export class ReportingController {
   ): Promise<MeetingRoomsReport> {
     const companyId = req.user?.companyId || qCompanyId || '';
     return this.reportingService.getMeetingRoomsReport(companyId, { from, to });
+  }
+
+  @Get('purchasing')
+  @ApiOperation({
+    summary:
+      'Rapport financier achats : dépenses par produit et par fournisseur (achats Tarhib, companyId/branchId = lieu de livraison, filtre optionnel)',
+  })
+  @ApiQuery({ name: 'companyId', required: false })
+  @ApiQuery({ name: 'branchId', required: false })
+  @ApiQuery({ name: 'supplierId', required: false })
+  @ApiQuery({ name: 'productId', required: false })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  getPurchasingReport(
+    @Query('companyId') companyId?: string,
+    @Query('branchId') branchId?: string,
+    @Query('supplierId') supplierId?: string,
+    @Query('productId') productId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<PurchasingReport> {
+    return this.reportingService.getPurchasingReport({
+      companyId,
+      branchId,
+      supplierId,
+      productId,
+      from,
+      to,
+    });
+  }
+
+  @Get('inventory-detail')
+  @ApiOperation({
+    summary:
+      'Rapport détaillé stock : quantité et valeur par produit, par produit+branche, et détail par emplacement',
+  })
+  @ApiQuery({ name: 'companyId', required: false })
+  @ApiQuery({ name: 'branchId', required: false })
+  @ApiQuery({ name: 'productId', required: false })
+  @ApiQuery({ name: 'zone', required: false })
+  @ApiQuery({ name: 'belowThresholdOnly', required: false })
+  getInventoryDetailReport(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('companyId') qCompanyId?: string,
+    @Query('branchId') branchId?: string,
+    @Query('productId') productId?: string,
+    @Query('zone') zone?: string,
+    @Query('belowThresholdOnly') belowThresholdOnly?: string,
+  ): Promise<InventoryDetailReport> {
+    const companyId = req.user?.companyId || qCompanyId || '';
+    return this.reportingService.getInventoryDetailReport({
+      companyId,
+      branchId,
+      productId,
+      zone,
+      belowThresholdOnly: belowThresholdOnly === 'true',
+    });
+  }
+
+  @Get('executive')
+  @ApiOperation({
+    summary:
+      'Vue exécutive : KPI et tendances globales (sociétés, commandes, SLA, stock, achats) — vue interne Tarhib, société/branche facultatives',
+  })
+  @ApiQuery({ name: 'companyId', required: false })
+  @ApiQuery({ name: 'branchId', required: false })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  @ApiQuery({
+    name: 'granularity',
+    required: false,
+    enum: ['day', 'week', 'month', 'year'],
+  })
+  getExecutiveReport(
+    @Query('companyId') companyId?: string,
+    @Query('branchId') branchId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('granularity') granularity?: 'day' | 'week' | 'month' | 'year',
+  ): Promise<ExecutiveReport> {
+    return this.reportingService.getExecutiveReport({
+      companyId,
+      branchId,
+      from,
+      to,
+      granularity,
+    });
   }
 }

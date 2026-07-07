@@ -29,9 +29,7 @@ export class InventoryTransfersService {
     requestedBy: string,
   ): Promise<InventoryTransferDto> {
     if (dto.fromZone === dto.toZone) {
-      throw new BadRequestException(
-        'fromZone et toZone doivent être différents',
-      );
+      throw new BadRequestException('transferZonesMustDiffer');
     }
 
     const source = await this.inventoryRepo.findOne({
@@ -144,7 +142,7 @@ export class InventoryTransfersService {
     return this.toDto(saved);
   }
 
-  async cancel(id: string): Promise<InventoryTransferDto> {
+  async cancel(id: string, cancelledBy: string): Promise<InventoryTransferDto> {
     const transfer = await this.repo.findOne({ where: { id } });
     if (!transfer) throw new NotFoundException(`Transfer ${id} introuvable`);
     if (transfer.status !== TransferStatus.PENDING) {
@@ -153,6 +151,8 @@ export class InventoryTransfersService {
       );
     }
     transfer.status = TransferStatus.CANCELLED;
+    transfer.cancelledBy = cancelledBy;
+    transfer.cancelledAt = new Date();
     const saved = await this.repo.save(transfer);
     return this.toDto(saved);
   }
@@ -172,6 +172,8 @@ export class InventoryTransfersService {
     dto.note = e.note;
     dto.createdAt = e.createdAt;
     dto.confirmedAt = e.confirmedAt;
+    dto.cancelledBy = e.cancelledBy;
+    dto.cancelledAt = e.cancelledAt;
     return dto;
   }
 }

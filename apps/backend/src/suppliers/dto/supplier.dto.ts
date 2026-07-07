@@ -1,12 +1,19 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 
 export class SupplierDto {
   @ApiProperty()
   id!: string;
-
-  @ApiProperty()
-  companyId!: string;
 
   @ApiProperty()
   nameAr!: string;
@@ -32,18 +39,14 @@ export class SupplierDto {
 
 export class CreateSupplierDto {
   @ApiProperty()
-  @IsUUID()
-  companyId!: string;
-
-  @ApiProperty()
   @IsString()
   @MinLength(2)
   nameAr!: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({ description: "Anglais optionnel — repli sur l'arabe" })
   @IsString()
-  @MinLength(2)
-  nameEn!: string;
+  @IsOptional()
+  nameEn?: string;
 
   @ApiProperty({ required: false })
   @IsString()
@@ -64,4 +67,37 @@ export class CreateSupplierDto {
   @IsString()
   @IsOptional()
   address?: string;
+}
+
+export class ProductPriceInputDto {
+  @ApiProperty()
+  @IsUUID()
+  productId!: string;
+
+  @ApiProperty({ example: 12.5 })
+  @IsNumber()
+  @Min(0)
+  unitCost!: number;
+}
+
+export class ProductPriceDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  supplierId!: string;
+
+  @ApiProperty()
+  productId!: string;
+
+  @ApiProperty()
+  unitCost!: number;
+}
+
+export class SetProductPricesDto {
+  @ApiProperty({ type: [ProductPriceInputDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductPriceInputDto)
+  prices!: ProductPriceInputDto[];
 }

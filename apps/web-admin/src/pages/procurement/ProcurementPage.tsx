@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Table,
   Button,
+  Card,
   Space,
   Modal,
   Form,
@@ -15,6 +16,7 @@ import {
   message,
   Descriptions,
   Divider,
+  Grid,
 } from "antd";
 import {
   PlusOutlined,
@@ -22,13 +24,31 @@ import {
   InboxOutlined,
   StopOutlined,
   EyeOutlined,
+  CheckOutlined,
+  CloseOutlined,
 } from "@ant-design/icons";
-import { procurementApi, productsAdminApi, suppliersApi } from "../../lib/api";
-import { useScope } from "../../contexts/ScopeContext";
+import {
+  procurementApi,
+  productsAdminApi,
+  suppliersApi,
+  companiesApi,
+  branchesApi,
+  employeesApi,
+} from "../../lib/api";
+import { getErrorMessage } from "../../lib/errors";
+import { bilingualName } from "../../lib/bilingualName";
+import { StatusStepper } from "../../components/StatusStepper";
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
-type PoStatus = "DRAFT" | "SENT" | "PARTIALLY_RECEIVED" | "RECEIVED" | "CANCELLED";
+type PoStatus =
+  | "DRAFT"
+  | "PENDING_VALIDATION"
+  | "VALIDATED"
+  | "SENT"
+  | "PARTIALLY_RECEIVED"
+  | "RECEIVED"
+  | "CANCELLED";
 
 interface PoLine {
   id: string;
@@ -47,6 +67,17 @@ interface Po {
   status: PoStatus;
   notes: string | null;
   createdBy: string;
+  validatedBy: string | null;
+  validatedAt: string | null;
+  rejectionReason: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  sentBy: string | null;
+  sentAt: string | null;
+  receivedBy: string | null;
+  receivedAt: string | null;
+  cancelledBy: string | null;
+  cancelledAt: string | null;
   lines: PoLine[];
   createdAt: string;
 }
@@ -64,33 +95,70 @@ interface Supplier {
   nameEn: string;
 }
 
+interface NamedEntity {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+}
+
+interface Employee {
+  id: string;
+  firstNameAr: string;
+  lastNameAr: string;
+  firstNameEn: string;
+  lastNameEn: string;
+  email: string;
+  keycloakId?: string | null;
+}
+
 const STATUS_COLOR: Record<PoStatus, string> = {
   DRAFT: "default",
+  PENDING_VALIDATION: "gold",
+  VALIDATED: "cyan",
   SENT: "blue",
   PARTIALLY_RECEIVED: "orange",
   RECEIVED: "green",
   CANCELLED: "red",
 };
 
+const ALL_STATUSES: PoStatus[] = [
+  "DRAFT",
+  "PENDING_VALIDATION",
+  "VALIDATED",
+  "SENT",
+  "PARTIALLY_RECEIVED",
+  "RECEIVED",
+  "CANCELLED",
+];
+
 export default function ProcurementPage() {
   const { t, i18n } = useTranslation();
   const isRtl = i18n.dir() === "rtl";
-  const { selectedCompany, selectedBranch } = useScope();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.sm;
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
   const [createOpen, setCreateOpen] = useState(false);
   const [detailPo, setDetailPo] = useState<Po | null>(null);
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectForm] = Form.useForm();
   const [statusFilter, setStatusFilter] = useState<PoStatus | undefined>();
+  const [filterCompanyId, setFilterCompanyId] = useState<string | undefined>();
+  const [filterBranchId, setFilterBranchId] = useState<string | undefined>();
 
+  // Les achats sont des achats Tarhib (pas ceux d'une société cliente) —
+  // livrés à un lieu (société + branche) choisi par commande, jamais filtrés
+  // par la société actuellement sélectionnée dans la barre de navigation.
+  // Le filtre lieu de livraison ci-dessous est local à cette page.
   const { data: orders = [], isLoading } = useQuery<Po[]>({
-    queryKey: ["procurement", selectedCompany, selectedBranch, statusFilter],
+    queryKey: ["procurement", statusFilter, filterCompanyId, filterBranchId],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (selectedCompany) params.companyId = selectedCompany;
-      if (selectedBranch) params.branchId = selectedBranch;
       if (statusFilter) params.status = statusFilter;
+      if (filterCompanyId) params.companyId = filterCompanyId;
+      if (filterBranchId) params.branchId = filterBranchId;
       const res = await procurementApi.list(params);
       return res.data as Po[];
     },
@@ -104,28 +172,114 @@ export default function ProcurementPage() {
     },
   });
 
+  // Fournisseurs : ressource Tarhib globale, non liée à une société cliente.
   const { data: suppliers = [] } = useQuery<Supplier[]>({
-    queryKey: ["suppliers", selectedCompany],
+    queryKey: ["suppliers"],
     queryFn: async () => {
-      const res = await suppliersApi.list(selectedCompany ?? undefined);
+      const res = await suppliersApi.list();
       return res.data as Supplier[];
     },
   });
 
+  const { data: companies = [] } = useQuery<NamedEntity[]>({
+    queryKey: ["companies"],
+    queryFn: () => companiesApi.list().then((r) => r.data as NamedEntity[]),
+  });
+
+  const { data: allBranches = [] } = useQuery<NamedEntity[]>({
+    queryKey: ["branches"],
+    queryFn: () => branchesApi.list().then((r) => r.data as NamedEntity[]),
+  });
+
+  const { data: employees = [] } = useQuery<Employee[]>({
+    queryKey: ["employees"],
+    queryFn: () => employeesApi.list().then((r) => r.data as Employee[]),
+  });
+
+  // Branches proposées par le filtre lieu de livraison — limitées à la
+  // société choisie dans ce même filtre.
+  const { data: filterBranches = [] } = useQuery<NamedEntity[]>({
+    queryKey: ["branches", filterCompanyId],
+    queryFn: () => branchesApi.list(filterCompanyId).then((r) => r.data as NamedEntity[]),
+    enabled: !!filterCompanyId,
+  });
+
+  // Lieu de livraison choisi dans le formulaire de création — la liste des
+  // branches proposées se limite à celles de la société choisie.
+  const watchedDeliveryCompanyId = Form.useWatch("companyId", form) as string | undefined;
+  const { data: deliveryBranches = [] } = useQuery<NamedEntity[]>({
+    queryKey: ["branches", watchedDeliveryCompanyId],
+    queryFn: () => branchesApi.list(watchedDeliveryCompanyId).then((r) => r.data as NamedEntity[]),
+    enabled: !!watchedDeliveryCompanyId,
+  });
+
+  // Prix produits du fournisseur choisi dans le formulaire — chargés une
+  // seule fois par changement de fournisseur, puis consultés ligne par
+  // ligne (évite un fetch par ligne à chaque sélection de produit).
+  const watchedSupplierId = Form.useWatch("supplierId", form) as string | undefined;
+  const { data: supplierPrices = [] } = useQuery({
+    queryKey: ["supplier-product-prices", watchedSupplierId],
+    queryFn: async () => {
+      const res = await suppliersApi.productPrices(watchedSupplierId as string);
+      return res.data as Array<{ productId: string; unitCost: number }>;
+    },
+    enabled: !!watchedSupplierId,
+  });
+
+  // Pré-remplit le coût unitaire d'une ligne dès que produit + fournisseur
+  // sont connus : prix spécifique au fournisseur en priorité, sinon coût
+  // interne par défaut du produit.
+  function fillLineUnitCost(lineIndex: number, productId: string) {
+    const bySupplier = supplierPrices.find((p) => p.productId === productId)?.unitCost;
+    const unitCost = bySupplier ?? products.find((p) => p.id === productId)?.unitCost ?? null;
+    if (unitCost != null) {
+      const lines = form.getFieldValue("lines") as Array<Record<string, unknown>>;
+      lines[lineIndex] = { ...lines[lineIndex], unitCost };
+      form.setFieldValue("lines", lines);
+    }
+  }
+
   const createPo = useMutation({
-    mutationFn: (v: Record<string, unknown>) =>
-      procurementApi.create({
-        ...v,
-        companyId: selectedCompany,
-        branchId: selectedBranch,
-      }),
+    mutationFn: (v: Record<string, unknown>) => procurementApi.create(v),
     onSuccess: () => {
       message.success(t("poCreated"));
       queryClient.invalidateQueries({ queryKey: ["procurement"] });
       setCreateOpen(false);
       form.resetFields();
     },
-    onError: () => message.error(t("errorOccurred")),
+    onError: (err) => message.error(getErrorMessage(err, t)),
+  });
+
+  const submitPo = useMutation({
+    mutationFn: (id: string) => procurementApi.submit(id),
+    onSuccess: () => {
+      message.success(t("poSubmitted"));
+      queryClient.invalidateQueries({ queryKey: ["procurement"] });
+      setDetailPo(null);
+    },
+    onError: (err) => message.error(getErrorMessage(err, t)),
+  });
+
+  const validatePo = useMutation({
+    mutationFn: (id: string) => procurementApi.validate(id),
+    onSuccess: () => {
+      message.success(t("poValidated"));
+      queryClient.invalidateQueries({ queryKey: ["procurement"] });
+      setDetailPo(null);
+    },
+    onError: (err) => message.error(getErrorMessage(err, t)),
+  });
+
+  const rejectPo = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      procurementApi.reject(id, reason),
+    onSuccess: () => {
+      message.success(t("poRejected"));
+      queryClient.invalidateQueries({ queryKey: ["procurement"] });
+      setRejectOpen(false);
+      setDetailPo(null);
+    },
+    onError: (err) => message.error(getErrorMessage(err, t)),
   });
 
   const sendPo = useMutation({
@@ -135,7 +289,7 @@ export default function ProcurementPage() {
       queryClient.invalidateQueries({ queryKey: ["procurement"] });
       setDetailPo(null);
     },
-    onError: () => message.error(t("errorOccurred")),
+    onError: (err) => message.error(getErrorMessage(err, t)),
   });
 
   const cancelPo = useMutation({
@@ -145,7 +299,7 @@ export default function ProcurementPage() {
       queryClient.invalidateQueries({ queryKey: ["procurement"] });
       setDetailPo(null);
     },
-    onError: () => message.error(t("errorOccurred")),
+    onError: (err) => message.error(getErrorMessage(err, t)),
   });
 
   const receivePo = useMutation({
@@ -157,17 +311,38 @@ export default function ProcurementPage() {
       setReceiveOpen(false);
       setDetailPo(null);
     },
-    onError: () => message.error(t("errorOccurred")),
+    onError: (err) => message.error(getErrorMessage(err, t)),
   });
+
+  // createdBy/validatedBy/sentBy/receivedBy/cancelledBy/rejectedBy portent
+  // l'identité Keycloak de l'appelant (JwtPayload.sub), pas employees.id.
+  const employeeName = (id: string | null) => {
+    if (!id) return null;
+    const e = employees.find((x) => x.keycloakId === id);
+    if (!e) return id.slice(0, 8);
+    return isRtl
+      ? `${e.firstNameAr} ${e.lastNameAr}`.trim()
+      : `${e.firstNameEn} ${e.lastNameEn}`.trim() || e.email;
+  };
 
   const getProductName = (id: string) => {
     const p = products.find((pr) => pr.id === id);
-    return isRtl ? (p?.nameAr ?? id) : (p?.nameEn ?? id);
+    return p ? bilingualName(p.nameAr, p.nameEn, isRtl) : id;
   };
 
   const getSupplierName = (id: string) => {
     const s = suppliers.find((su) => su.id === id);
-    return isRtl ? (s?.nameAr ?? id) : (s?.nameEn ?? id);
+    return s ? bilingualName(s.nameAr, s.nameEn, isRtl) : id;
+  };
+
+  const getCompanyName = (id: string) => {
+    const c = companies.find((co) => co.id === id);
+    return c ? bilingualName(c.nameAr, c.nameEn, isRtl) : id;
+  };
+
+  const getBranchName = (id: string) => {
+    const b = allBranches.find((br) => br.id === id);
+    return b ? bilingualName(b.nameAr, b.nameEn, isRtl) : id;
   };
 
   const columns = [
@@ -176,6 +351,12 @@ export default function ProcurementPage() {
       dataIndex: "supplierId",
       key: "supplierId",
       render: (id: string) => getSupplierName(id),
+    },
+    {
+      title: t("deliveryLocation"),
+      key: "deliveryLocation",
+      render: (_: unknown, r: Po) =>
+        `${getCompanyName(r.companyId)} — ${getBranchName(r.branchId)}`,
     },
     {
       title: t("status"),
@@ -192,7 +373,7 @@ export default function ProcurementPage() {
       title: t("date"),
       dataIndex: "createdAt",
       key: "createdAt",
-      render: (d: string) => new Date(d).toLocaleDateString(),
+      render: (d: string) => new Date(d).toLocaleDateString(isRtl ? "ar" : "en-GB"),
     },
     {
       title: t("actions"),
@@ -229,20 +410,50 @@ export default function ProcurementPage() {
       <div
         style={{
           display: "flex",
+          flexWrap: "wrap",
           justifyContent: "space-between",
           alignItems: "center",
+          gap: 12,
           marginBottom: 16,
         }}
       >
-        <Title level={3}>{t("procurement")}</Title>
-        <Space>
+        <Title level={3} style={{ margin: 0 }}>
+          {t("procurement")}
+        </Title>
+        <Space wrap>
+          <Select
+            allowClear
+            placeholder={t("company")}
+            style={{ width: 180 }}
+            value={filterCompanyId}
+            onChange={(v: string | undefined) => {
+              setFilterCompanyId(v);
+              setFilterBranchId(undefined);
+            }}
+            options={companies.map((c) => ({
+              value: c.id,
+              label: bilingualName(c.nameAr, c.nameEn, isRtl),
+            }))}
+          />
+          <Select
+            allowClear
+            disabled={!filterCompanyId}
+            placeholder={t("branch")}
+            style={{ width: 180 }}
+            value={filterBranchId}
+            onChange={(v: string | undefined) => setFilterBranchId(v)}
+            options={filterBranches.map((b) => ({
+              value: b.id,
+              label: bilingualName(b.nameAr, b.nameEn, isRtl),
+            }))}
+          />
           <Select
             allowClear
             placeholder={t("filterByStatus")}
             style={{ width: 200 }}
             value={statusFilter}
             onChange={(v) => setStatusFilter(v as PoStatus | undefined)}
-            options={["DRAFT", "SENT", "PARTIALLY_RECEIVED", "RECEIVED", "CANCELLED"].map((s) => ({
+            options={ALL_STATUSES.map((s) => ({
               value: s,
               label: t(`poStatus_${s}`),
             }))}
@@ -259,6 +470,7 @@ export default function ProcurementPage() {
         columns={columns}
         loading={isLoading}
         pagination={{ pageSize: 20 }}
+        scroll={{ x: "max-content" }}
       />
 
       {/* Detail modal */}
@@ -268,8 +480,49 @@ export default function ProcurementPage() {
         onCancel={() => setDetailPo(null)}
         footer={
           detailPo && (
-            <Space>
+            <Space wrap style={{ justifyContent: "flex-end", width: "100%" }}>
               {detailPo.status === "DRAFT" && (
+                <>
+                  <Button
+                    type="primary"
+                    icon={<CheckOutlined />}
+                    loading={submitPo.isPending}
+                    onClick={() => submitPo.mutate(detailPo.id)}
+                  >
+                    {t("submitForValidation")}
+                  </Button>
+                  <Button
+                    icon={<SendOutlined />}
+                    loading={sendPo.isPending}
+                    onClick={() => sendPo.mutate(detailPo.id)}
+                  >
+                    {t("sendDirectly")}
+                  </Button>
+                </>
+              )}
+              {detailPo.status === "PENDING_VALIDATION" && (
+                <>
+                  <Button
+                    type="primary"
+                    icon={<CheckOutlined />}
+                    loading={validatePo.isPending}
+                    onClick={() => validatePo.mutate(detailPo.id)}
+                  >
+                    {t("validate")}
+                  </Button>
+                  <Button
+                    danger
+                    icon={<CloseOutlined />}
+                    onClick={() => {
+                      rejectForm.resetFields();
+                      setRejectOpen(true);
+                    }}
+                  >
+                    {t("reject")}
+                  </Button>
+                </>
+              )}
+              {detailPo.status === "VALIDATED" && (
                 <Button
                   type="primary"
                   icon={<SendOutlined />}
@@ -305,36 +558,148 @@ export default function ProcurementPage() {
           )
         }
         width={720}
+        style={{ maxWidth: "calc(100vw - 24px)" }}
         destroyOnClose
       >
         {detailPo && (
           <>
-            <Descriptions size="small" bordered column={2}>
+            <Descriptions size="small" bordered column={{ xs: 1, sm: 2 }}>
               <Descriptions.Item label={t("supplier")}>
                 {getSupplierName(detailPo.supplierId)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t("deliveryLocation")}>
+                {getCompanyName(detailPo.companyId)} — {getBranchName(detailPo.branchId)}
               </Descriptions.Item>
               <Descriptions.Item label={t("status")}>
                 <Tag color={STATUS_COLOR[detailPo.status]}>{t(`poStatus_${detailPo.status}`)}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label={t("date")}>
-                {new Date(detailPo.createdAt).toLocaleString()}
+                {new Date(detailPo.createdAt).toLocaleString(isRtl ? "ar" : "en-GB")}
               </Descriptions.Item>
               {detailPo.notes && (
                 <Descriptions.Item label={t("notes")} span={2}>
                   {detailPo.notes}
                 </Descriptions.Item>
               )}
+              {detailPo.rejectionReason && (
+                <Descriptions.Item label={t("rejectionReason")} span={2}>
+                  <Text type="danger">{detailPo.rejectionReason}</Text>
+                </Descriptions.Item>
+              )}
             </Descriptions>
             <Divider />
-            <Table
-              rowKey="id"
-              dataSource={detailPo.lines}
-              columns={linesColumns}
-              pagination={false}
-              size="small"
+            {isMobile ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {detailPo.lines.map((l) => (
+                  <Card key={l.id} size="small">
+                    <Text strong style={{ display: "block", marginBlockEnd: 6 }}>
+                      {getProductName(l.productId)}
+                    </Text>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <Text type="secondary">{t("orderedQty")}</Text>
+                      <Text>{l.orderedQty}</Text>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <Text type="secondary">{t("receivedQty")}</Text>
+                      <Text>{l.receivedQty}</Text>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <Text type="secondary">{t("unitCost")}</Text>
+                      <Text>{l.unitCost != null ? l.unitCost : "—"}</Text>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Table
+                rowKey="id"
+                dataSource={detailPo.lines}
+                columns={linesColumns}
+                pagination={false}
+                size="small"
+                scroll={{ x: "max-content" }}
+              />
+            )}
+
+            <Typography.Title level={5} style={{ marginBlockStart: 20, marginBlockEnd: 8 }}>
+              {t("statusHistory")}
+            </Typography.Title>
+            <StatusStepper
+              steps={[
+                {
+                  key: "created",
+                  label: t("poCreated"),
+                  at: detailPo.createdAt,
+                  actor: employeeName(detailPo.createdBy),
+                },
+                ...(detailPo.rejectedAt
+                  ? [
+                      {
+                        key: "rejected",
+                        label: t("poRejected"),
+                        at: detailPo.rejectedAt,
+                        actor: employeeName(detailPo.rejectedBy),
+                        isTerminalNegative: true,
+                      },
+                    ]
+                  : [
+                      {
+                        key: "validated",
+                        label: t("poValidated"),
+                        at: detailPo.validatedAt,
+                        actor: employeeName(detailPo.validatedBy),
+                      },
+                    ]),
+                {
+                  key: "sent",
+                  label: t("poSent"),
+                  at: detailPo.sentAt,
+                  actor: employeeName(detailPo.sentBy),
+                },
+                {
+                  key: "received",
+                  label: t("poReceived"),
+                  at: detailPo.receivedAt,
+                  actor: employeeName(detailPo.receivedBy),
+                },
+                ...(detailPo.cancelledAt
+                  ? [
+                      {
+                        key: "cancelled",
+                        label: t("poCancelled"),
+                        at: detailPo.cancelledAt,
+                        actor: employeeName(detailPo.cancelledBy),
+                        isTerminalNegative: true,
+                      },
+                    ]
+                  : []),
+              ]}
             />
           </>
         )}
+      </Modal>
+
+      {/* Reject modal */}
+      <Modal
+        open={rejectOpen}
+        title={t("rejectPo")}
+        onCancel={() => setRejectOpen(false)}
+        onOk={() => rejectForm.submit()}
+        confirmLoading={rejectPo.isPending}
+        destroyOnClose
+      >
+        <Form
+          form={rejectForm}
+          layout="vertical"
+          onFinish={(v: { reason: string }) => {
+            if (!detailPo) return;
+            rejectPo.mutate({ id: detailPo.id, reason: v.reason });
+          }}
+        >
+          <Form.Item name="reason" label={t("rejectionReason")} rules={[{ required: true }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* Receive modal */}
@@ -388,13 +753,38 @@ export default function ProcurementPage() {
           layout="vertical"
           onFinish={(v) => createPo.mutate(v as Record<string, unknown>)}
         >
+          <Divider>{t("deliveryLocation")}</Divider>
+          <Form.Item name="companyId" label={t("company")} rules={[{ required: true }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={companies.map((c) => ({
+                value: c.id,
+                label: bilingualName(c.nameAr, c.nameEn, isRtl),
+              }))}
+              onChange={() => form.setFieldValue("branchId", undefined)}
+            />
+          </Form.Item>
+          <Form.Item name="branchId" label={t("branch")} rules={[{ required: true }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              disabled={!watchedDeliveryCompanyId}
+              placeholder={!watchedDeliveryCompanyId ? t("noCompanySelected") : undefined}
+              options={deliveryBranches.map((b) => ({
+                value: b.id,
+                label: bilingualName(b.nameAr, b.nameEn, isRtl),
+              }))}
+            />
+          </Form.Item>
+          <Divider>{t("supplier")}</Divider>
           <Form.Item name="supplierId" label={t("supplier")} rules={[{ required: true }]}>
             <Select
               showSearch
               optionFilterProp="label"
               options={suppliers.map((s) => ({
                 value: s.id,
-                label: isRtl ? s.nameAr : s.nameEn,
+                label: bilingualName(s.nameAr, s.nameEn, isRtl),
               }))}
             />
           </Form.Item>
@@ -406,7 +796,7 @@ export default function ProcurementPage() {
             {(fields, { add, remove }) => (
               <>
                 {fields.map(({ key, name }) => (
-                  <Space key={key} align="start" style={{ width: "100%", display: "flex" }}>
+                  <Space key={key} wrap align="start" style={{ width: "100%" }}>
                     <Form.Item
                       name={[name, "productId"]}
                       rules={[{ required: true }]}
@@ -418,9 +808,10 @@ export default function ProcurementPage() {
                         placeholder={t("product")}
                         options={products.map((p) => ({
                           value: p.id,
-                          label: isRtl ? p.nameAr : p.nameEn,
+                          label: bilingualName(p.nameAr, p.nameEn, isRtl),
                         }))}
                         style={{ minWidth: 200 }}
+                        onChange={(productId: string) => fillLineUnitCost(name, productId)}
                       />
                     </Form.Item>
                     <Form.Item

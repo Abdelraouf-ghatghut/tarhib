@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Quota } from './entities/quota.entity.js';
-import { CreateQuotaDto, QuotaDto } from './dto/quota.dto.js';
+import { CreateQuotaDto, QuotaDto, UpdateQuotaDto } from './dto/quota.dto.js';
 
 @Injectable()
 export class QuotasService {
@@ -37,6 +37,17 @@ export class QuotasService {
     const entity = await this.repo.findOne({ where: { id } });
     if (!entity) throw new NotFoundException(`Quota ${id} not found`);
     return this.toDto(entity);
+  }
+
+  async update(id: string, dto: UpdateQuotaDto): Promise<QuotaDto> {
+    const entity = await this.repo.findOne({ where: { id } });
+    if (!entity) throw new NotFoundException(`Quota ${id} not found`);
+    if (dto.productId !== undefined) entity.productId = dto.productId;
+    if (dto.periodStart !== undefined) entity.periodStart = dto.periodStart;
+    if (dto.periodEnd !== undefined) entity.periodEnd = dto.periodEnd;
+    if (dto.maxQuantity !== undefined) entity.maxQuantity = dto.maxQuantity;
+    const saved = await this.repo.save(entity);
+    return this.toDto(saved);
   }
 
   async incrementUsed(

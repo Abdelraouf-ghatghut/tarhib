@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { EnrichUserInterceptor } from './auth/interceptors/enrich-user.interceptor.js';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
+import { PermissionsGuard } from './auth/guards/permissions.guard.js';
 import { Employee } from './employees/entities/employee.entity.js';
 import { Role } from './roles/entities/role.entity.js';
 
@@ -31,6 +33,7 @@ import { SuppliersModule } from './suppliers/suppliers.module';
 import { ProcurementModule } from './procurement/procurement.module';
 import { KitchenModule } from './kitchen/kitchen.module';
 import { AuditModule } from './audit/audit.module';
+import { PrioritySlaModule } from './priority-sla/priority-sla.module.js';
 
 @Module({
   imports: [
@@ -49,7 +52,10 @@ import { AuditModule } from './audit/audit.module';
           type: 'postgres',
           url: databaseUrl,
           autoLoadEntities: true,
-          synchronize: true,
+          // Schéma piloté exclusivement par les migrations versionnées (CLAUDE.md §5).
+          // synchronize:true réécrivait des colonnes au boot (ex. orders.priority)
+          // et crashait l'app — interdit.
+          synchronize: false,
           logging: false,
         };
       },
@@ -79,10 +85,23 @@ import { AuditModule } from './audit/audit.module';
     ProcurementModule,
     KitchenModule,
     AuditModule,
+    PrioritySlaModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    // Contrôle d'autorisation par défaut sur TOUTE l'API : chaque route exige
+    // un JWT valide sauf marquage explicite @Public(), puis les permissions
+    // @RequirePermission sont vérifiées. Les @UseGuards posés au niveau des
+    // contrôleurs restent en défense en profondeur.
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: EnrichUserInterceptor,

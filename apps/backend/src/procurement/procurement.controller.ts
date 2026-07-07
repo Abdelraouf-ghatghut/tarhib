@@ -23,6 +23,7 @@ import {
   CreatePurchaseOrderDto,
   PurchaseOrderDto,
   ReceivePurchaseOrderDto,
+  RejectPurchaseOrderDto,
 } from './dto/procurement.dto.js';
 import { PurchaseOrderStatus } from './entities/purchase-order.entity.js';
 
@@ -63,18 +64,59 @@ export class ProcurementController {
     return this.service.findOne(id);
   }
 
-  @Patch(':id/send')
-  @ApiOperation({ summary: 'Passer le BdC en statut SENT' })
+  @Patch(':id/submit')
+  @ApiOperation({
+    summary:
+      'Soumettre le BdC pour validation — notifie le validateur de la branche',
+  })
   @ApiResponse({ status: 200, type: PurchaseOrderDto })
-  send(@Param('id') id: string): Promise<PurchaseOrderDto> {
-    return this.service.send(id);
+  submit(@Param('id') id: string): Promise<PurchaseOrderDto> {
+    return this.service.submit(id);
+  }
+
+  @Patch(':id/validate')
+  @ApiOperation({
+    summary: 'Valider le BdC — notifie le responsable achats de la branche',
+  })
+  @ApiResponse({ status: 200, type: PurchaseOrderDto })
+  validate(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PurchaseOrderDto> {
+    return this.service.validate(id, user.sub);
+  }
+
+  @Patch(':id/reject')
+  @ApiOperation({
+    summary: 'Rejeter le BdC (repart en DRAFT) — notifie son créateur',
+  })
+  @ApiResponse({ status: 200, type: PurchaseOrderDto })
+  reject(
+    @Param('id') id: string,
+    @Body() dto: RejectPurchaseOrderDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PurchaseOrderDto> {
+    return this.service.reject(id, dto, user.sub);
+  }
+
+  @Patch(':id/send')
+  @ApiOperation({ summary: 'Passer le BdC en statut SENT (achat effectif)' })
+  @ApiResponse({ status: 200, type: PurchaseOrderDto })
+  send(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PurchaseOrderDto> {
+    return this.service.send(id, user.sub);
   }
 
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Annuler le BdC' })
   @ApiResponse({ status: 200, type: PurchaseOrderDto })
-  cancel(@Param('id') id: string): Promise<PurchaseOrderDto> {
-    return this.service.cancel(id);
+  cancel(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PurchaseOrderDto> {
+    return this.service.cancel(id, user.sub);
   }
 
   @Patch(':id/receive')
@@ -85,7 +127,8 @@ export class ProcurementController {
   receive(
     @Param('id') id: string,
     @Body() dto: ReceivePurchaseOrderDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<PurchaseOrderDto> {
-    return this.service.receive(id, dto);
+    return this.service.receive(id, dto, user.sub);
   }
 }

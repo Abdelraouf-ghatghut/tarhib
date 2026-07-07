@@ -1,5 +1,14 @@
-import { createContext, useContext, useState, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { useAuth } from "../hooks/useAuth";
+import { router } from "../router";
 
 interface ScopeState {
   companyId: string | null;
@@ -22,6 +31,20 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     setCompanyIdState(id);
     setBranchId(null); // reset branch when company changes
   };
+
+  // Le filtre société/branche est un filtre d'AFFICHAGE propre à chaque page
+  // (ex. Employés) — il ne doit pas persister quand on navigue ailleurs
+  // (ex. Inventaire), sous peine de masquer des données par surprise.
+  const pathnameRef = useRef(router.state.location.pathname);
+  useEffect(() => {
+    return router.subscribe((state) => {
+      if (state.location.pathname !== pathnameRef.current) {
+        pathnameRef.current = state.location.pathname;
+        setCompanyIdState(isSuperadmin ? null : (authCompanyId ?? null));
+        setBranchId(null);
+      }
+    });
+  }, [authCompanyId, isSuperadmin]);
 
   const value = useMemo(
     () => ({ companyId, branchId, setCompanyId, setBranchId }),

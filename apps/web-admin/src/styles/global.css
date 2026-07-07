@@ -1,13 +1,175 @@
+@import "./tokens.css";
+@import "./fonts.css";
+
+/* Thmanyah d'abord (police produit, AR + latin) ; Cairo/Inter en fallback */
+html,
+body {
+  margin: 0;
+  background: var(--neutral-secondary-soft);
+  color: var(--fg-body);
+  font-family: "Thmanyah", "Inter", "Cairo", system-ui, sans-serif;
+}
+
+html[dir="rtl"] body {
+  font-family: "Thmanyah", "Cairo", "Inter", system-ui, sans-serif;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #C1C7D0; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #97A0AF; }
+::-webkit-scrollbar-thumb { background: var(--gray); border-radius: var(--radius-sm); }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-body-subtle); }
 
-/* Ant Design overrides */
-.ant-menu-item { border-radius: 6px !important; margin-block: 2px !important; }
-.ant-menu-item-group-title { font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
-.ant-table-tbody > tr > td { padding-block: 10px !important; }
-.ant-card { border: 1px solid #EBECF0 !important; }
-.ant-statistic-title { font-size: 12px !important; color: #6B778C !important; }
-.ant-statistic-content-value { color: #172B4D !important; }
+/*
+ * Glint boutons (buttons.md) : ombre de base + reflet interne haut + halo bas.
+ * Tous les boutons SAUF ghost (type text/link) et disabled.
+ */
+.ant-btn:not(.ant-btn-text):not(.ant-btn-link):not(:disabled) {
+  box-shadow:
+    var(--shadow-2xs),
+    inset var(--color-1-400) 0 6px 0px -5px,
+    var(--color-1-700) 0 4px 10px -5px;
+}
+.ant-btn:disabled,
+.ant-btn.ant-btn-text,
+.ant-btn.ant-btn-link {
+  box-shadow: none;
+}
+
+/* Ant Design overrides — tokens uniquement, pas de hex en dur */
+.ant-menu-item { border-radius: var(--radius-base) !important; margin-block: 2px !important; }
+.ant-menu-item-group-title { font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase !important; letter-spacing: 0.4px !important; }
+.ant-card { border: 1px solid var(--border-default) !important; box-shadow: var(--shadow-card); }
+.ant-statistic-title { font-size: 12px !important; color: var(--fg-body-subtle) !important; }
+.ant-statistic-content-value { color: var(--fg-heading) !important; }
+
+/* SnowUI dark : item de menu actif avec lueur bleu-violet subtile */
+[data-theme="dark"] .ant-menu-item-selected {
+  box-shadow: 0 0 14px rgba(124, 139, 255, 0.22);
+}
+
+/* ── Dashboard : cartes stats teintées (light) / halo néon (dark) ────── */
+.stat-card { border-radius: 16px !important; }
+.stat-card .ant-card-body { padding: 20px; }
+.stat-card--brand { background: var(--stat-card-brand) !important; }
+.stat-card--danger { background: var(--stat-card-danger) !important; }
+.stat-card--success { background: var(--stat-card-success) !important; }
+.stat-card--violet { background: var(--stat-card-violet) !important; }
+.stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.stat-icon--brand { background: var(--stat-icon-brand-bg); color: var(--fg-brand); box-shadow: var(--stat-glow-brand); }
+.stat-icon--danger { background: var(--stat-icon-danger-bg); color: var(--fg-danger); box-shadow: var(--stat-glow-danger); }
+.stat-icon--success { background: var(--stat-icon-success-bg); color: var(--fg-success); box-shadow: var(--stat-glow-success); }
+.stat-icon--violet { background: var(--stat-icon-violet-bg); color: var(--indigo); box-shadow: var(--stat-glow-violet); }
+
+/* ── Header : recherche en pilule qui s'élargit au focus ──────────────── */
+.header-search-wrap {
+  inline-size: 230px;
+  display: flex;
+  align-items: center;
+  /* .ant-layout-header met line-height:64px (astuce AntD pour centrer du
+     texte brut) — hérité, ça fait gonfler la hauteur intrinsèque calculée
+     de l'AutoComplete à 64px, donc le align-items:center ci-dessus n'avait
+     plus rien à centrer. On annule l'héritage ici. */
+  line-height: normal;
+  transition: inline-size 0.2s ease;
+}
+.header-search-wrap:focus-within {
+  inline-size: 320px;
+}
+.header-search.ant-input-affix-wrapper {
+  border-radius: 10px;
+  padding-inline: 12px;
+  height: 36px;
+  background: var(--neutral-secondary-medium);
+  border: 1px solid transparent;
+}
+.header-search.ant-input-affix-wrapper:hover {
+  background: var(--neutral-secondary-strong);
+}
+.header-search.ant-input-affix-wrapper-focused {
+  background: var(--neutral-primary-soft);
+  border-color: var(--border-brand-subtle);
+  box-shadow: 0 0 0 3px var(--brand-softer);
+}
+/* Repère clavier ⌘K — texte discret, jamais de bordure/boîte (cf. maquette) */
+.header-search-kbd {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-body-subtle);
+  opacity: 0.7;
+}
+.header-search-wrap:focus-within .header-search-kbd {
+  display: none;
+}
+
+/* ── Header : boutons circulaires (thème, notifications) ──────────────── */
+.header-icon-btn.ant-btn {
+  background: var(--neutral-secondary-medium) !important;
+  border-radius: 999px;
+}
+.header-icon-btn.ant-btn:hover {
+  background: var(--neutral-secondary-strong) !important;
+}
+
+/* ── Responsive : tables scrollables, cartes compactes sur mobile ─────── */
+.ant-table-content { overflow-x: auto; }
+@media (max-width: 767px) {
+  .ant-card .ant-card-body { padding: 16px; }
+  .ant-card .ant-card-head { padding-inline: 16px; }
+
+  /* Le head d'une Card (titre + extra) ne wrap jamais par défaut : quand
+     l'extra (boutons/filtres) est large, le titre est écrasé jusqu'à
+     devenir illisible, voire invisible (quelques px de large). On empile
+     le titre au-dessus de l'extra sur mobile plutôt que de le comprimer. */
+  .ant-card-head-wrapper {
+    flex-wrap: wrap !important;
+    row-gap: 8px;
+  }
+  .ant-card-head-title {
+    flex: 1 1 100% !important;
+    min-width: 100% !important;
+    overflow: visible !important;
+    white-space: normal !important;
+  }
+  .ant-card-extra {
+    margin-inline-start: 0 !important;
+    flex: 1 1 100% !important;
+    min-width: 100% !important;
+  }
+}
+
+/* ── Responsive : titres dynamiques (nom de salle/fournisseur/rôle…) qui
+   passent sur plusieurs lignes dans un Drawer — le bouton fermer reste
+   calé en haut au lieu de se centrer au milieu du bloc de texte. */
+.ant-drawer-header-title {
+  align-items: flex-start !important;
+}
+.ant-drawer-header-title .ant-drawer-close {
+  margin-block-start: 2px;
+}
+.ant-drawer-title,
+.ant-modal-title {
+  overflow-wrap: anywhere;
+}
+
+/* ── Dashboard : ligne d'alerte stock cliquable ───────────────────────── */
+.alert-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--neutral-secondary-soft);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.alert-row:hover { background: var(--neutral-secondary-medium); }

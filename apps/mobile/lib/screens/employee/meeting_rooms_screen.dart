@@ -5,10 +5,12 @@ import 'package:intl/intl.dart';
 
 import '../../api/api_client.dart';
 import '../../l10n/app_localizations.dart';
+import '../../theme/snow_colors.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_card.dart';
 import '../../widgets/glass_app_bar.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/status_badge.dart';
 import '../../widgets/tarhib_scaffold.dart';
 
 // ── DTOs (kept local, no generated client needed) ─────────────────────────────
@@ -180,21 +182,22 @@ class _RoomsTab extends ConsumerWidget {
                   child: Row(
                     children: [
                       Container(
-                        width: 48,
-                        height: 48,
+                        width: 56,
+                        height: 56,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
                           color: room.available
-                              ? Colors.green.withValues(alpha: 0.12)
-                              : Colors.red.withValues(alpha: 0.12),
+                              ? SnowColors.successSoft
+                              : SnowColors.dangerSoft,
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Center(
-                          child: Icon(
-                            room.available
-                                ? Icons.meeting_room_rounded
-                                : Icons.no_meeting_room_rounded,
-                            color: room.available ? Colors.green : Colors.red,
-                          ),
+                        child: Icon(
+                          room.available
+                              ? Icons.meeting_room_rounded
+                              : Icons.no_meeting_room_rounded,
+                          color: room.available
+                              ? SnowColors.successStrong
+                              : SnowColors.dangerStrong,
+                          size: 26,
                         ),
                       ),
                       const SizedBox(width: 14),
@@ -243,21 +246,7 @@ class _RoomsTab extends ConsumerWidget {
                               style: const TextStyle(fontSize: 13)),
                         )
                       else
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            l.occupied,
-                            style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ),
+                        StatusBadge(label: l.occupied, tone: SnowStatusTone.danger),
                     ],
                   ),
                 ),
@@ -621,23 +610,11 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (status) {
-      'CONFIRMED' => Colors.green,
-      'CANCELLED' => Colors.red,
-      _ => Colors.orange,
+    final tone = switch (status) {
+      'CONFIRMED' => SnowStatusTone.success,
+      'CANCELLED' => SnowStatusTone.danger,
+      _ => SnowStatusTone.warning,
     };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        status,
-        style: TextStyle(
-            fontSize: 11, fontWeight: FontWeight.w600, color: color),
-      ),
-    );
+    return StatusBadge(label: status, tone: tone, dense: true);
   }
 }

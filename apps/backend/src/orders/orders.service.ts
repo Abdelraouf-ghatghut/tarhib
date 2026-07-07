@@ -36,21 +36,14 @@ import {
 import { Quota } from '../quotas/entities/quota.entity.js';
 import { RoleQuota } from '../roles/entities/role-quota.entity.js';
 import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
+import { PrioritySlaService } from '../priority-sla/priority-sla.service.js';
 
-const PRIORITY_SLA_MINUTES: Record<OrderPriority, number> = {
-  [OrderPriority.P1]: 10,
-  [OrderPriority.P2]: 20,
-  [OrderPriority.P3]: 30,
-  [OrderPriority.P4]: 45,
-  [OrderPriority.P5]: 60,
-};
-
-function resolveOrderPriority(caller: JwtPayload): OrderPriority {
+function resolveOrderPriority(caller: JwtPayload): string {
   // Use the role's sla_priority if carried in JWT (set via EnrichUserInterceptor from role.slaPriority)
+  // Any company SLA level code is accepted (defaults P1..P5 or custom codes)
   // Fallback to legacy role string for backward compat
-  const slaPriority = (caller as { slaPriority?: string }).slaPriority;
-  if (slaPriority && slaPriority in OrderPriority)
-    return slaPriority as OrderPriority;
+  const slaPriority = caller.slaPriority;
+  if (slaPriority?.trim()) return slaPriority;
 
   const legacyMap: Record<string, OrderPriority> = {
     ADMIN: OrderPriority.P1,
@@ -86,6 +79,7 @@ export class OrdersService {
     private readonly validationEngine: ValidationEngineService,
     private readonly notificationsService: NotificationsService,
     private readonly notificationsGateway: NotificationsGateway,
+    private readonly prioritySla: PrioritySlaService,
   ) {}
 
   async create(dto: CreateOrderDto, caller: JwtPayload): Promise<OrderDto> {
@@ -112,6 +106,7 @@ export class OrdersService {
       companyId: caller.companyId || '',
       branchId: caller.branchId || '',
       role: caller.role || 'EMPLOYEE',
+      roleId: caller.roleId ?? null,
       products: products.map((p) => ({
         id: p.id,
         type:
@@ -144,7 +139,11 @@ export class OrdersService {
     }
 
     const priority = resolveOrderPriority(caller);
-    const slaMinutes = PRIORITY_SLA_MINUTES[priority];
+    // SLA personnalisé par entreprise (company_sla_levels), sinon défauts globaux
+    const slaMinutes = await this.prioritySla.getSlaMinutes(
+      caller.companyId,
+      priority,
+    );
     const slaDeadline = new Date(Date.now() + slaMinutes * 60_000);
 
     const order = this.orderRepo.create({
@@ -230,10 +229,27 @@ export class OrdersService {
       );
     }
     if (order.companyId !== caller.companyId) {
-      throw new ForbiddenException('Cross-tenant access denied');
+      throw new ForbiddenException('crossTenantAccessDenied');
     }
 
     order.status = status;
+    const now = new Date();
+    if (status === OrderStatus.APPROVED) {
+      order.approvedAt = now;
+      order.approvedBy = caller.sub;
+    } else if (status === OrderStatus.REJECTED) {
+      order.rejectedAt = now;
+      order.rejectedBy = caller.sub;
+    } else if (status === OrderStatus.IN_PROGRESS) {
+      order.prepStartedAt = now;
+      order.preparedBy = caller.sub;
+    } else if (status === OrderStatus.READY) {
+      order.readyAt = now;
+      order.readyBy = caller.sub;
+    } else if (status === OrderStatus.DELIVERED) {
+      order.deliveredAt = now;
+      order.deliveredBy = caller.sub;
+    }
     const saved = await this.orderRepo.save(order);
 
     // Notify employee via SMS (TARHIB-9) — fire-and-forget, don't block the response
@@ -472,6 +488,16 @@ export class OrdersService {
     dto.priority = o.priority;
     dto.slaDeadline = o.slaDeadline.toISOString();
     dto.createdAt = o.createdAt.toISOString();
+    dto.approvedAt = o.approvedAt;
+    dto.approvedBy = o.approvedBy;
+    dto.rejectedAt = o.rejectedAt;
+    dto.rejectedBy = o.rejectedBy;
+    dto.prepStartedAt = o.prepStartedAt;
+    dto.preparedBy = o.preparedBy;
+    dto.readyAt = o.readyAt;
+    dto.readyBy = o.readyBy;
+    dto.deliveredAt = o.deliveredAt;
+    dto.deliveredBy = o.deliveredBy;
     dto.lines = o.lines ?? [];
     return dto;
   }

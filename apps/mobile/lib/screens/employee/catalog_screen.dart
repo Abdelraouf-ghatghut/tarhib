@@ -5,33 +5,44 @@ import 'package:tarhib_api_client/tarhib_api_client.dart';
 
 import '../../api/api_client.dart';
 import '../../l10n/app_localizations.dart';
+import '../../providers/availability_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/products_provider.dart';
 import '../../providers/quotas_provider.dart';
+import '../../theme/snow_colors.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_card.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/skeleton_loader.dart';
+import '../../widgets/status_badge.dart';
 
-const _categoryColors = {
-  'Boissons': Color(0xFF29B6F6),
-  'Snacks': Color(0xFFFFCA28),
-  'Repas': Color(0xFF66BB6A),
-  'Desserts': Color(0xFFEC407A),
-  'Café': Color(0xFF8D6E63),
-};
-
+/// Couleur déterministe par catégorie — les catégories sont du texte libre
+/// (aucun vocabulaire fixe côté admin), donc pas de table de correspondance
+/// figée : on cycle sur la palette d'accents SnowUI par hash du nom.
 Color _colorFor(String cat) =>
-    _categoryColors[cat] ?? const Color(0xFF78909C);
+    SnowColors.accents[cat.hashCode.abs() % SnowColors.accents.length];
 
-String _emojiFor(String cat) => switch (cat) {
-      'Boissons' => '🥤',
-      'Café' => '☕',
-      'Snacks' => '🍿',
-      'Repas' => '🍽️',
-      'Desserts' => '🍰',
-      _ => '📦',
-    };
+String _emojiFor(String cat) {
+  final c = cat.toLowerCase();
+  if (c.contains('coffee') || c.contains('قهوة') || c.contains('café')) {
+    return '☕';
+  }
+  if (c.contains('drink') ||
+      c.contains('juice') ||
+      c.contains('water') ||
+      c.contains('مشروبات')) {
+    return '🥤';
+  }
+  if (c.contains('meal') || c.contains('sandwich') || c.contains('وجبات')) {
+    return '🍽️';
+  }
+  if (c.contains('snack')) return '🍿';
+  if (c.contains('dessert') || c.contains('sweet') || c.contains('حلويات')) {
+    return '🍰';
+  }
+  if (c.contains('vip')) return '👑';
+  return '📦';
+}
 
 /// TARHIB-12 — Catalogue + recherche + quotas + fiche produit (bottom sheet)
 class CatalogScreen extends ConsumerStatefulWidget {
@@ -356,11 +367,19 @@ class _ProductCard extends ConsumerWidget {
           .fold(0, (s, l) => s + l.quantity)),
     );
 
-    // Quota data — non-blocking, shows when available
+    // Quota data — le plafond tient compte de ce qui est déjà dans le panier
+    // (le quota serveur ne bouge pas tant que la commande n'est pas envoyée)
     final quotaCache = ref.watch(quotaCacheProvider).value;
     final quota = quotaCache?[product.id];
-    final quotaExhausted = quota != null && quota.remaining <= 0;
+    final effectiveRemaining = quota != null ? quota.remaining - qty : null;
+    final quotaExhausted = effectiveRemaining != null && effectiveRemaining <= 0;
 
+    // Disponibilité stock — absence de données = optimiste (disponible) ;
+    // le moteur de validation serveur reste l'arbitre final (§3.4 CLAUDE.md)
+    final availabilityMap = ref.watch(availabilityProvider).value;
+    final unavailable = availabilityMap?[product.id]?.available == false;
+
+    final canAdd = !quotaExhausted && !unavailable;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
@@ -406,8 +425,9 @@ class _ProductCard extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    // Quota exhausted overlay
-                    if (quotaExhausted)
+                    // Indisponible (stock) ou quota épuisé — l'indisponibilité
+                    // prime dans le message affiché (raison plus fondamentale)
+                    if (unavailable || quotaExhausted)
                       Positioned.fill(
                         child: Container(
                           decoration: BoxDecoration(
@@ -424,7 +444,9 @@ class _ProductCard extends ConsumerWidget {
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
-                                l.quotaOf(0, quota.max),
+                                unavailable
+                                    ? l.notAvailable
+                                    : l.quotaOf(0, quota?.max ?? 0),
                                 style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 10,
@@ -481,11 +503,11 @@ class _ProductCard extends ConsumerWidget {
                         fontSize: 13,
                         height: 1.3),
                   ),
-                  // Quota bar
+                  // Quota bar (reflète déjà la quantité dans le panier)
                   if (quota != null) ...[
                     const SizedBox(height: 5),
                     _QuotaBar(
-                      remaining: quota.remaining,
+                      remaining: (quota.remaining - qty).clamp(0, quota.max),
                       max: quota.max,
                       color: accentColor,
                       l: l,
@@ -515,8 +537,8 @@ class _ProductCard extends ConsumerWidget {
                         icon: Icons.add,
                         color: accentColor,
                         filled: true,
-                        disabled: quotaExhausted,
-                        onTap: quotaExhausted
+                        disabled: !canAdd,
+                        onTap: !canAdd
                             ? null
                             : () => ref.read(cartProvider.notifier).add(product),
                       ),
@@ -534,8 +556,18 @@ class _ProductCard extends ConsumerWidget {
   void _showProductDetail(BuildContext context, WidgetRef ref,
       AppLocalizations l, Locale locale) {
     final name = locale.languageCode == 'ar' ? product.nameAr : product.nameEn;
+    final qty = ref.read(
+      cartProvider.select((lines) => lines
+          .where((l) => l.productId == product.id)
+          .fold(0, (s, l) => s + l.quantity)),
+    );
     final quotaCache = ref.read(quotaCacheProvider).value;
-    final quota = quotaCache?[product.id];
+    final rawQuota = quotaCache?[product.id];
+    final quota = rawQuota == null
+        ? null
+        : (remaining: (rawQuota.remaining - qty).clamp(0, rawQuota.max), max: rawQuota.max);
+    final unavailable =
+        ref.read(availabilityProvider).value?[product.id]?.available == false;
 
     showModalBottomSheet(
       context: context,
@@ -546,6 +578,7 @@ class _ProductCard extends ConsumerWidget {
         name: name,
         accentColor: accentColor,
         quota: quota,
+        unavailable: unavailable,
         onAdd: () {
           ref.read(cartProvider.notifier).add(product);
           Navigator.pop(context);
@@ -663,6 +696,7 @@ class _ProductDetailSheet extends StatelessWidget {
     required this.name,
     required this.accentColor,
     required this.quota,
+    required this.unavailable,
     required this.onAdd,
     required this.l,
   });
@@ -670,6 +704,7 @@ class _ProductDetailSheet extends StatelessWidget {
   final String name;
   final Color accentColor;
   final ({int remaining, int max})? quota;
+  final bool unavailable;
   final VoidCallback onAdd;
   final AppLocalizations l;
 
@@ -677,6 +712,7 @@ class _ProductDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final quotaExhausted = quota != null && quota!.remaining <= 0;
+    final canAdd = !quotaExhausted && !unavailable;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.5,
@@ -756,6 +792,16 @@ class _ProductDetailSheet extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(color: accentColor, fontWeight: FontWeight.w600),
             ),
+            if (unavailable) ...[
+              const SizedBox(height: 10),
+              Center(
+                child: StatusBadge(
+                  label: l.notAvailable,
+                  tone: SnowStatusTone.danger,
+                  icon: Icons.remove_shopping_cart_rounded,
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
 
             // Both names
@@ -789,9 +835,15 @@ class _ProductDetailSheet extends StatelessWidget {
 
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: quotaExhausted ? null : onAdd,
+              onPressed: canAdd ? onAdd : null,
               icon: const Icon(Icons.add_shopping_cart_rounded),
-              label: Text(quotaExhausted ? l.quotaOf(0, quota?.max ?? 0) : l.addToCart),
+              label: Text(
+                unavailable
+                    ? l.notAvailable
+                    : quotaExhausted
+                        ? l.quotaOf(0, quota?.max ?? 0)
+                        : l.addToCart,
+              ),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
                 backgroundColor: accentColor,

@@ -101,7 +101,7 @@ export class KeycloakService {
         expiresIn: data.expires_in,
       };
     } catch {
-      throw new UnauthorizedException('Invalid or expired refresh token');
+      throw new UnauthorizedException('invalidOrExpiredRefreshToken');
     }
   }
 
@@ -134,7 +134,7 @@ export class KeycloakService {
         expiresIn: data.expires_in,
       };
     } catch {
-      throw new UnauthorizedException('OTP authentication failed in Keycloak');
+      throw new UnauthorizedException('otpAuthFailed');
     }
   }
 
@@ -246,8 +246,42 @@ export class KeycloakService {
     }
   }
 
+  /** Supprime un utilisateur Keycloak par email (no-op s'il n'existe pas). */
+  async deleteUserByEmail(email: string): Promise<void> {
+    const adminBase = this.config.get<string>(
+      'KEYCLOAK_ADMIN_URL',
+      'http://localhost:8080',
+    );
+    const realm = this.config.get<string>('KEYCLOAK_REALM', 'tarhib');
+
+    try {
+      const adminToken = await this.getAdminToken(adminBase);
+      const { data: users } = await firstValueFrom(
+        this.http.get<{ id: string }[]>(
+          `${adminBase}/admin/realms/${realm}/users?email=${encodeURIComponent(email)}&exact=true`,
+          { headers: { Authorization: `Bearer ${adminToken}` } },
+        ),
+      );
+      if (!users.length) return;
+      await firstValueFrom(
+        this.http.delete(
+          `${adminBase}/admin/realms/${realm}/users/${users[0].id}`,
+          { headers: { Authorization: `Bearer ${adminToken}` } },
+        ),
+      );
+      this.logger.log(`Keycloak user deleted: ${email}`);
+    } catch (err) {
+      this.logger.warn(`deleteUserByEmail failed for ${email}: ${String(err)}`);
+    }
+  }
+
   /** Create a new user in Keycloak and return the keycloakId (UUID). */
-  async createUser(email: string, password: string): Promise<string> {
+  async createUser(
+    email: string,
+    password: string,
+    firstName?: string,
+    lastName?: string,
+  ): Promise<string> {
     const adminBase = this.config.get<string>(
       'KEYCLOAK_ADMIN_URL',
       'http://localhost:8080',
@@ -264,6 +298,12 @@ export class KeycloakService {
           username: email,
           email,
           enabled: true,
+          // Comptes créés par un admin Tarhib : email vérifié + profil complet
+          // (prénom/nom requis par le user profile Keycloak), sinon le login
+          // échoue avec « Account is not fully set up »
+          emailVerified: true,
+          firstName: firstName?.trim() || email.split('@')[0],
+          lastName: lastName?.trim() || 'Tarhib',
           credentials: [
             { type: 'password', value: password, temporary: false },
           ],

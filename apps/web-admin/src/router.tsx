@@ -1,8 +1,11 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AdminLayout } from "./layouts/AdminLayout";
 import { RequireAuth } from "./components/RequireAuth";
+import { RequirePermission } from "./components/RequirePermission";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { CompaniesPage } from "./pages/companies/CompaniesPage";
 import { BranchesPage } from "./pages/branches/BranchesPage";
 import { DepartmentsPage } from "./pages/departments/DepartmentsPage";
@@ -33,25 +36,149 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <DashboardPage /> },
-      { path: "roles", element: <RolesPage /> },
-      { path: "companies", element: <CompaniesPage /> },
-      { path: "branches", element: <BranchesPage /> },
-      { path: "departments", element: <DepartmentsPage /> },
-      { path: "employees", element: <EmployeesPage /> },
-      { path: "products", element: <ProductsPage /> },
-      { path: "inventory", element: <InventoryPage /> },
-      { path: "inventory-transfers", element: <InventoryTransfersPage /> },
-      { path: "vip-tasks", element: <VipTasksPage /> },
-      { path: "suppliers", element: <SuppliersPage /> },
-      { path: "procurement", element: <ProcurementPage /> },
+      {
+        path: "roles",
+        element: (
+          <RequirePermission anyOf={["role.manage"]}>
+            <RolesPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "companies",
+        element: (
+          <RequirePermission anyOf={["company.manage"]}>
+            <CompaniesPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "branches",
+        element: (
+          <RequirePermission anyOf={["company.manage", "branch.manage"]}>
+            <BranchesPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "departments",
+        element: (
+          <RequirePermission anyOf={["company.manage", "branch.manage"]}>
+            <DepartmentsPage />
+          </RequirePermission>
+        ),
+      },
+      { path: "employees", element: <Navigate to="/employees/client" replace /> },
+      {
+        path: "employees/client",
+        element: (
+          <RequirePermission anyOf={["employee.manage"]}>
+            <EmployeesPage scope="CLIENT" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "employees/internal",
+        element: (
+          <RequirePermission anyOf={["employee.manage"]}>
+            <EmployeesPage scope="TARHIB" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "products",
+        element: (
+          <RequirePermission anyOf={["company.manage"]}>
+            <ProductsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "inventory",
+        element: (
+          <RequirePermission anyOf={["inventory.manage", "company.manage"]}>
+            <InventoryPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "inventory-transfers",
+        element: (
+          <RequirePermission anyOf={["inventory.manage", "company.manage"]}>
+            <InventoryTransfersPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "vip-tasks",
+        element: (
+          <RequirePermission anyOf={["inventory.manage", "company.manage"]}>
+            <VipTasksPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "suppliers",
+        element: (
+          <RequirePermission anyOf={["inventory.manage", "company.manage"]}>
+            <SuppliersPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "procurement",
+        element: (
+          <RequirePermission anyOf={["inventory.manage", "company.manage"]}>
+            <ProcurementPage />
+          </RequirePermission>
+        ),
+      },
       { path: "orders", element: <OrdersPage /> },
       { path: "quotas", element: <QuotasPage /> },
-      { path: "reports", element: <ReportsPage /> },
-      { path: "meeting-rooms-admin", element: <MeetingRoomsAdminPage /> },
-      { path: "meeting-service-packages", element: <MeetingServicePackagesPage /> },
-      { path: "registrations", element: <RegistrationsPage /> },
-      { path: "audit", element: <AuditLogPage /> },
+      {
+        path: "reports",
+        element: (
+          <RequirePermission anyOf={["report.view", "company.manage", "branch.manage"]}>
+            <ReportsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "meeting-rooms-admin",
+        element: (
+          <RequirePermission anyOf={["branch.manage", "company.manage"]}>
+            <MeetingRoomsAdminPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "meeting-service-packages",
+        element: (
+          <RequirePermission anyOf={["branch.manage", "company.manage"]}>
+            <MeetingServicePackagesPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "registrations",
+        element: (
+          <RequirePermission anyOf={["employee.manage"]}>
+            <RegistrationsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "audit",
+        element: (
+          <RequirePermission anyOf={["company.manage"]}>
+            <AuditLogPage />
+          </RequirePermission>
+        ),
+      },
+      { path: "profile", element: <ProfilePage /> },
+      // 404 dans le shell admin plutôt qu'une redirection silencieuse vers
+      // le dashboard : l'utilisateur voit que l'URL est erronée
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
-  { path: "*", element: <Navigate to="/" replace /> },
 ]);

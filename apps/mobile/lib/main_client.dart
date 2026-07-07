@@ -4,13 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
-import 'providers/theme_provider.dart';
+import 'theme/app_theme.dart';
 import 'client/router_client.dart';
 
 void main() {
   runApp(const ProviderScope(child: TarhibClientApp()));
 }
 
+/// Tarhib Employee — version mobile officielle du Design System SnowUI Light
+/// du Web Admin (voir lib/theme/). Un seul thème, toujours clair : la
+/// continuité visuelle Web ⇄ Mobile est la règle absolue du guide fourni.
 class TarhibClientApp extends ConsumerWidget {
   const TarhibClientApp({super.key});
 
@@ -18,7 +21,7 @@ class TarhibClientApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(clientRouterProvider);
     final locale = ref.watch(localeProvider);
-    final themeMode = ref.watch(themeModeProvider);
+    final isAr = locale.languageCode == 'ar';
 
     return MaterialApp.router(
       title: 'Tarhib',
@@ -31,21 +34,7 @@ class TarhibClientApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1B5E20),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1B5E20),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      themeMode: themeMode,
+      theme: AppTheme.light(isAr: isAr),
       routerConfig: router,
     );
   }

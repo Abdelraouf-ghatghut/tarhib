@@ -10,6 +10,7 @@ interface Company {
   id: string;
   nameAr: string;
   nameEn: string;
+  slug: string;
   active: boolean;
 }
 
@@ -47,6 +48,7 @@ export function CompaniesPage() {
         columns={[
           { title: t("nameAr"), dataIndex: "nameAr" },
           { title: t("nameEn"), dataIndex: "nameEn" },
+          { title: t("slug"), dataIndex: "slug" },
           {
             title: t("active"),
             dataIndex: "active",
@@ -54,13 +56,26 @@ export function CompaniesPage() {
             width: 80,
           },
         ]}
-        formContent={() => (
+        formContent={(rec) => (
           <>
             <Form.Item name="nameAr" label={t("nameAr")} rules={[{ required: true }]}>
-              <Input />
+              <Input dir="rtl" />
             </Form.Item>
-            <Form.Item name="nameEn" label={t("nameEn")} rules={[{ required: true }]}>
-              <Input />
+            <Form.Item name="nameEn" label={t("nameEnOptional")}>
+              <Input dir="ltr" />
+            </Form.Item>
+            <Form.Item
+              name="slug"
+              label={t("slug")}
+              rules={[
+                { required: true },
+                {
+                  pattern: /^[a-z0-9-]+$/,
+                  message: t("slugFormat"),
+                },
+              ]}
+            >
+              <Input dir="ltr" placeholder="acme-corp" disabled={!!rec} />
             </Form.Item>
             <Form.Item
               name="active"

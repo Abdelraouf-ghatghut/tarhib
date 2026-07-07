@@ -8,6 +8,7 @@ import '../../l10n/app_localizations.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/orders_provider.dart';
 import '../../providers/product_name_cache_provider.dart';
+import '../../theme/snow_colors.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_card.dart';
 import '../../widgets/glass_card.dart';
@@ -27,11 +28,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   static const _filterStatuses = [null, 'IN_PROGRESS', 'DELIVERED', 'REJECTED'];
 
   Color _statusColor(String s) => switch (s) {
-        'DELIVERED' => const Color(0xFF36B37E),
-        'REJECTED' => const Color(0xFFFF4D4F),
-        'IN_PROGRESS' => const Color(0xFF00A3BF),
-        'APPROVED' => const Color(0xFF0052CC),
-        _ => const Color(0xFF6B778C),
+        'DELIVERED' => SnowColors.successStrong,
+        'REJECTED' => SnowColors.dangerStrong,
+        'IN_PROGRESS' => SnowColors.info,
+        'APPROVED' => SnowColors.primaryStrong,
+        _ => SnowColors.textMuted,
       };
 
   String _fmtDate(String iso) {

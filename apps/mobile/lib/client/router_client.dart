@@ -11,6 +11,9 @@ import '../screens/employee/history_screen.dart';
 import '../screens/employee/meeting_rooms_screen.dart';
 import '../screens/employee/order_tracking_screen.dart';
 import '../screens/profile/profile_screen.dart';
+import '../screens/settings/language_screen.dart';
+import '../screens/settings/notifications_screen.dart';
+import '../screens/settings/about_screen.dart';
 
 final clientRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -55,8 +58,20 @@ final clientRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
-      // ── Profil ─────────────────────────────────────────────────────────────
+      // ── Profil & réglages ────────────────────────────────────────────────────
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+      GoRoute(
+        path: '/settings/language',
+        builder: (_, __) => const LanguageScreen(),
+      ),
+      GoRoute(
+        path: '/settings/notifications',
+        builder: (_, __) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/about',
+        builder: (_, __) => const AboutScreen(),
+      ),
     ],
   );
 });

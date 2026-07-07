@@ -50,6 +50,23 @@ export class CreateInventoryItemDto {
   @IsString()
   @IsOptional()
   locationName?: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Emplacements VIP uniquement — département de rattachement',
+  })
+  @IsUUID()
+  @IsOptional()
+  departmentId?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Emplacements VIP uniquement — employé auquel cet emplacement est propre',
+  })
+  @IsUUID()
+  @IsOptional()
+  assignedEmployeeId?: string;
 }
 
 export class UpdateInventoryItemDto {
@@ -70,6 +87,21 @@ export class UpdateInventoryItemDto {
   @Min(1)
   @IsOptional()
   maxThreshold?: number;
+
+  @ApiProperty({ example: 'Frigo — Bureau CFO', required: false })
+  @IsString()
+  @IsOptional()
+  locationName?: string;
+
+  @ApiProperty({ required: false })
+  @IsUUID()
+  @IsOptional()
+  departmentId?: string;
+
+  @ApiProperty({ required: false })
+  @IsUUID()
+  @IsOptional()
+  assignedEmployeeId?: string;
 }
 
 export class InventoryItemDto {
@@ -103,6 +135,12 @@ export class InventoryItemDto {
 
   @ApiProperty({ example: 'Frigo — Bureau CFO', nullable: true })
   locationName!: string | null;
+
+  @ApiProperty({ nullable: true })
+  departmentId!: string | null;
+
+  @ApiProperty({ nullable: true })
+  assignedEmployeeId!: string | null;
 
   @ApiProperty({ description: 'true when quantity <= minThreshold' })
   belowThreshold!: boolean;

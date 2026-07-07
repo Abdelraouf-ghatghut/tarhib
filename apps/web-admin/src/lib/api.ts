@@ -2,7 +2,9 @@
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
-export const api = axios.create({ baseURL: BASE_URL });
+// withCredentials : le refresh token vit dans un cookie HttpOnly (posé par
+// /auth/login, lu par /auth/refresh et /auth/logout) — jamais dans localStorage
+export const api = axios.create({ baseURL: BASE_URL, withCredentials: true });
 
 export function setAuthToken(token: string) {
   api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -29,7 +31,7 @@ export const branchesApi = {
 };
 
 export const departmentsApi = {
-  list: (branchId?: string) => api.get("/departments", { params: branchId ? { branchId } : {} }),
+  list: (params?: Record<string, string>) => api.get("/departments", { params }),
   create: (d: unknown) => api.post("/departments", d),
   update: (id: string, d: unknown) => api.patch(`/departments/${id}`, d),
   remove: (id: string) => api.delete(`/departments/${id}`),
@@ -59,17 +61,24 @@ export const inventoryApi = {
     api.get("/inventory/alerts/below-threshold", { params }),
 };
 
+// Fournisseurs : ressource Tarhib globale, non liée à une société cliente.
 export const suppliersApi = {
-  list: (companyId?: string) => api.get("/suppliers", { params: companyId ? { companyId } : {} }),
+  list: () => api.get("/suppliers"),
   create: (d: unknown) => api.post("/suppliers", d),
   update: (id: string, d: unknown) => api.patch(`/suppliers/${id}`, d),
   remove: (id: string) => api.delete(`/suppliers/${id}`),
+  productPrices: (supplierId: string) => api.get(`/suppliers/${supplierId}/product-prices`),
+  setProductPrices: (supplierId: string, prices: unknown[]) =>
+    api.put(`/suppliers/${supplierId}/product-prices`, { prices }),
 };
 
 export const procurementApi = {
   list: (params?: Record<string, string>) => api.get("/procurement", { params }),
   one: (id: string) => api.get(`/procurement/${id}`),
   create: (d: unknown) => api.post("/procurement", d),
+  submit: (id: string) => api.patch(`/procurement/${id}/submit`),
+  validate: (id: string) => api.patch(`/procurement/${id}/validate`),
+  reject: (id: string, reason: string) => api.patch(`/procurement/${id}/reject`, { reason }),
   send: (id: string) => api.patch(`/procurement/${id}/send`),
   cancel: (id: string) => api.patch(`/procurement/${id}/cancel`),
   receive: (id: string, d: unknown) => api.patch(`/procurement/${id}/receive`, d),
@@ -82,8 +91,15 @@ export const productsAdminApi = {
 export const vipSelfServiceApi = {
   locations: (params?: Record<string, string>) =>
     api.get("/vip-self-service/locations", { params }),
-  replenish: (locationId: string) =>
-    api.patch(`/vip-self-service/locations/${locationId}/replenish`),
+  createLocation: (d: unknown) => api.post("/vip-self-service/locations", d),
+  addProduct: (locationId: string, d: unknown) =>
+    api.post(`/vip-self-service/locations/${locationId}/products`, d),
+  removeProduct: (locationProductId: string) =>
+    api.delete(`/vip-self-service/location-products/${locationProductId}`),
+  adjustProduct: (locationProductId: string, d: unknown) =>
+    api.patch(`/vip-self-service/location-products/${locationProductId}`, d),
+  replenish: (locationProductId: string) =>
+    api.patch(`/vip-self-service/locations/${locationProductId}/replenish`),
   tasks: (params?: Record<string, string>) => api.get("/vip-self-service/tasks", { params }),
   completeTask: (taskId: string) => api.patch(`/vip-self-service/tasks/${taskId}/complete`),
 };
@@ -102,7 +118,7 @@ export const ordersApi = {
 };
 
 export const quotasApi = {
-  list: () => api.get("/quotas"),
+  list: (params?: Record<string, string>) => api.get("/quotas", { params }),
   create: (d: unknown) => api.post("/quotas", d),
   update: (id: string, d: unknown) => api.patch(`/quotas/${id}`, d),
   remove: (id: string) => api.delete(`/quotas/${id}`),
@@ -114,6 +130,10 @@ export const reportingApi = {
   sla: (params?: Record<string, string>) => api.get("/reports/sla", { params }),
   userActivity: (params?: Record<string, string>) => api.get("/reports/user-activity", { params }),
   meetingRooms: (params?: Record<string, string>) => api.get("/reports/meeting-rooms", { params }),
+  purchasing: (params?: Record<string, string>) => api.get("/reports/purchasing", { params }),
+  inventoryDetail: (params?: Record<string, string>) =>
+    api.get("/reports/inventory-detail", { params }),
+  executive: (params?: Record<string, string>) => api.get("/reports/executive", { params }),
 };
 
 export const rolesApi = {
@@ -121,12 +141,11 @@ export const rolesApi = {
   create: (d: unknown) => api.post("/roles", d),
   update: (id: string, d: unknown) => api.patch(`/roles/${id}`, d),
   remove: (id: string) => api.delete(`/roles/${id}`),
-  getQuotas: (id: string) => api.get(`/roles/${id}/quotas`),
-  setQuota: (id: string, d: unknown) => api.post(`/roles/${id}/quotas`, d),
-  removeQuota: (roleId: string, quotaId: string) =>
-    api.delete(`/roles/${roleId}/quotas/${quotaId}`),
-  toggleQuotas: (id: string, enabled: boolean) =>
-    api.patch(`/roles/${id}`, { quotasEnabled: enabled }),
+};
+
+export const slaLevelsApi = {
+  list: (companyId: string) => api.get("/sla-levels", { params: { companyId } }),
+  save: (companyId: string, levels: unknown[]) => api.put(`/sla-levels/${companyId}`, { levels }),
 };
 
 export const permissionsApi = {

@@ -5,6 +5,7 @@ import {
   IsArray,
   IsDateString,
   IsEnum,
+  IsString,
   IsUUID,
   ValidateNested,
 } from 'class-validator';
@@ -58,11 +59,11 @@ export class OrderDto {
   status!: OrderStatus;
 
   @ApiProperty({
-    enum: OrderPriority,
-    description: 'Dérivée du rôle employé et du contexte (réunion, urgence)',
+    description:
+      'Code du niveau SLA hérité du rôle (défauts P1..P5 ou code personnalisé entreprise)',
   })
-  @IsEnum(OrderPriority)
-  priority!: OrderPriority;
+  @IsString()
+  priority!: string;
 
   @ApiProperty({
     example: '2026-06-26T14:00:00.000Z',
@@ -74,6 +75,36 @@ export class OrderDto {
   @ApiProperty({ example: '2026-06-26T12:00:00.000Z' })
   @IsDateString()
   createdAt!: string;
+
+  @ApiProperty({ nullable: true })
+  approvedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  approvedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  rejectedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  rejectedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  prepStartedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  preparedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  readyAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  readyBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  deliveredAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  deliveredBy!: string | null;
 
   @ApiProperty({ type: () => [CreateOrderLineDto] })
   @IsArray()

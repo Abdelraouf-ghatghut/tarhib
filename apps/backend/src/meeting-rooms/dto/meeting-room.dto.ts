@@ -15,9 +15,10 @@ export class CreateMeetingRoomDto {
   @IsString()
   nameAr!: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({ description: "Anglais optionnel — repli sur l'arabe" })
   @IsString()
-  nameEn!: string;
+  @IsOptional()
+  nameEn?: string;
 
   @ApiProperty()
   @IsUUID()

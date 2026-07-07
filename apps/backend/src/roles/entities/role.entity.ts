@@ -4,10 +4,12 @@ import {
   Entity,
   JoinTable,
   ManyToMany,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Permission } from './permission.entity.js';
+import { RoleQuota } from './role-quota.entity.js';
 
 export enum RoleScope {
   TARHIB = 'TARHIB',
@@ -33,14 +35,16 @@ export class Role {
   @Column({ name: 'name_ar', type: 'varchar', length: 100 })
   nameAr!: string;
 
-  @Column({ name: 'name_en', type: 'varchar', length: 100 })
-  nameEn!: string;
+  // Optionnel : l'arabe est la langue de référence, l'anglais un complément
+  @Column({ name: 'name_en', type: 'varchar', length: 100, nullable: true })
+  nameEn!: string | null;
 
   @Column({ type: 'varchar', length: 20 })
   scope!: RoleScope;
 
-  @Column({ name: 'sla_priority', type: 'varchar', length: 2, default: 'P5' })
-  slaPriority!: SlaPriority;
+  // Code libre référençant un niveau SLA de l'entreprise (défauts : P1..P5)
+  @Column({ name: 'sla_priority', type: 'varchar', length: 20, default: 'P5' })
+  slaPriority!: string;
 
   @Column({ name: 'is_system', type: 'boolean', default: false })
   isSystem!: boolean;
@@ -55,6 +59,9 @@ export class Role {
     inverseJoinColumn: { name: 'permission_key', referencedColumnName: 'key' },
   })
   permissions!: Permission[];
+
+  @OneToMany(() => RoleQuota, (q) => q.role)
+  quotas!: RoleQuota[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

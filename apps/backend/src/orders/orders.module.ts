@@ -6,6 +6,7 @@ import { Order } from './entities/order.entity.js';
 import { OrderLine } from './entities/order-line.entity.js';
 import { ValidationEngineService } from './validation-engine/validation-engine.service.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
+import { PrioritySlaModule } from '../priority-sla/priority-sla.module.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { Product } from '../products/entities/product.entity.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
@@ -26,6 +27,7 @@ import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entit
       EmployeeQuotaUsage,
     ]),
     NotificationsModule,
+    PrioritySlaModule,
   ],
   providers: [OrdersService, ValidationEngineService],
   controllers: [OrdersController],

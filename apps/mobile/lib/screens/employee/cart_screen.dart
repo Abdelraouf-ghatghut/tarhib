@@ -5,14 +5,25 @@ import 'package:go_router/go_router.dart';
 import 'package:tarhib_api_client/tarhib_api_client.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../providers/availability_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/orders_provider.dart';
+import '../../providers/quotas_provider.dart';
+import '../../theme/snow_colors.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_card.dart';
 import '../../widgets/glass_card.dart';
-import '../../widgets/order_line_tile.dart';
+import '../../widgets/status_badge.dart';
 
-/// TARHIB-13 + TARHIB-14 — Panier multi-produits + note + confirmation + validation ligne par ligne
+/// TARHIB-13 + TARHIB-14 — Panier multi-produits + note + confirmation.
+///
+/// Il n'existe plus d'écran "commande partiellement rejetée" après l'envoi :
+/// la disponibilité stock et le quota sont vérifiés EN AMONT, directement
+/// dans le panier (badge مقبولة/مرفوضة par ligne, bouton d'envoi désactivé
+/// si une ligne est invalide). Une commande valide passe donc automatiquement
+/// (le moteur de validation serveur reste l'arbitre final — §3.3/§3.4
+/// CLAUDE.md — mais ne devrait jamais contredire ce qui est déjà affiché ici,
+/// sauf cas rare de concurrence).
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
 
@@ -20,12 +31,22 @@ class CartScreen extends ConsumerStatefulWidget {
   ConsumerState<CartScreen> createState() => _CartScreenState();
 }
 
+/// Statut de validité d'une ligne, calculé côté client à partir des mêmes
+/// données que le moteur de validation serveur (§3.3 CLAUDE.md, étapes 2-3 —
+/// l'étape 1 rôle/commandable est déjà garantie par le catalogue filtré).
+enum _LineIssue { none, unavailable, quotaExceeded }
+
+class _LineCheck {
+  final _LineIssue issue;
+  const _LineCheck(this.issue);
+  bool get isValid => issue == _LineIssue.none;
+}
+
 class _CartScreenState extends ConsumerState<CartScreen>
     with SingleTickerProviderStateMixin {
   bool _submitting = false;
   Object? _error;
   OrderDto? _submittedOrder;
-  List<CartLine>? _originalCart;
   late final AnimationController _successCtrl;
   late final Animation<double> _successScale;
 
@@ -45,7 +66,24 @@ class _CartScreenState extends ConsumerState<CartScreen>
     super.dispose();
   }
 
-  Future<void> _confirmAndSubmit() async {
+  _LineCheck _checkLine(
+    CartLine line,
+    Map<String, ProductAvailability> availability,
+    Map<String, ({int remaining, int max})> quotas,
+  ) {
+    final avail = availability[line.productId];
+    if (avail != null && !avail.available) {
+      return const _LineCheck(_LineIssue.unavailable);
+    }
+    final quota = quotas[line.productId];
+    if (quota != null && line.quantity > quota.remaining) {
+      return const _LineCheck(_LineIssue.quotaExceeded);
+    }
+    return const _LineCheck(_LineIssue.none);
+  }
+
+  Future<void> _confirmAndSubmit(bool allValid) async {
+    if (!allValid) return;
     final cart = ref.read(cartProvider.notifier);
     final lines = ref.read(cartProvider);
     if (lines.isEmpty) return;
@@ -60,12 +98,10 @@ class _CartScreenState extends ConsumerState<CartScreen>
     if (confirmed != true || !mounted) return;
 
     HapticFeedback.mediumImpact();
-
     setState(() {
       _submitting = true;
       _error = null;
       _submittedOrder = null;
-      _originalCart = List.from(lines);
     });
 
     try {
@@ -84,6 +120,7 @@ class _CartScreenState extends ConsumerState<CartScreen>
       if (order != null) {
         ref.read(cartProvider.notifier).clear();
         ref.invalidate(ordersProvider);
+        ref.invalidate(quotaCacheProvider);
         setState(() => _submittedOrder = order);
         _successCtrl.forward();
         HapticFeedback.heavyImpact();
@@ -102,16 +139,12 @@ class _CartScreenState extends ConsumerState<CartScreen>
     final lines = ref.watch(cartProvider);
 
     if (_submittedOrder != null) {
-      return _ValidationResultView(
+      return _AutoConfirmedView(
         order: _submittedOrder!,
-        originalCart: _originalCart ?? [],
         l: l,
         successScale: _successScale,
         onClose: () {
-          setState(() {
-            _submittedOrder = null;
-            _originalCart = null;
-          });
+          setState(() => _submittedOrder = null);
           _successCtrl.reset();
           context.go('/employee/orders');
         },
@@ -126,6 +159,13 @@ class _CartScreenState extends ConsumerState<CartScreen>
       );
     }
 
+    final availability = ref.watch(availabilityProvider).value ?? {};
+    final quotas = ref.watch(quotaCacheProvider).value ?? {};
+    final checks = {
+      for (final line in lines) line.productId: _checkLine(line, availability, quotas),
+    };
+    final allValid = checks.values.every((c) => c.isValid);
+
     final locale = Localizations.localeOf(context);
     final scheme = Theme.of(context).colorScheme;
 
@@ -135,12 +175,12 @@ class _CartScreenState extends ConsumerState<CartScreen>
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, kToolbarHeight + 16, 16, 16),
             itemCount: lines.length + 1,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (ctx, i) {
               // Note field at the end
               if (i == lines.length) {
                 return Padding(
-                  padding: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.only(top: 6),
                   child: _NoteField(
                     initialValue: ref.read(cartProvider.notifier).note,
                     onChanged: (v) => ref.read(cartProvider.notifier).setNote(v),
@@ -149,30 +189,55 @@ class _CartScreenState extends ConsumerState<CartScreen>
                 );
               }
               final line = lines[i];
+              final check = checks[line.productId]!;
               final name = locale.languageCode == 'ar' ? line.nameAr : line.nameEn;
+              final quota = quotas[line.productId];
+
               return GlassCard(
-                margin: const EdgeInsets.symmetric(vertical: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(name,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(name,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 15)),
+                        ),
+                        _CartStepper(
+                          quantity: line.quantity,
+                          canIncrement: check.issue != _LineIssue.unavailable &&
+                              (quota == null || line.quantity < quota.remaining),
+                          onDecrement: () {
+                            HapticFeedback.selectionClick();
+                            ref.read(cartProvider.notifier).decrement(line.productId);
+                          },
+                          onIncrement: () {
+                            HapticFeedback.selectionClick();
+                            ref.read(cartProvider.notifier).increment(line.productId);
+                          },
+                          onRemove: () {
+                            HapticFeedback.lightImpact();
+                            ref.read(cartProvider.notifier).remove(line.productId);
+                          },
+                        ),
+                      ],
                     ),
-                    _CartStepper(
-                      quantity: line.quantity,
-                      onDecrement: () {
-                        HapticFeedback.selectionClick();
-                        ref.read(cartProvider.notifier).decrement(line.productId);
-                      },
-                      onIncrement: () {
-                        HapticFeedback.selectionClick();
-                        ref.read(cartProvider.notifier).increment(line.productId);
-                      },
-                      onRemove: () {
-                        HapticFeedback.lightImpact();
-                        ref.read(cartProvider.notifier).remove(line.productId);
-                      },
+                    const SizedBox(height: 8),
+                    StatusBadge(
+                      dense: true,
+                      label: check.isValid
+                          ? l.lineAcceptedBadge
+                          : check.issue == _LineIssue.unavailable
+                              ? l.notAvailable
+                              : l.lineRejectionReason_QUOTA_EXCEEDED,
+                      tone: check.isValid
+                          ? SnowStatusTone.success
+                          : SnowStatusTone.danger,
+                      icon: check.isValid
+                          ? Icons.check_circle_rounded
+                          : Icons.error_rounded,
                     ),
                   ],
                 ),
@@ -184,16 +249,51 @@ class _CartScreenState extends ConsumerState<CartScreen>
         if (_error != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: ErrorCard(error: _error!, onRetry: _confirmAndSubmit),
+            child: ErrorCard(error: _error!, onRetry: () => _confirmAndSubmit(allValid)),
           ),
 
-        GlassCard(
-          borderRadius: 0,
+        Container(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, -4),
+              ),
+            ],
+          ),
           child: SafeArea(
             top: false,
             child: Column(
               children: [
+                if (!allValid) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: SnowColors.dangerSoft,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_rounded,
+                            size: 16, color: SnowColors.dangerStrong),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            l.cartHasInvalidLines,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: SnowColors.dangerStrong),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -209,7 +309,9 @@ class _CartScreenState extends ConsumerState<CartScreen>
                 ),
                 const SizedBox(height: 14),
                 FilledButton.icon(
-                  onPressed: _submitting ? null : _confirmAndSubmit,
+                  onPressed: (_submitting || !allValid)
+                      ? null
+                      : () => _confirmAndSubmit(allValid),
                   icon: _submitting
                       ? SizedBox(
                           width: 16,
@@ -219,11 +321,6 @@ class _CartScreenState extends ConsumerState<CartScreen>
                         )
                       : const Icon(Icons.send_rounded),
                   label: Text(l.submitOrder),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
                 ),
               ],
             ),
@@ -279,9 +376,7 @@ class _NoteFieldState extends State<_NoteField> {
                 onChanged: widget.onChanged,
                 decoration: InputDecoration(
                   hintText: widget.l.notePlaceholder,
-                  hintStyle: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.4),
-                      fontSize: 13),
+                  filled: false,
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
                   counterStyle: TextStyle(
@@ -304,11 +399,13 @@ class _NoteFieldState extends State<_NoteField> {
 class _CartStepper extends StatelessWidget {
   const _CartStepper({
     required this.quantity,
+    required this.canIncrement,
     required this.onDecrement,
     required this.onIncrement,
     required this.onRemove,
   });
   final int quantity;
+  final bool canIncrement;
   final VoidCallback onDecrement;
   final VoidCallback onIncrement;
   final VoidCallback onRemove;
@@ -343,20 +440,26 @@ class _CartStepper extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
         ),
         GestureDetector(
-          onTap: onIncrement,
+          onTap: canIncrement ? onIncrement : null,
           child: Container(
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              color: scheme.primary,
+              color: canIncrement
+                  ? scheme.primary
+                  : scheme.onSurface.withValues(alpha: 0.15),
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                    color: scheme.primary.withValues(alpha: 0.35),
-                    blurRadius: 6)
-              ],
+              boxShadow: canIncrement
+                  ? [
+                      BoxShadow(
+                          color: scheme.primary.withValues(alpha: 0.35),
+                          blurRadius: 6),
+                    ]
+                  : null,
             ),
-            child: Icon(Icons.add, size: 16, color: scheme.onPrimary),
+            child: Icon(Icons.add,
+                size: 16,
+                color: canIncrement ? scheme.onPrimary : scheme.onSurface.withValues(alpha: 0.4)),
           ),
         ),
       ],
@@ -430,7 +533,6 @@ class _ConfirmSheet extends StatelessWidget {
               );
             }),
 
-            // Note preview
             if (note.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
@@ -460,18 +562,19 @@ class _ConfirmSheet extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: scheme.primary.withValues(alpha: 0.06),
+                color: SnowColors.successSoft,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline_rounded, size: 16, color: scheme.primary),
+                  const Icon(Icons.check_circle_rounded,
+                      size: 16, color: SnowColors.successStrong),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(l.estimatedPriority,
-                        style: TextStyle(
+                    child: Text(l.orderWillAutoConfirm,
+                        style: const TextStyle(
                             fontSize: 12,
-                            color: scheme.primary,
+                            color: SnowColors.successStrong,
                             fontWeight: FontWeight.w600)),
                   ),
                 ],
@@ -483,11 +586,6 @@ class _ConfirmSheet extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context, false),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                    ),
                     child: Text(l.cancel),
                   ),
                 ),
@@ -496,11 +594,6 @@ class _ConfirmSheet extends StatelessWidget {
                   flex: 2,
                   child: FilledButton(
                     onPressed: () => Navigator.pop(context, true),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                    ),
                     child: Text(l.confirmAndSubmit),
                   ),
                 ),
@@ -513,100 +606,77 @@ class _ConfirmSheet extends StatelessWidget {
   }
 }
 
-// ── Validation result ─────────────────────────────────────────────────────────
+// ── Confirmation automatique (plus d'écran "partiellement rejeté") ──────────
 
-class _ValidationResultView extends StatelessWidget {
-  const _ValidationResultView({
+class _AutoConfirmedView extends StatelessWidget {
+  const _AutoConfirmedView({
     required this.order,
-    required this.originalCart,
     required this.l,
     required this.successScale,
     required this.onClose,
   });
   final OrderDto order;
-  final List<CartLine> originalCart;
   final AppLocalizations l;
   final Animation<double> successScale;
   final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    final acceptedIds = {for (final ln in order.lines) ln.productId};
-    final accepted = originalCart.where((cl) => acceptedIds.contains(cl.productId)).toList();
-    final rejected = originalCart.where((cl) => !acceptedIds.contains(cl.productId)).toList();
-    final hasRejections = rejected.isNotEmpty;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, kToolbarHeight + 16, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const Spacer(),
           ScaleTransition(
             scale: successScale,
-            child: Icon(
-              hasRejections
-                  ? Icons.warning_amber_rounded
-                  : Icons.check_circle_outline_rounded,
-              size: 80,
-              color: hasRejections ? Colors.orange : scheme.primary,
+            child: Container(
+              width: 96,
+              height: 96,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: SnowColors.successSoft,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_rounded,
+                  size: 52, color: SnowColors.successStrong),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           Text(
-            hasRejections ? l.partiallyRejected : l.orderSubmitted,
+            l.orderSubmitted,
             style: Theme.of(context)
                 .textTheme
                 .titleLarge
                 ?.copyWith(fontWeight: FontWeight.w800),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
-            '${l.priority}: ${order.priority.name}',
+            l.orderAutoConfirmedSubtitle,
             textAlign: TextAlign.center,
-            style:
-                TextStyle(color: scheme.onSurface.withValues(alpha: 0.5), fontSize: 13),
+            style: const TextStyle(color: SnowColors.textMuted, fontSize: 13, height: 1.4),
           ),
           const SizedBox(height: 24),
-
-          if (accepted.isNotEmpty) ...[
-            _SectionHeader(label: l.linesAccepted(accepted.length), color: scheme.primary),
-            const SizedBox(height: 4),
-            GlassCard(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                children: accepted
-                    .map((cl) => OrderLineTile(productId: cl.productId, quantity: cl.quantity))
-                    .toList(),
-              ),
+          GlassCard(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _StatColumn(
+                    label: '#',
+                    value: order.id.substring(0, 8).toUpperCase(),
+                  ),
+                ),
+                Container(width: 1, height: 32, color: SnowColors.border),
+                Expanded(
+                  child: _StatColumn(label: l.priority, value: order.priority.name),
+                ),
+              ],
             ),
-          ],
-          if (rejected.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _SectionHeader(label: l.linesRejected(rejected.length), color: scheme.error),
-            const SizedBox(height: 4),
-            GlassCard(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                children: rejected
-                    .map((cl) => OrderLineTile(
-                          productId: cl.productId,
-                          quantity: cl.quantity,
-                          rejectionReason: l.lineRejected,
-                        ))
-                    .toList(),
-              ),
-            ),
-          ],
+          ),
           const Spacer(),
           FilledButton(
             onPressed: onClose,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
             child: Text(l.myOrders),
           ),
         ],
@@ -615,22 +685,19 @@ class _ValidationResultView extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.label, required this.color});
+class _StatColumn extends StatelessWidget {
+  const _StatColumn({required this.label, required this.value});
   final String label;
-  final Color color;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        Container(
-            width: 4,
-            height: 16,
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4))),
-        const SizedBox(width: 10),
-        Text(label,
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: color)),
+        Text(value,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(fontSize: 11, color: SnowColors.textMuted)),
       ],
     );
   }

@@ -14,6 +14,7 @@ describe('ValidationEngineService — moteur de validation (CLAUDE.md §3.3)', (
     companyId: 'co-1',
     branchId: 'br-1',
     role: 'EMPLOYEE',
+    roleId: null,
     products: [
       {
         id: 'prod-cmd',
@@ -79,6 +80,30 @@ describe('ValidationEngineService — moteur de validation (CLAUDE.md §3.3)', (
     });
     const result = engine.validateCart(ctx, [line('prod-restricted')]);
     expect(result.lines[0].decision).toBe('APPROVED');
+  });
+
+  it('should APPROVE when caller roleId (UUID) is in allowedRoles — rôles dynamiques', () => {
+    const ctx = makeCtx({ role: 'EMPLOYEE', roleId: 'role-uuid-1' });
+    ctx.products.find((p) => p.id === 'prod-restricted')!.allowedRoles = [
+      'role-uuid-1',
+    ];
+    ctx.stocks.push({
+      productId: 'prod-restricted',
+      branchId: 'br-1',
+      quantity: 5,
+    });
+    const result = engine.validateCart(ctx, [line('prod-restricted')]);
+    expect(result.lines[0].decision).toBe('APPROVED');
+  });
+
+  it('should REJECT when neither role name nor roleId match allowedRoles', () => {
+    const ctx = makeCtx({ role: 'EMPLOYEE', roleId: 'role-uuid-2' });
+    ctx.products.find((p) => p.id === 'prod-restricted')!.allowedRoles = [
+      'role-uuid-1',
+    ];
+    const result = engine.validateCart(ctx, [line('prod-restricted')]);
+    expect(result.lines[0].decision).toBe('REJECTED');
+    expect(result.lines[0].reason).toBe('ROLE_NOT_ALLOWED');
   });
 
   // ── Étape 2 : stock disponible ────────────────────────────────────────────

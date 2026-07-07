@@ -15,7 +15,10 @@ export class BranchesService {
     const entity = this.repo.create({
       companyId: dto.companyId,
       nameAr: dto.nameAr,
-      nameEn: dto.nameEn,
+      nameEn: dto.nameEn?.trim() || dto.nameAr,
+      stockResponsibleId: dto.stockResponsibleId ?? null,
+      orderValidatorId: dto.orderValidatorId ?? null,
+      purchasingManagerId: dto.purchasingManagerId ?? null,
     });
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
@@ -37,7 +40,14 @@ export class BranchesService {
     const entity = await this.repo.findOne({ where: { id } });
     if (!entity) throw new NotFoundException(`Branch ${id} not found`);
     if (dto.nameAr !== undefined) entity.nameAr = dto.nameAr;
-    if (dto.nameEn !== undefined) entity.nameEn = dto.nameEn;
+    if (dto.nameEn !== undefined)
+      entity.nameEn = dto.nameEn?.trim() || entity.nameAr;
+    if (dto.stockResponsibleId !== undefined)
+      entity.stockResponsibleId = dto.stockResponsibleId ?? null;
+    if (dto.orderValidatorId !== undefined)
+      entity.orderValidatorId = dto.orderValidatorId ?? null;
+    if (dto.purchasingManagerId !== undefined)
+      entity.purchasingManagerId = dto.purchasingManagerId ?? null;
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
   }
@@ -56,6 +66,9 @@ export class BranchesService {
     dto.nameAr = e.nameAr;
     dto.nameEn = e.nameEn;
     dto.active = e.active;
+    dto.stockResponsibleId = e.stockResponsibleId;
+    dto.orderValidatorId = e.orderValidatorId;
+    dto.purchasingManagerId = e.purchasingManagerId;
     return dto;
   }
 }

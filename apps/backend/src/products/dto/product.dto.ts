@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsBoolean,
@@ -26,10 +26,13 @@ export class ProductDto {
   @MinLength(1)
   nameAr!: string;
 
-  @ApiProperty({ example: 'Coffee' })
+  @ApiPropertyOptional({
+    example: 'Coffee',
+    description: "Nom anglais optionnel — l'arabe sert de repli",
+  })
   @IsString()
-  @MinLength(1)
-  nameEn!: string;
+  @IsOptional()
+  nameEn?: string;
 
   @ApiProperty({ example: 'beverages' })
   @IsString()
@@ -60,10 +63,13 @@ export class CreateProductDto {
   @MinLength(1)
   nameAr!: string;
 
-  @ApiProperty({ example: 'Coffee' })
+  @ApiPropertyOptional({
+    example: 'Coffee',
+    description: "Nom anglais optionnel — l'arabe sert de repli",
+  })
   @IsString()
-  @MinLength(1)
-  nameEn!: string;
+  @IsOptional()
+  nameEn?: string;
 
   @ApiProperty({ example: 'beverages' })
   @IsString()
@@ -109,4 +115,24 @@ export class CreateProductDto {
 export class ProductAdminDto extends ProductDto {
   @ApiProperty({ nullable: true })
   unitCost!: number | null;
+}
+
+/**
+ * Disponibilité stock d'un produit pour le site (société + branche) de
+ * l'appelant — utilisée par le catalogue mobile pour afficher un indicateur
+ * "غير متوفر" avant toute tentative de commande (§3.3.2 CLAUDE.md).
+ */
+export class ProductAvailabilityDto {
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0851' })
+  @IsUUID()
+  productId!: string;
+
+  @ApiProperty({ example: 12 })
+  @IsNumber()
+  @Min(0)
+  quantity!: number;
+
+  @ApiProperty({ example: true })
+  @IsBoolean()
+  available!: boolean;
 }

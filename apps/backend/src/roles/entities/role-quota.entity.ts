@@ -23,7 +23,7 @@ export class RoleQuota {
   @Column({ name: 'role_id' })
   roleId!: string;
 
-  @ManyToOne(() => Role, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Role, (role) => role.quotas, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'role_id' })
   role!: Role;
 

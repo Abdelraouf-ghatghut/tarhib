@@ -18,7 +18,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
 import { CompaniesService } from './companies.service';
-import { CompanyDto, CreateCompanyDto } from './dto/company.dto';
+import {
+  CompanyDto,
+  CreateCompanyDto,
+  UpdateCompanyDto,
+} from './dto/company.dto';
 
 @ApiTags('companies')
 @ApiBearerAuth()
@@ -57,7 +61,7 @@ export class CompaniesController {
   @ApiResponse({ status: 200, type: CompanyDto })
   update(
     @Param('id') id: string,
-    @Body() dto: Partial<CreateCompanyDto>,
+    @Body() dto: UpdateCompanyDto,
   ): Promise<CompanyDto> {
     return this.companiesService.update(id, dto);
   }

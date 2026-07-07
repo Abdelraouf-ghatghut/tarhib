@@ -47,3 +47,7 @@ android/.gradle/
 # apps/backend/openapi/openapi.json est intentionnellement committé (contrat d'API lisible dans les diffs)
 apps/mobile/packages/tarhib_api_client/
 EOF
+# Police Thmanyah - fichiers sous licence, non redistribuables (voir apps/web-admin/public/fonts/thmanyah/README.md)
+apps/web-admin/public/fonts/thmanyah/*.woff2
+apps/web-admin/public/fonts/thmanyah/*.ttf
+apps/web-admin/public/fonts/thmanyah/*.otf

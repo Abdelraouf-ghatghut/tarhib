@@ -17,9 +17,13 @@ export class CreateMeetingServicePackageDto {
   @IsString()
   nameAr!: string;
 
-  @ApiProperty({ example: 'Breakfast + service' })
+  @ApiPropertyOptional({
+    example: 'Breakfast + service',
+    description: "Anglais optionnel — repli sur l'arabe",
+  })
   @IsString()
-  nameEn!: string;
+  @IsOptional()
+  nameEn?: string;
 
   @ApiPropertyOptional({
     enum: ServicePackageType,

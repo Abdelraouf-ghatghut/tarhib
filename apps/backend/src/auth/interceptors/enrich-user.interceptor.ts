@@ -38,8 +38,9 @@ export class EnrichUserInterceptor implements NestInterceptor {
 
     if (!emp) return next.handle();
 
-    user.companyId = emp.companyId;
-    user.branchId = emp.branchId;
+    // Interne non affecté (ex. superadmin) : companyId/branchId restent vides
+    user.companyId = emp.companyId ?? user.companyId;
+    user.branchId = emp.branchId ?? user.branchId;
     user.email = emp.email || user.email;
 
     if (emp.roleId) {
@@ -49,10 +50,11 @@ export class EnrichUserInterceptor implements NestInterceptor {
       });
       if (role) {
         user.roleId = role.id;
-        user.roleName = role.nameEn;
+        user.roleName = role.nameEn ?? role.nameAr;
         user.scope = role.scope;
         user.permissions = role.permissions.map((p) => p.key);
-        user.role = role.nameEn;
+        user.role = role.nameEn ?? role.nameAr;
+        user.slaPriority = role.slaPriority;
         return next.handle();
       }
     }

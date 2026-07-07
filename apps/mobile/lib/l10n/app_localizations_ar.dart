@@ -585,4 +585,97 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get servicePackage => 'باقة الخدمة';
+
+  @override
+  String get notAvailable => 'غير متوفر';
+
+  @override
+  String get lineAcceptedBadge => 'مقبولة';
+
+  @override
+  String get cartHasInvalidLines =>
+      'بعض العناصر غير متوفرة أو تتجاوز حصتك — عدّلها أو أزلها لإرسال الطلب';
+
+  @override
+  String get orderWillAutoConfirm =>
+      'متوفر وضمن الحصة — سيتم تأكيد هذا الطلب تلقائياً';
+
+  @override
+  String get orderAutoConfirmedSubtitle =>
+      'تم تأكيد طلبك تلقائياً وإرساله للتحضير';
+
+  @override
+  String get orderLines => 'العناصر';
+
+  @override
+  String get timeRemaining => 'الوقت المتبقي';
+
+  @override
+  String get minutesShort => 'د';
+
+  @override
+  String get accountApproved => 'حساب نشط';
+
+  @override
+  String get quotasTracked => 'منتجات محدودة الحصة';
+
+  @override
+  String get settingsTitle => 'الإعدادات';
+
+  @override
+  String get personalInfo => 'معلومات شخصية';
+
+  @override
+  String get languageAppearance => 'اللغة والمظهر';
+
+  @override
+  String get notifications => 'الإشعارات';
+
+  @override
+  String get aboutApp => 'حول التطبيق';
+
+  @override
+  String get chooseLanguageHint => 'اختر لغتك المفضلة';
+
+  @override
+  String get defaultLanguage => 'اللغة الافتراضية';
+
+  @override
+  String get languageAppliesInstantly => 'سيتم تطبيق اللغة فوراً في التطبيق';
+
+  @override
+  String get allowNotifications => 'السماح بالإشعارات';
+
+  @override
+  String get orderNotifications => 'إشعارات الطلبات';
+
+  @override
+  String get notifNewOrder => 'طلب جديد';
+
+  @override
+  String get notifOrderApproved => 'تم اعتماد الطلب';
+
+  @override
+  String get notifOrderRejected => 'تم رفض الطلب';
+
+  @override
+  String get notifOrderReady => 'الطلب جاهز للاستلام';
+
+  @override
+  String get otherNotifications => 'أخرى';
+
+  @override
+  String get notifOffersUpdates => 'العروض والتحديثات';
+
+  @override
+  String get notifReminders => 'التذكيرات';
+
+  @override
+  String appVersion(String version) {
+    return 'الإصدار $version';
+  }
+
+  @override
+  String get aboutDescription =>
+      'يتيح لك تطبيق طريب للموظفين طلب المشروبات والوجبات الخفيفة والوجبات، وحجز قاعات الاجتماعات، ومتابعة طلباتك في الوقت الفعلي — كل ذلك ضمن حصص شركتك.';
 }

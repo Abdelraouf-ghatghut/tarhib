@@ -52,4 +52,10 @@ export class InventoryTransfer {
 
   @Column({ name: 'confirmed_at', nullable: true, type: 'timestamptz' })
   confirmedAt!: Date | null;
+
+  @Column({ name: 'cancelled_by', type: 'varchar', nullable: true })
+  cancelledBy!: string | null;
+
+  @Column({ name: 'cancelled_at', nullable: true, type: 'timestamptz' })
+  cancelledAt!: Date | null;
 }
