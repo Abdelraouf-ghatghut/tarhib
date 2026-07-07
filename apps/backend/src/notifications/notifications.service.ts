@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Twilio } from 'twilio';
+import { Employee } from '../employees/entities/employee.entity.js';
 
 /**
  * NotificationsService — TARHIB-9
@@ -17,7 +20,11 @@ export class NotificationsService {
   private readonly twilioFrom: string | undefined;
   private fcmApp: unknown = null;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @InjectRepository(Employee)
+    private readonly employeeRepo: Repository<Employee>,
+  ) {
     const sid = config.get<string>('TWILIO_ACCOUNT_SID');
     const token = config.get<string>('TWILIO_AUTH_TOKEN');
     this.twilioFrom = config.get<string>('TWILIO_PHONE_NUMBER');
@@ -86,6 +93,46 @@ export class NotificationsService {
       this.logger.log(`FCM push envoyé → ${deviceToken.slice(0, 12)}…`);
     } catch (err) {
       this.logger.error(`FCM push failed : ${String(err)}`);
+    }
+  }
+
+  private async sendSms(to: string, body: string): Promise<void> {
+    if (this.twilioClient && this.twilioFrom) {
+      try {
+        await this.twilioClient.messages.create({
+          body,
+          from: this.twilioFrom,
+          to,
+        });
+        this.logger.log(`SMS envoyé à ${to}`);
+      } catch (err) {
+        this.logger.error(`Échec SMS à ${to}: ${String(err)}`);
+      }
+    } else {
+      this.logger.log(`[SMS-mock] ${body} → ${to}`);
+    }
+  }
+
+  /**
+   * Notifie un employé précis (par ID) — utilisé par la chaîne de
+   * validation des achats (§ التنبيهات) : responsable stock, validateur,
+   * responsable achats. SMS si téléphone renseigné + push si FCM connu.
+   */
+  async notifyEmployee(
+    employeeId: string,
+    title: string,
+    body: string,
+  ): Promise<void> {
+    const employee = await this.employeeRepo.findOne({
+      where: { id: employeeId },
+    });
+    if (!employee) {
+      this.logger.warn(`notifyEmployee: employee ${employeeId} not found`);
+      return;
+    }
+    await this.sendSms(employee.phoneNumber, `[Tarhib] ${title} — ${body}`);
+    if (employee.fcmToken) {
+      await this.sendPush(employee.fcmToken, title, body);
     }
   }
 

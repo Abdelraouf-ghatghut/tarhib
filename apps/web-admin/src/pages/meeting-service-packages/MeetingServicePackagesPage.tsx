@@ -1,9 +1,11 @@
-import { Form, Input, Select, Tag, Typography, message } from "antd";
+import { Form, Input, Select, Tag, Typography } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CrudTable } from "../../components/CrudTable";
-import { meetingServicePackagesApi } from "../../lib/api";
+import { meetingServicePackagesApi, companiesApi } from "../../lib/api";
+import { bilingualName } from "../../lib/bilingualName";
 import { useScope } from "../../contexts/ScopeContext";
+import { ScopeFilterBar } from "../../components/ScopeFilterBar";
 import { useAuth } from "../../hooks/useAuth";
 
 const { Title } = Typography;
@@ -19,16 +21,26 @@ interface ServicePackage {
   companyId: string;
 }
 
+interface NamedEntity {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+}
+
 const TYPE_COLORS = { BREAKFAST: "orange", LUNCH: "blue", CUSTOM: "default" } as const;
 
 export function MeetingServicePackagesPage() {
   const { t, i18n } = useTranslation();
   const { companyId: scopeCompanyId } = useScope();
-  const { companyId: authCompanyId } = useAuth();
+  const { companyId: authCompanyId, hasPermission } = useAuth();
   const qc = useQueryClient();
   const isAr = i18n.language === "ar";
 
   const companyId = scopeCompanyId ?? authCompanyId ?? undefined;
+  // Aligné sur ScopeFilterBar/MeetingRoomsAdminPage : seul un profil avec
+  // company.manage peut lister/choisir la société — les autres n'ont que la
+  // leur (authCompanyId), jamais besoin d'un sélecteur.
+  const canPickCompany = hasPermission("company.manage");
 
   const { data, isPending } = useQuery({
     queryKey: ["meeting-service-packages", companyId],
@@ -36,15 +48,23 @@ export function MeetingServicePackagesPage() {
       meetingServicePackagesApi.list(companyId).then((r) => r.data as ServicePackage[]),
   });
 
+  const { data: companies = [] } = useQuery({
+    queryKey: ["companies"],
+    queryFn: () => companiesApi.list().then((r) => r.data as NamedEntity[]),
+    enabled: canPickCompany,
+  });
+
+  const label = (e: NamedEntity) => bilingualName(e.nameAr, e.nameEn, isAr);
+
   async function onSave(values: Record<string, unknown>, id?: string) {
-    try {
-      const payload = { ...values, companyId };
-      if (id) await meetingServicePackagesApi.update(id, payload);
-      else await meetingServicePackagesApi.create(payload);
-      void qc.invalidateQueries({ queryKey: ["meeting-service-packages"] });
-    } catch (err) {
-      void message.error(String(err));
-    }
+    // Un superadmin choisit la société dans le formulaire (values.companyId) ;
+    // un admin société n'a pas ce champ, on retombe sur la sienne — jamais de
+    // companyId vide/undefined envoyé au backend (qui l'exige, cf. §3 CLAUDE.md
+    // multi-tenant : les packages sont rattachés à une société comme les salles).
+    const payload = { ...values, companyId: values.companyId ?? companyId };
+    if (id) await meetingServicePackagesApi.update(id, payload);
+    else await meetingServicePackagesApi.create(payload);
+    void qc.invalidateQueries({ queryKey: ["meeting-service-packages"] });
   }
 
   async function onDelete(id: string) {
@@ -62,6 +82,8 @@ export function MeetingServicePackagesPage() {
     <>
       <Title level={4}>{t("meetingServicePackages")}</Title>
 
+      <ScopeFilterBar showBranch={false} />
+
       <CrudTable<ServicePackage>
         data={data}
         isPending={isPending}
@@ -71,7 +93,7 @@ export function MeetingServicePackagesPage() {
           {
             title: isAr ? t("nameAr") : t("nameEn"),
             key: "name",
-            render: (_, r) => (isAr ? r.nameAr : r.nameEn),
+            render: (_, r) => bilingualName(r.nameAr, r.nameEn, isAr),
           },
           {
             title: t("packageType"),
@@ -96,10 +118,24 @@ export function MeetingServicePackagesPage() {
         ]}
         formContent={() => (
           <>
+            {canPickCompany && (
+              <Form.Item
+                name="companyId"
+                label={t("company")}
+                rules={[{ required: true }]}
+                initialValue={companyId}
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  options={companies.map((c) => ({ value: c.id, label: label(c) }))}
+                />
+              </Form.Item>
+            )}
             <Form.Item name="nameAr" label={t("nameAr")} rules={[{ required: true }]}>
               <Input dir="rtl" />
             </Form.Item>
-            <Form.Item name="nameEn" label={t("nameEn")} rules={[{ required: true }]}>
+            <Form.Item name="nameEn" label={t("nameEnOptional")}>
               <Input />
             </Form.Item>
             <Form.Item name="type" label={t("packageType")} initialValue="CUSTOM">

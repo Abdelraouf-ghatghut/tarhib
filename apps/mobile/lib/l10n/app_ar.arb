@@ -214,5 +214,41 @@
   "meetingServiceBreakfast": "إفطار + خدمة",
   "meetingServiceLunch": "غداء + خدمة",
   "chooseServicePackage": "اختر باقة الخدمة",
-  "servicePackage": "باقة الخدمة"
+  "servicePackage": "باقة الخدمة",
+
+  "notAvailable": "غير متوفر",
+  "lineAcceptedBadge": "مقبولة",
+  "cartHasInvalidLines": "بعض العناصر غير متوفرة أو تتجاوز حصتك — عدّلها أو أزلها لإرسال الطلب",
+  "orderWillAutoConfirm": "متوفر وضمن الحصة — سيتم تأكيد هذا الطلب تلقائياً",
+  "orderAutoConfirmedSubtitle": "تم تأكيد طلبك تلقائياً وإرساله للتحضير",
+
+  "orderLines": "العناصر",
+  "timeRemaining": "الوقت المتبقي",
+  "minutesShort": "د",
+
+  "accountApproved": "حساب نشط",
+  "quotasTracked": "منتجات محدودة الحصة",
+  "settingsTitle": "الإعدادات",
+  "personalInfo": "معلومات شخصية",
+  "languageAppearance": "اللغة والمظهر",
+  "notifications": "الإشعارات",
+  "aboutApp": "حول التطبيق",
+
+  "chooseLanguageHint": "اختر لغتك المفضلة",
+  "defaultLanguage": "اللغة الافتراضية",
+  "languageAppliesInstantly": "سيتم تطبيق اللغة فوراً في التطبيق",
+
+  "allowNotifications": "السماح بالإشعارات",
+  "orderNotifications": "إشعارات الطلبات",
+  "notifNewOrder": "طلب جديد",
+  "notifOrderApproved": "تم اعتماد الطلب",
+  "notifOrderRejected": "تم رفض الطلب",
+  "notifOrderReady": "الطلب جاهز للاستلام",
+  "otherNotifications": "أخرى",
+  "notifOffersUpdates": "العروض والتحديثات",
+  "notifReminders": "التذكيرات",
+
+  "appVersion": "الإصدار {version}",
+  "@appVersion": { "placeholders": { "version": { "type": "String" } } },
+  "aboutDescription": "يتيح لك تطبيق طريب للموظفين طلب المشروبات والوجبات الخفيفة والوجبات، وحجز قاعات الاجتماعات، ومتابعة طلباتك في الوقت الفعلي — كل ذلك ضمن حصص شركتك."
 }

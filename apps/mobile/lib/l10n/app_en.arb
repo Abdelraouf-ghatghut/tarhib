@@ -214,5 +214,41 @@
   "meetingServiceBreakfast": "Breakfast + service",
   "meetingServiceLunch": "Lunch + service",
   "chooseServicePackage": "Choose a service package",
-  "servicePackage": "Service package"
+  "servicePackage": "Service package",
+
+  "notAvailable": "Not available",
+  "lineAcceptedBadge": "Accepted",
+  "cartHasInvalidLines": "Some items are unavailable or exceed your quota — remove or adjust them to submit",
+  "orderWillAutoConfirm": "Available and within quota — this order will be confirmed automatically",
+  "orderAutoConfirmedSubtitle": "Your order has been confirmed automatically and sent for preparation",
+
+  "orderLines": "Items",
+  "timeRemaining": "Time remaining",
+  "minutesShort": "min",
+
+  "accountApproved": "Active account",
+  "quotasTracked": "Tracked products",
+  "settingsTitle": "Settings",
+  "personalInfo": "Personal information",
+  "languageAppearance": "Language & appearance",
+  "notifications": "Notifications",
+  "aboutApp": "About the app",
+
+  "chooseLanguageHint": "Choose your preferred language",
+  "defaultLanguage": "Default language",
+  "languageAppliesInstantly": "The language applies instantly across the app",
+
+  "allowNotifications": "Allow notifications",
+  "orderNotifications": "Order notifications",
+  "notifNewOrder": "New order",
+  "notifOrderApproved": "Order approved",
+  "notifOrderRejected": "Order rejected",
+  "notifOrderReady": "Order ready for pickup",
+  "otherNotifications": "Other",
+  "notifOffersUpdates": "Offers & updates",
+  "notifReminders": "Reminders",
+
+  "appVersion": "Version {version}",
+  "@appVersion": { "placeholders": { "version": { "type": "String" } } },
+  "aboutDescription": "Tarhib Employee lets you order drinks, snacks and meals, book meeting rooms and track your orders in real time — all within your company's quotas."
 }

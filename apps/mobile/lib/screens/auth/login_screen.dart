@@ -63,7 +63,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 Text(
                   l.appTitle,
                   style: TextStyle(
-                    fontFamily: 'Cairo',
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
                     color: scheme.primary,
@@ -74,7 +73,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 Text(
                   l.loginSubtitle,
                   style: const TextStyle(
-                    fontFamily: 'Cairo',
                     fontSize: 14,
                     color: Color(0xFF6B778C),
                   ),
@@ -102,12 +100,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     labelColor: Colors.white,
                     unselectedLabelColor: const Color(0xFF6B778C),
                     labelStyle: const TextStyle(
-                      fontFamily: 'Cairo',
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
                     unselectedLabelStyle: const TextStyle(
-                      fontFamily: 'Cairo',
                       fontWeight: FontWeight.w400,
                       fontSize: 13,
                     ),
@@ -138,7 +134,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   child: Text(
                     l.signupLink,
                     style: TextStyle(
-                      fontFamily: 'Cairo',
                       color: scheme.primary,
                     ),
                   ),
@@ -387,7 +382,6 @@ class _OtpFormState extends ConsumerState<_OtpForm> {
               maxLength: 6,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontFamily: 'Cairo',
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 8,
@@ -408,7 +402,6 @@ class _OtpFormState extends ConsumerState<_OtpForm> {
               child: Text(
                 l.resendOtp,
                 style: TextStyle(
-                  fontFamily: 'Cairo',
                   fontSize: 12,
                   color: scheme.primary,
                 ),
@@ -470,7 +463,6 @@ class _ErrorBanner extends StatelessWidget {
             child: Text(
               message,
               style: const TextStyle(
-                fontFamily: 'Cairo',
                 color: Color(0xFFFF4D4F),
                 fontSize: 12,
                 height: 1.4,

@@ -585,4 +585,98 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get servicePackage => 'Service package';
+
+  @override
+  String get notAvailable => 'Not available';
+
+  @override
+  String get lineAcceptedBadge => 'Accepted';
+
+  @override
+  String get cartHasInvalidLines =>
+      'Some items are unavailable or exceed your quota — remove or adjust them to submit';
+
+  @override
+  String get orderWillAutoConfirm =>
+      'Available and within quota — this order will be confirmed automatically';
+
+  @override
+  String get orderAutoConfirmedSubtitle =>
+      'Your order has been confirmed automatically and sent for preparation';
+
+  @override
+  String get orderLines => 'Items';
+
+  @override
+  String get timeRemaining => 'Time remaining';
+
+  @override
+  String get minutesShort => 'min';
+
+  @override
+  String get accountApproved => 'Active account';
+
+  @override
+  String get quotasTracked => 'Tracked products';
+
+  @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get personalInfo => 'Personal information';
+
+  @override
+  String get languageAppearance => 'Language & appearance';
+
+  @override
+  String get notifications => 'Notifications';
+
+  @override
+  String get aboutApp => 'About the app';
+
+  @override
+  String get chooseLanguageHint => 'Choose your preferred language';
+
+  @override
+  String get defaultLanguage => 'Default language';
+
+  @override
+  String get languageAppliesInstantly =>
+      'The language applies instantly across the app';
+
+  @override
+  String get allowNotifications => 'Allow notifications';
+
+  @override
+  String get orderNotifications => 'Order notifications';
+
+  @override
+  String get notifNewOrder => 'New order';
+
+  @override
+  String get notifOrderApproved => 'Order approved';
+
+  @override
+  String get notifOrderRejected => 'Order rejected';
+
+  @override
+  String get notifOrderReady => 'Order ready for pickup';
+
+  @override
+  String get otherNotifications => 'Other';
+
+  @override
+  String get notifOffersUpdates => 'Offers & updates';
+
+  @override
+  String get notifReminders => 'Reminders';
+
+  @override
+  String appVersion(String version) {
+    return 'Version $version';
+  }
+
+  @override
+  String get aboutDescription =>
+      'Tarhib Employee lets you order drinks, snacks and meals, book meeting rooms and track your orders in real time — all within your company\'s quotas.';
 }

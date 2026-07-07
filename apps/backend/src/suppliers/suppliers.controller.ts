@@ -6,19 +6,23 @@ import {
   Param,
   Patch,
   Post,
-  Query,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
-  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { SuppliersService } from './suppliers.service.js';
-import { CreateSupplierDto, SupplierDto } from './dto/supplier.dto.js';
+import {
+  CreateSupplierDto,
+  ProductPriceDto,
+  SetProductPricesDto,
+  SupplierDto,
+} from './dto/supplier.dto.js';
 
 @ApiTags('suppliers')
 @ApiBearerAuth()
@@ -35,11 +39,13 @@ export class SuppliersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Lister les fournisseurs' })
-  @ApiQuery({ name: 'companyId', required: false })
+  @ApiOperation({
+    summary:
+      'Lister les fournisseurs — ressource Tarhib globale, non liée à une société cliente',
+  })
   @ApiResponse({ status: 200, type: [SupplierDto] })
-  findAll(@Query('companyId') companyId?: string): Promise<SupplierDto[]> {
-    return this.service.findAll(companyId);
+  findAll(): Promise<SupplierDto[]> {
+    return this.service.findAll();
   }
 
   @Get(':id')
@@ -61,5 +67,27 @@ export class SuppliersController {
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string): Promise<void> {
     return this.service.remove(id);
+  }
+
+  @Get(':id/product-prices')
+  @ApiOperation({
+    summary: 'Prix pratiqués par ce fournisseur, produit par produit',
+  })
+  @ApiResponse({ status: 200, type: [ProductPriceDto] })
+  getProductPrices(@Param('id') id: string): Promise<ProductPriceDto[]> {
+    return this.service.getProductPrices(id);
+  }
+
+  @Put(':id/product-prices')
+  @ApiOperation({
+    summary:
+      'Remplace le set de prix produits de ce fournisseur (pré-remplissage المشتريات)',
+  })
+  @ApiResponse({ status: 200, type: [ProductPriceDto] })
+  setProductPrices(
+    @Param('id') id: string,
+    @Body() dto: SetProductPricesDto,
+  ): Promise<ProductPriceDto[]> {
+    return this.service.setProductPrices(id, dto.prices);
   }
 }

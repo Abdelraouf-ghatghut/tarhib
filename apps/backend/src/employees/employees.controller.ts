@@ -45,7 +45,12 @@ export class EmployeesController {
   @ApiQuery({
     name: 'role',
     required: false,
-    description: 'Filtrer par rôle (ex. EMPLOYEE, DEPARTMENT_MANAGER)',
+    description: 'Filtrer par rôle legacy (chaîne libre, ex. EMPLOYEE)',
+  })
+  @ApiQuery({
+    name: 'roleId',
+    required: false,
+    description: 'Filtrer par rôle dynamique (UUID)',
   })
   @ApiQuery({
     name: 'active',
@@ -59,6 +64,7 @@ export class EmployeesController {
     @Query('departmentId') departmentId?: string,
     @Query('role') role?: string,
     @Query('active') active?: string,
+    @Query('roleId') roleId?: string,
   ): Promise<EmployeeDto[]> {
     return this.employeesService.findAll(
       companyId,
@@ -66,6 +72,7 @@ export class EmployeesController {
       departmentId,
       role,
       active,
+      roleId,
     );
   }
 

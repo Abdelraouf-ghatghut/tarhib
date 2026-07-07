@@ -76,6 +76,36 @@ export class OrderDto {
   @IsDateString()
   createdAt!: string;
 
+  @ApiProperty({ nullable: true })
+  approvedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  approvedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  rejectedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  rejectedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  prepStartedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  preparedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  readyAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  readyBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  deliveredAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  deliveredBy!: string | null;
+
   @ApiProperty({ type: () => [CreateOrderLineDto] })
   @IsArray()
   @ValidateNested({ each: true })

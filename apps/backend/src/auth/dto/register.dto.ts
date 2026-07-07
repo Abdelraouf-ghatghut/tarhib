@@ -26,7 +26,7 @@ export class RegisterDto {
   @IsString()
   lastNameEn!: string;
 
-  @ApiProperty({ example: '+213555000000' })
+  @ApiProperty({ example: '+218912345678' })
   @IsString()
   phoneNumber!: string;
 

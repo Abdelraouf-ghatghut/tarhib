@@ -31,15 +31,19 @@ const METHOD_COLORS: Record<string, string> = {
 const ENTITIES = [
   "orders",
   "inventory",
+  "inventory-transfers",
   "products",
   "employees",
   "companies",
   "branches",
+  "departments",
   "procurement",
   "suppliers",
   "vip-self-service",
   "meeting-rooms",
   "quotas",
+  "sla-levels",
+  "roles",
   "auth",
 ];
 
@@ -73,13 +77,19 @@ export default function AuditLogPage() {
     {
       title: t("audit.action"),
       dataIndex: "action",
-      width: 200,
-      render: (action: string) => {
-        const [method, ...rest] = action.split(":");
+      width: 220,
+      // action = "PATCH:procurement" → « تعديل — المشتريات »
+      render: (action: string, row: AuditLog) => {
+        const method = action.split(":")[0];
+        const actionKey = `audit.action_${method}`;
+        const actionLabel = t(actionKey);
+        const entityLabel = t(`audit.entity_${row.entity}`, { defaultValue: row.entity });
         return (
           <Space>
-            <Tag color={METHOD_COLORS[method] ?? "default"}>{method}</Tag>
-            <span>{rest.join(":").toLowerCase()}</span>
+            <Tag color={METHOD_COLORS[method] ?? "default"}>
+              {actionLabel === actionKey ? method : actionLabel}
+            </Tag>
+            <span>{entityLabel}</span>
           </Space>
         );
       },
@@ -88,7 +98,7 @@ export default function AuditLogPage() {
       title: t("audit.entity"),
       dataIndex: "entity",
       width: 140,
-      render: (v: string) => <Tag>{v}</Tag>,
+      render: (v: string) => <Tag>{t(`audit.entity_${v}`, { defaultValue: v })}</Tag>,
     },
     {
       title: t("audit.entityId"),
@@ -141,7 +151,10 @@ export default function AuditLogPage() {
             allowClear
             placeholder={t("audit.filterEntity")}
             style={{ width: 180 }}
-            options={ENTITIES.map((e) => ({ label: e, value: e }))}
+            options={ENTITIES.map((e) => ({
+              label: t(`audit.entity_${e}`, { defaultValue: e }),
+              value: e,
+            }))}
             onChange={(v) => {
               setEntity(v);
               setPage(1);

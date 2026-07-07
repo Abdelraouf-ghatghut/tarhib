@@ -61,7 +61,7 @@ export function CompaniesPage() {
             <Form.Item name="nameAr" label={t("nameAr")} rules={[{ required: true }]}>
               <Input dir="rtl" />
             </Form.Item>
-            <Form.Item name="nameEn" label={t("nameEn")} rules={[{ required: true }]}>
+            <Form.Item name="nameEn" label={t("nameEnOptional")}>
               <Input dir="ltr" />
             </Form.Item>
             <Form.Item

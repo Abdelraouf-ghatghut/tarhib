@@ -16,10 +16,12 @@ export class CompaniesService {
   ) {}
 
   async create(dto: CreateCompanyDto): Promise<CompanyDto> {
+    // Anglais optionnel : repli sur l'arabe (nom canonique + name_en non-null)
+    const nameEn = dto.nameEn?.trim() || dto.nameAr;
     const entity = this.repo.create({
-      name: dto.nameEn, // nom canonique interne dérivé du nom anglais
+      name: nameEn, // nom canonique interne dérivé du nom anglais
       nameAr: dto.nameAr,
-      nameEn: dto.nameEn,
+      nameEn,
       slug: dto.slug,
       active: dto.active ?? true,
     });

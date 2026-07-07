@@ -1213,6 +1213,180 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Service package'**
   String get servicePackage;
+
+  /// No description provided for @notAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available'**
+  String get notAvailable;
+
+  /// No description provided for @lineAcceptedBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Accepted'**
+  String get lineAcceptedBadge;
+
+  /// No description provided for @cartHasInvalidLines.
+  ///
+  /// In en, this message translates to:
+  /// **'Some items are unavailable or exceed your quota — remove or adjust them to submit'**
+  String get cartHasInvalidLines;
+
+  /// No description provided for @orderWillAutoConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Available and within quota — this order will be confirmed automatically'**
+  String get orderWillAutoConfirm;
+
+  /// No description provided for @orderAutoConfirmedSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your order has been confirmed automatically and sent for preparation'**
+  String get orderAutoConfirmedSubtitle;
+
+  /// No description provided for @orderLines.
+  ///
+  /// In en, this message translates to:
+  /// **'Items'**
+  String get orderLines;
+
+  /// No description provided for @timeRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Time remaining'**
+  String get timeRemaining;
+
+  /// No description provided for @minutesShort.
+  ///
+  /// In en, this message translates to:
+  /// **'min'**
+  String get minutesShort;
+
+  /// No description provided for @accountApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Active account'**
+  String get accountApproved;
+
+  /// No description provided for @quotasTracked.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracked products'**
+  String get quotasTracked;
+
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @personalInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Personal information'**
+  String get personalInfo;
+
+  /// No description provided for @languageAppearance.
+  ///
+  /// In en, this message translates to:
+  /// **'Language & appearance'**
+  String get languageAppearance;
+
+  /// No description provided for @notifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get notifications;
+
+  /// No description provided for @aboutApp.
+  ///
+  /// In en, this message translates to:
+  /// **'About the app'**
+  String get aboutApp;
+
+  /// No description provided for @chooseLanguageHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose your preferred language'**
+  String get chooseLanguageHint;
+
+  /// No description provided for @defaultLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Default language'**
+  String get defaultLanguage;
+
+  /// No description provided for @languageAppliesInstantly.
+  ///
+  /// In en, this message translates to:
+  /// **'The language applies instantly across the app'**
+  String get languageAppliesInstantly;
+
+  /// No description provided for @allowNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow notifications'**
+  String get allowNotifications;
+
+  /// No description provided for @orderNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Order notifications'**
+  String get orderNotifications;
+
+  /// No description provided for @notifNewOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'New order'**
+  String get notifNewOrder;
+
+  /// No description provided for @notifOrderApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Order approved'**
+  String get notifOrderApproved;
+
+  /// No description provided for @notifOrderRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Order rejected'**
+  String get notifOrderRejected;
+
+  /// No description provided for @notifOrderReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Order ready for pickup'**
+  String get notifOrderReady;
+
+  /// No description provided for @otherNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get otherNotifications;
+
+  /// No description provided for @notifOffersUpdates.
+  ///
+  /// In en, this message translates to:
+  /// **'Offers & updates'**
+  String get notifOffersUpdates;
+
+  /// No description provided for @notifReminders.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders'**
+  String get notifReminders;
+
+  /// No description provided for @appVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version}'**
+  String appVersion(String version);
+
+  /// No description provided for @aboutDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Tarhib Employee lets you order drinks, snacks and meals, book meeting rooms and track your orders in real time — all within your company\'s quotas.'**
+  String get aboutDescription;
 }
 
 class _AppLocalizationsDelegate

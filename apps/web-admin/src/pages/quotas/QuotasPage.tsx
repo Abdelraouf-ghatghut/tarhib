@@ -1,20 +1,41 @@
-import { Form, InputNumber, Select, Tag, Typography } from "antd";
+import { useState } from "react";
+import {
+  Alert,
+  Button,
+  DatePicker,
+  Form,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Progress,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from "antd";
+import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { CrudTable } from "../../components/CrudTable";
-import { quotasApi, productsApi, employeesApi } from "../../lib/api";
+import { useNavigate } from "react-router-dom";
+import dayjs, { type Dayjs } from "dayjs";
+import { quotasApi, productsAdminApi, employeesApi } from "../../lib/api";
+import { ScopeFilterBar } from "../../components/ScopeFilterBar";
+import { useScope } from "../../contexts/ScopeContext";
+import { useAuth } from "../../hooks/useAuth";
+import { getErrorMessage } from "../../lib/errors";
+import { bilingualName } from "../../lib/bilingualName";
 
-const { Title } = Typography;
-
-const PERIODS = ["DAY", "WEEK", "MONTH"];
-const ROLES = ["ADMIN", "DEPARTMENT_MANAGER", "INVENTORY_MANAGER", "HOSPITALITY_AGENT", "EMPLOYEE"];
+const { Title, Text } = Typography;
 
 interface Quota {
   id: string;
+  employeeId: string;
   productId: string;
-  employeeId?: string;
-  role?: string;
-  period: string;
+  companyId: string;
+  periodStart: string;
+  periodEnd: string;
   maxQuantity: number;
   usedQuantity: number;
 }
@@ -24,132 +45,310 @@ interface Product {
   nameAr: string;
   nameEn: string;
 }
+
 interface Employee {
   id: string;
-  firstName: string;
-  lastName: string;
+  firstNameAr: string;
+  lastNameAr: string;
+  firstNameEn: string;
+  lastNameEn: string;
+  email: string;
+  companyId: string;
 }
 
+/**
+ * Quotas individuels (fenêtre datée employé × produit, consommation suivie).
+ * Les quotas récurrents par rôle client (jour/semaine/mois) se configurent
+ * dans Rôles & permissions — un lien y renvoie.
+ */
 export function QuotasPage() {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
-  const isAr = i18n.language === "ar";
+  const navigate = useNavigate();
+  const isAr = i18n.language.startsWith("ar");
+  const { companyId: scopeCompanyId } = useScope();
+  const { companyId: authCompanyId, hasPermission } = useAuth();
+  const companyId = scopeCompanyId ?? authCompanyId ?? undefined;
 
-  const { data, isPending } = useQuery({
-    queryKey: ["quotas"],
-    queryFn: () => quotasApi.list().then((r) => r.data as Quota[]),
+  const [form] = Form.useForm();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Quota | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const { data: quotas = [], isPending } = useQuery({
+    queryKey: ["quotas", companyId],
+    queryFn: () =>
+      quotasApi.list(companyId ? { companyId } : undefined).then((r) => r.data as Quota[]),
   });
 
+  // Vue admin : /products/admin (tous les produits, sans le filtrage par
+  // rôle/type/actif appliqué au catalogue employé) — sinon un quota ne
+  // peut être créé que sur les produits déjà autorisés au rôle de l'appelant.
   const { data: products = [] } = useQuery({
-    queryKey: ["products"],
-    queryFn: () => productsApi.list().then((r) => r.data as Product[]),
+    queryKey: ["products-admin"],
+    queryFn: () => productsAdminApi.list().then((r) => r.data as Product[]),
   });
 
   const { data: employees = [] } = useQuery({
-    queryKey: ["employees"],
-    queryFn: () => employeesApi.list().then((r) => r.data as Employee[]),
+    queryKey: ["employees", companyId],
+    queryFn: () =>
+      employeesApi.list(companyId ? { companyId } : undefined).then((r) => r.data as Employee[]),
   });
 
-  async function onSave(values: Record<string, unknown>, id?: string) {
-    if (id) await quotasApi.update(id, values);
-    else await quotasApi.create(values);
-    void qc.invalidateQueries({ queryKey: ["quotas"] });
+  const productName = (id: string) => {
+    const p = products.find((x) => x.id === id);
+    return p ? bilingualName(p.nameAr, p.nameEn, isAr) : id.substring(0, 8);
+  };
+
+  const employeeName = (id: string) => {
+    const e = employees.find((x) => x.id === id);
+    if (!e) return id.substring(0, 8);
+    const name = isAr ? `${e.firstNameAr} ${e.lastNameAr}` : `${e.firstNameEn} ${e.lastNameEn}`;
+    return name.trim() || e.email;
+  };
+
+  function openCreate() {
+    setEditing(null);
+    form.resetFields();
+    setCreateOpen(true);
   }
 
-  async function onDelete(id: string) {
-    await quotasApi.remove(id);
-    void qc.invalidateQueries({ queryKey: ["quotas"] });
+  function openEdit(quota: Quota) {
+    setEditing(quota);
+    form.setFieldsValue({
+      employeeId: quota.employeeId,
+      productId: quota.productId,
+      period: [dayjs(quota.periodStart), dayjs(quota.periodEnd)],
+      maxQuantity: quota.maxQuantity,
+    });
+    setCreateOpen(true);
   }
 
-  const productMap = Object.fromEntries(products.map((p) => [p.id, isAr ? p.nameAr : p.nameEn]));
+  async function handleSubmit() {
+    try {
+      const values = (await form.validateFields()) as {
+        employeeId: string;
+        productId: string;
+        period: [Dayjs, Dayjs];
+        maxQuantity: number;
+      };
+      setSaving(true);
+      if (editing) {
+        await quotasApi.update(editing.id, {
+          productId: values.productId,
+          periodStart: values.period[0].format("YYYY-MM-DD"),
+          periodEnd: values.period[1].format("YYYY-MM-DD"),
+          maxQuantity: values.maxQuantity,
+        });
+      } else {
+        const employee = employees.find((e) => e.id === values.employeeId);
+        await quotasApi.create({
+          employeeId: values.employeeId,
+          productId: values.productId,
+          periodStart: values.period[0].format("YYYY-MM-DD"),
+          periodEnd: values.period[1].format("YYYY-MM-DD"),
+          maxQuantity: values.maxQuantity,
+          companyId: employee?.companyId ?? companyId,
+        });
+      }
+      void qc.invalidateQueries({ queryKey: ["quotas"] });
+      void message.success(t("saved"));
+      setCreateOpen(false);
+      setEditing(null);
+      form.resetFields();
+    } catch (err) {
+      if ((err as { errorFields?: unknown }).errorFields) return;
+      void message.error(getErrorMessage(err, t));
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  const employeeMap = Object.fromEntries(
-    employees.map((e) => [e.id, `${e.firstName} ${e.lastName}`]),
-  );
+  async function handleDelete(id: string) {
+    try {
+      await quotasApi.remove(id);
+      void qc.invalidateQueries({ queryKey: ["quotas"] });
+      void message.success(t("deleted"));
+    } catch (err) {
+      void message.error(getErrorMessage(err, t));
+    }
+  }
 
   return (
     <>
-      <Title level={4}>{t("quotas")}</Title>
-      <CrudTable<Quota>
-        data={data}
-        isPending={isPending}
-        onSave={onSave}
-        onDelete={onDelete}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 12,
+          marginBlockEnd: 16,
+        }}
+      >
+        <Title level={4} style={{ margin: 0 }}>
+          {t("quotas")}
+        </Title>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+          {t("newQuota")}
+        </Button>
+      </div>
+
+      {/* Les quotas récurrents par rôle se gèrent dans Rôles & permissions */}
+      {hasPermission("role.manage") && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBlockEnd: 16 }}
+          message={t("quotaRoleHint")}
+          action={
+            <Button size="small" onClick={() => navigate("/roles")}>
+              {t("rolesPermissions")}
+            </Button>
+          }
+        />
+      )}
+
+      <ScopeFilterBar showBranch={false} />
+
+      <Table<Quota>
+        rowKey="id"
+        dataSource={quotas}
+        loading={isPending}
+        size="middle"
+        scroll={{ x: true }}
+        pagination={{ pageSize: 20 }}
         columns={[
           {
-            title: t("productId"),
-            dataIndex: "productId",
-            render: (v: string) => productMap[v] ?? v.substring(0, 8),
+            title: t("employee"),
+            dataIndex: "employeeId",
+            render: (v: string) => employeeName(v),
           },
           {
-            title: t("role") + " / " + t("employees"),
-            render: (_: unknown, row: Quota) =>
-              row.role ? (
-                <Tag>{row.role}</Tag>
-              ) : (
-                (employeeMap[row.employeeId ?? ""] ?? row.employeeId?.substring(0, 8))
-              ),
+            title: t("product"),
+            dataIndex: "productId",
+            render: (v: string) => productName(v),
           },
-          { title: t("period"), dataIndex: "period" },
-          { title: t("maxQuantity"), dataIndex: "maxQuantity" },
+          {
+            title: t("period"),
+            key: "period",
+            render: (_: unknown, r: Quota) =>
+              `${dayjs(r.periodStart).format("DD/MM/YYYY")} → ${dayjs(r.periodEnd).format("DD/MM/YYYY")}`,
+            width: 220,
+          },
           {
             title: t("usedQuantity"),
-            dataIndex: "usedQuantity",
-            render: (v: number, row: Quota) => (
-              <Tag color={v >= row.maxQuantity ? "red" : "green"}>
-                {v} / {row.maxQuantity}
-              </Tag>
+            key: "usage",
+            width: 220,
+            render: (_: unknown, r: Quota) => {
+              const pct = r.maxQuantity > 0 ? (r.usedQuantity / r.maxQuantity) * 100 : 0;
+              return (
+                <Space size={8}>
+                  <Progress
+                    percent={Math.min(100, Math.round(pct))}
+                    size="small"
+                    style={{ inlineSize: 110 }}
+                    status={pct >= 100 ? "exception" : undefined}
+                    showInfo={false}
+                  />
+                  <Tag color={pct >= 100 ? "red" : pct >= 80 ? "orange" : "green"}>
+                    {r.usedQuantity} / {r.maxQuantity}
+                  </Tag>
+                </Space>
+              );
+            },
+          },
+          {
+            title: t("actions"),
+            key: "actions",
+            width: 100,
+            render: (_: unknown, r: Quota) => (
+              <Space size={4}>
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<EditOutlined />}
+                  onClick={() => openEdit(r)}
+                />
+                <Popconfirm
+                  title={t("deleteConfirm")}
+                  onConfirm={() => void handleDelete(r.id)}
+                  okText={t("confirm")}
+                  cancelText={t("cancel")}
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              </Space>
             ),
           },
         ]}
-        formContent={() => (
-          <>
-            <Form.Item name="productId" label={t("productId")} rules={[{ required: true }]}>
-              <Select
-                showSearch
-                options={products.map((p) => ({
-                  value: p.id,
-                  label: isAr ? p.nameAr : p.nameEn,
-                }))}
-                filterOption={(input, opt) =>
-                  String(opt?.label ?? "")
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-              />
-            </Form.Item>
-            <Form.Item name="role" label={t("role")}>
-              <Select
-                allowClear
-                options={ROLES.map((r) => ({ value: r, label: r }))}
-                placeholder={t("quotaByRolePlaceholder")}
-              />
-            </Form.Item>
-            <Form.Item name="employeeId" label={t("employees")}>
-              <Select
-                allowClear
-                showSearch
-                options={employees.map((e) => ({
-                  value: e.id,
-                  label: `${e.firstName} ${e.lastName}`,
-                }))}
-                filterOption={(input, opt) =>
-                  String(opt?.label ?? "")
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-                placeholder={t("quotaByEmployeePlaceholder")}
-              />
-            </Form.Item>
-            <Form.Item name="period" label={t("period")} rules={[{ required: true }]}>
-              <Select options={PERIODS.map((p) => ({ value: p, label: t(p.toLowerCase()) }))} />
-            </Form.Item>
-            <Form.Item name="maxQuantity" label={t("maxQuantity")} rules={[{ required: true }]}>
-              <InputNumber min={1} style={{ width: "100%" }} />
-            </Form.Item>
-          </>
-        )}
       />
+
+      <Modal
+        open={createOpen}
+        title={editing ? t("editQuota") : t("newQuota")}
+        onOk={() => void handleSubmit()}
+        onCancel={() => {
+          setCreateOpen(false);
+          setEditing(null);
+          form.resetFields();
+        }}
+        confirmLoading={saving}
+        okText={t("save")}
+        cancelText={t("cancel")}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" style={{ marginBlockStart: 16 }}>
+          <Form.Item name="employeeId" label={t("employee")} rules={[{ required: true }]}>
+            <Select
+              disabled={!!editing}
+              showSearch
+              optionFilterProp="label"
+              options={employees.map((e) => ({
+                value: e.id,
+                label:
+                  (isAr
+                    ? `${e.firstNameAr} ${e.lastNameAr}`
+                    : `${e.firstNameEn} ${e.lastNameEn}`
+                  ).trim() || e.email,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="productId" label={t("product")} rules={[{ required: true }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={products.map((p) => ({
+                value: p.id,
+                label: bilingualName(p.nameAr, p.nameEn, isAr),
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="period"
+            label={t("period")}
+            rules={[{ required: true }]}
+            initialValue={[dayjs().startOf("month"), dayjs().endOf("month")]}
+          >
+            <DatePicker.RangePicker style={{ inlineSize: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            name="maxQuantity"
+            label={t("maxQuantity")}
+            rules={[{ required: true }]}
+            initialValue={10}
+          >
+            <InputNumber min={1} style={{ inlineSize: "100%" }} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {quotas.length === 0 && !isPending && (
+        <Text type="secondary" style={{ display: "block", marginBlockStart: 8, fontSize: 13 }}>
+          {t("noData")}
+        </Text>
+      )}
     </>
   );
 }

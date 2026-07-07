@@ -58,7 +58,10 @@ export class MeetingServicePackagesService {
   async create(
     dto: CreateMeetingServicePackageDto,
   ): Promise<MeetingServicePackage> {
-    return this.repo.save(this.repo.create(dto));
+    // Anglais optionnel : repli sur l'arabe (colonne non-null)
+    return this.repo.save(
+      this.repo.create({ ...dto, nameEn: dto.nameEn?.trim() || dto.nameAr }),
+    );
   }
 
   async update(

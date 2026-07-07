@@ -5,21 +5,29 @@ import { Product } from './entities/product.entity.js';
 import {
   CreateProductDto,
   ProductAdminDto,
+  ProductAvailabilityDto,
   ProductDto,
   ProductType,
 } from './dto/product.dto.js';
+import {
+  InventoryItem,
+  StockZone,
+} from '../inventory/entities/inventory-item.entity.js';
 
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly repo: Repository<Product>,
+    @InjectRepository(InventoryItem)
+    private readonly inventoryRepo: Repository<InventoryItem>,
   ) {}
 
   async create(dto: CreateProductDto): Promise<ProductDto> {
     const entity = this.repo.create({
       nameAr: dto.nameAr,
-      nameEn: dto.nameEn,
+      // Anglais optionnel : repli sur l'arabe (colonne non-null)
+      nameEn: dto.nameEn?.trim() || dto.nameAr,
       category: dto.category,
       type: dto.type,
       allowedRoles: dto.allowedRoles ?? null,
@@ -35,7 +43,10 @@ export class ProductsService {
    * Les produits LIBRE_SERVICE_VIP sont exclus pour tout rôle non-ADMIN.
    * Le filtrage est appliqué ici côté service, jamais uniquement en UI.
    */
-  async findAll(callerRole?: string): Promise<ProductDto[]> {
+  async findAll(
+    callerRole?: string,
+    callerRoleId?: string,
+  ): Promise<ProductDto[]> {
     const isAdmin = callerRole === 'ADMIN';
     const qb = this.repo
       .createQueryBuilder('p')
@@ -48,10 +59,17 @@ export class ProductsService {
 
     const entities = await qb.getMany();
 
-    // Filter by allowedRoles if the product has role restrictions
-    if (!isAdmin && callerRole) {
+    // Filter by allowedRoles if the product has role restrictions.
+    // allowedRoles contient désormais des roleId (UUID) — le nom de rôle
+    // legacy reste accepté pour la compatibilité des anciens produits.
+    if (!isAdmin && (callerRole || callerRoleId)) {
       return entities
-        .filter((e) => !e.allowedRoles || e.allowedRoles.includes(callerRole))
+        .filter(
+          (e) =>
+            !e.allowedRoles ||
+            (callerRole && e.allowedRoles.includes(callerRole)) ||
+            (callerRoleId && e.allowedRoles.includes(callerRoleId)),
+        )
         .map((e) => this.toDto(e));
     }
 
@@ -71,7 +89,8 @@ export class ProductsService {
     const entity = await this.repo.findOne({ where: { id } });
     if (!entity) throw new NotFoundException(`Product ${id} not found`);
     if (dto.nameAr !== undefined) entity.nameAr = dto.nameAr;
-    if (dto.nameEn !== undefined) entity.nameEn = dto.nameEn;
+    if (dto.nameEn !== undefined)
+      entity.nameEn = dto.nameEn?.trim() || entity.nameAr;
     if (dto.category !== undefined) entity.category = dto.category;
     if (dto.type !== undefined) entity.type = dto.type;
     if (dto.allowedRoles !== undefined)
@@ -87,6 +106,39 @@ export class ProductsService {
     if (!entity) throw new NotFoundException(`Product ${id} not found`);
     entity.active = false;
     await this.repo.save(entity);
+  }
+
+  /**
+   * Disponibilité stock des produits commandables pour le site (société +
+   * branche) de l'appelant — permet à l'app mobile d'afficher "غير متوفر"
+   * directement sur la carte produit, avant toute tentative de commande.
+   * N'affecte pas findAll/isAdmin : méthode entièrement additive.
+   */
+  async findAvailability(
+    companyId?: string,
+    branchId?: string,
+  ): Promise<ProductAvailabilityDto[]> {
+    if (!companyId || !branchId) return [];
+
+    const [products, stocks] = await Promise.all([
+      this.repo.find({
+        where: { active: true, type: ProductType.COMMANDABLE },
+      }),
+      this.inventoryRepo.find({
+        where: { companyId, branchId, zone: StockZone.BRANCH },
+      }),
+    ]);
+    const stockByProduct = new Map(
+      stocks.map((s) => [s.productId, s.quantity]),
+    );
+
+    return products.map((p) => {
+      const dto = new ProductAvailabilityDto();
+      dto.productId = p.id;
+      dto.quantity = stockByProduct.get(p.id) ?? 0;
+      dto.available = dto.quantity > 0;
+      return dto;
+    });
   }
 
   /** Vue admin — inclut unitCost. Réservé aux endpoints non-employé. */

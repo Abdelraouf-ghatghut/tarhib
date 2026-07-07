@@ -106,6 +106,7 @@ export class OrdersService {
       companyId: caller.companyId || '',
       branchId: caller.branchId || '',
       role: caller.role || 'EMPLOYEE',
+      roleId: caller.roleId ?? null,
       products: products.map((p) => ({
         id: p.id,
         type:
@@ -228,10 +229,27 @@ export class OrdersService {
       );
     }
     if (order.companyId !== caller.companyId) {
-      throw new ForbiddenException('Cross-tenant access denied');
+      throw new ForbiddenException('crossTenantAccessDenied');
     }
 
     order.status = status;
+    const now = new Date();
+    if (status === OrderStatus.APPROVED) {
+      order.approvedAt = now;
+      order.approvedBy = caller.sub;
+    } else if (status === OrderStatus.REJECTED) {
+      order.rejectedAt = now;
+      order.rejectedBy = caller.sub;
+    } else if (status === OrderStatus.IN_PROGRESS) {
+      order.prepStartedAt = now;
+      order.preparedBy = caller.sub;
+    } else if (status === OrderStatus.READY) {
+      order.readyAt = now;
+      order.readyBy = caller.sub;
+    } else if (status === OrderStatus.DELIVERED) {
+      order.deliveredAt = now;
+      order.deliveredBy = caller.sub;
+    }
     const saved = await this.orderRepo.save(order);
 
     // Notify employee via SMS (TARHIB-9) — fire-and-forget, don't block the response
@@ -470,6 +488,16 @@ export class OrdersService {
     dto.priority = o.priority;
     dto.slaDeadline = o.slaDeadline.toISOString();
     dto.createdAt = o.createdAt.toISOString();
+    dto.approvedAt = o.approvedAt;
+    dto.approvedBy = o.approvedBy;
+    dto.rejectedAt = o.rejectedAt;
+    dto.rejectedBy = o.rejectedBy;
+    dto.prepStartedAt = o.prepStartedAt;
+    dto.preparedBy = o.preparedBy;
+    dto.readyAt = o.readyAt;
+    dto.readyBy = o.readyBy;
+    dto.deliveredAt = o.deliveredAt;
+    dto.deliveredBy = o.deliveredBy;
     dto.lines = o.lines ?? [];
     return dto;
   }

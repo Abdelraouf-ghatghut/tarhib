@@ -38,8 +38,9 @@ export class EnrichUserInterceptor implements NestInterceptor {
 
     if (!emp) return next.handle();
 
-    user.companyId = emp.companyId;
-    user.branchId = emp.branchId;
+    // Interne non affecté (ex. superadmin) : companyId/branchId restent vides
+    user.companyId = emp.companyId ?? user.companyId;
+    user.branchId = emp.branchId ?? user.branchId;
     user.email = emp.email || user.email;
 
     if (emp.roleId) {

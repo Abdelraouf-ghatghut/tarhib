@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Button,
   Card,
+  DatePicker,
   Grid,
   Input,
   Popconfirm,
@@ -13,12 +14,13 @@ import {
   Typography,
   message,
 } from "antd";
+import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import {
   BankOutlined,
   DeleteOutlined,
   EditOutlined,
   InboxOutlined,
-  LockOutlined,
   PlusOutlined,
   SafetyOutlined,
   SearchOutlined,
@@ -34,7 +36,9 @@ import {
   slaLevelsApi,
 } from "../../lib/api";
 import { useAuth } from "../../hooks/useAuth";
+import { getErrorMessage } from "../../lib/errors";
 import { RoleForm, type RoleFormPayload } from "./RoleForm";
+import { RoleDetailDrawer } from "./RoleDetailDrawer";
 import { SlaLevelsConfig } from "./SlaLevelsConfig";
 import {
   bilingualName,
@@ -51,7 +55,8 @@ const { Title, Text } = Typography;
 
 type ActiveTab = "tarhib" | "client";
 type ViewMode = { mode: "list" } | { mode: "create" } | { mode: "edit"; role: Role };
-type RoleFilter = "all" | "P1" | "P2" | "withQuotas" | "withoutQuotas" | "system";
+type QuotaFilter = "all" | "with" | "without";
+type SortBy = "newest" | "oldest" | "name";
 
 export function RolesPage() {
   const { t, i18n } = useTranslation();
@@ -65,7 +70,16 @@ export function RolesPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>({ mode: "list" });
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<RoleFilter>("all");
+  // Filtres propres au client (SLA + présence de quotas) — dropdowns
+  // combinables, plutôt que les chips exclusifs d'avant.
+  const [slaFilter, setSlaFilter] = useState<string | undefined>(undefined);
+  const [quotaFilter, setQuotaFilter] = useState<QuotaFilter>("all");
+  // Filtres avancés (plage de dates, tri) — communs aux deux onglets ; le
+  // filtre par permission ne s'applique qu'à l'onglet Tarhib.
+  const [permFilter, setPermFilter] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [sortBy, setSortBy] = useState<SortBy>("newest");
+  const [detailRole, setDetailRole] = useState<Role | null>(null);
   const [saving, setSaving] = useState(false);
 
   const { data: roles, isPending } = useQuery({
@@ -105,7 +119,12 @@ export function RolesPage() {
   function resetList() {
     setView({ mode: "list" });
     setSearch("");
-    setFilter("all");
+    setSlaFilter(undefined);
+    setQuotaFilter("all");
+    setPermFilter([]);
+    setDateRange(null);
+    setSortBy("newest");
+    setDetailRole(null);
   }
 
   function switchTab(tab: ActiveTab) {
@@ -119,11 +138,28 @@ export function RolesPage() {
       const needle = search.trim().toLowerCase();
       out = out.filter((r) => `${r.nameAr} ${r.nameEn ?? ""}`.toLowerCase().includes(needle));
     }
-    if (filter === "P1" || filter === "P2") out = out.filter((r) => r.slaPriority === filter);
-    if (filter === "withQuotas") out = out.filter((r) => r.quotas.length > 0);
-    if (filter === "withoutQuotas") out = out.filter((r) => r.quotas.length === 0);
-    if (filter === "system") out = out.filter((r) => r.isSystem);
-    return out;
+    if (slaFilter) out = out.filter((r) => r.slaPriority === slaFilter);
+    if (quotaFilter === "with") out = out.filter((r) => r.quotas.length > 0);
+    if (quotaFilter === "without") out = out.filter((r) => r.quotas.length === 0);
+    // Le rôle doit détenir TOUTES les permissions sélectionnées
+    if (permFilter.length > 0) {
+      out = out.filter((r) => permFilter.every((key) => r.permissions.includes(key)));
+    }
+    const [from, to] = dateRange ?? [null, null];
+    if (from) out = out.filter((r) => !dayjs(r.createdAt).isBefore(from, "day"));
+    if (to) out = out.filter((r) => !dayjs(r.createdAt).isAfter(to, "day"));
+    const sorted = [...out];
+    if (sortBy === "newest") sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    if (sortBy === "oldest") sorted.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    if (sortBy === "name") {
+      sorted.sort((a, b) =>
+        bilingualName(a.nameAr, a.nameEn, isAr).localeCompare(
+          bilingualName(b.nameAr, b.nameEn, isAr),
+          isAr ? "ar" : "en",
+        ),
+      );
+    }
+    return sorted;
   }
 
   const tarhibRoles = applyFilters((roles ?? []).filter((r) => r.scope === "TARHIB"));
@@ -159,8 +195,8 @@ export function RolesPage() {
       await rolesApi.remove(id);
       void qc.invalidateQueries({ queryKey: ["roles"] });
       void message.success(t("deleted"));
-    } catch {
-      void message.error(t("errorOccurred"));
+    } catch (err) {
+      void message.error(getErrorMessage(err, t));
     }
   }
 
@@ -172,13 +208,17 @@ export function RolesPage() {
   // Fonctions de rendu (pas des composants imbriqués : un composant défini dans
   // le render serait remonté à chaque frappe et l'input de recherche perdrait le focus)
   function renderRoleCard(role: Role) {
-    const editDisabled = role.isSystem;
     return (
       <Card
         key={role.id}
         size="small"
         variant="borderless"
-        styles={{ body: { display: "flex", flexDirection: "column", gap: 8, padding: 16 } }}
+        hoverable
+        onClick={() => setDetailRole(role)}
+        styles={{
+          body: { display: "flex", flexDirection: "column", gap: 8, padding: 16 },
+        }}
+        style={{ cursor: "pointer" }}
       >
         <Space align="center">
           <span
@@ -198,18 +238,26 @@ export function RolesPage() {
           <Text strong style={{ fontSize: 15 }}>
             {bilingualName(role.nameAr, role.nameEn, isAr)}
           </Text>
-          {role.isSystem && (
-            <Tag icon={<LockOutlined />} bordered={false}>
-              {t("systemRole")}
-            </Tag>
-          )}
         </Space>
 
         <Space size={8} wrap>
           {activeTab === "tarhib" ? (
-            <Tag bordered={false} color="blue">
-              {t("permissionsCount", { count: role.permissions.length })}
-            </Tag>
+            <>
+              <Tag bordered={false} color="blue">
+                {t("permissionsCount", { count: role.permissions.length })}
+              </Tag>
+              {role.permissions.slice(0, 2).map((key) => {
+                const perm = permissions?.find((p) => p.key === key);
+                return (
+                  <Tag key={key} bordered={false}>
+                    {perm ? bilingualName(perm.nameAr, perm.nameEn, isAr) : key}
+                  </Tag>
+                );
+              })}
+              {role.permissions.length > 2 && (
+                <Tag bordered={false}>+{role.permissions.length - 2}</Tag>
+              )}
+            </>
           ) : (
             <>
               <Tag bordered={false} color={slaColor(role.slaPriority, slaLevels)}>
@@ -239,13 +287,13 @@ export function RolesPage() {
               ? t("createdOn", { date: formatDate(role.createdAt) })
               : t("updatedOn", { date: formatDate(role.updatedAt) })}
           </Text>
-          <Space size={4}>
-            <Tooltip title={editDisabled ? t("systemRoleTooltip") : t("edit")}>
+          {/* stopPropagation : les actions ne doivent pas ouvrir la fiche détail */}
+          <Space size={4} onClick={(e) => e.stopPropagation()}>
+            <Tooltip title={t("edit")}>
               <Button
                 size="small"
                 type="text"
                 icon={<EditOutlined />}
-                disabled={editDisabled}
                 onClick={() => setView({ mode: "edit", role })}
               />
             </Tooltip>
@@ -255,16 +303,9 @@ export function RolesPage() {
               okText={t("confirm")}
               cancelText={t("cancel")}
               okButtonProps={{ danger: true }}
-              disabled={editDisabled}
             >
-              <Tooltip title={editDisabled ? t("systemRoleTooltip") : t("delete")}>
-                <Button
-                  size="small"
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  disabled={editDisabled}
-                />
+              <Tooltip title={t("delete")}>
+                <Button size="small" type="text" danger icon={<DeleteOutlined />} />
               </Tooltip>
             </Popconfirm>
           </Space>
@@ -273,27 +314,19 @@ export function RolesPage() {
     );
   }
 
-  // Filtres rapides en chips (guide §16)
+  // Barre de filtres — même famille de contrôles (Select/RangePicker/tri)
+  // pour les deux onglets ; seule la facette propre à chaque scope change
+  // (permissions pour Tarhib, SLA + quotas pour client).
   function renderSearchAndFilters(withSla: boolean) {
-    const options: Array<{ value: RoleFilter; label: string }> = [
-      { value: "all", label: t("filterAll") },
-      ...(withSla
-        ? ([
-            { value: "P1", label: "SLA P1" },
-            { value: "P2", label: "SLA P2" },
-            { value: "withQuotas", label: t("filterWithQuotas") },
-            { value: "withoutQuotas", label: t("filterWithoutQuotas") },
-          ] as Array<{ value: RoleFilter; label: string }>)
-        : ([{ value: "system", label: t("filterSystemRoles") }] as Array<{
-            value: RoleFilter;
-            label: string;
-          }>)),
-    ];
+    const slaOptions = (slaLevels ?? []).map((l) => ({
+      value: l.code,
+      label: slaLevelLabel(l.code, slaLevels, isAr),
+    }));
     return (
       <div
         style={{
           display: "flex",
-          gap: 16,
+          gap: 12,
           flexWrap: "wrap",
           alignItems: "center",
           marginBlockEnd: 24,
@@ -305,20 +338,61 @@ export function RolesPage() {
           placeholder={t("searchRole")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ maxInlineSize: 280 }}
+          style={{ maxInlineSize: 240 }}
         />
-        <Space size={4} wrap>
-          {options.map((o) => (
-            <Tag.CheckableTag
-              key={o.value}
-              checked={filter === o.value}
-              onChange={() => setFilter(o.value)}
-              style={{ paddingInline: 12, paddingBlock: 2, borderRadius: 16, fontSize: 13 }}
-            >
-              {o.label}
-            </Tag.CheckableTag>
-          ))}
-        </Space>
+        {withSla ? (
+          <>
+            <Select
+              allowClear
+              placeholder={t("slaPriority")}
+              value={slaFilter}
+              onChange={setSlaFilter}
+              style={{ minInlineSize: 160 }}
+              options={slaOptions}
+            />
+            <Select<QuotaFilter>
+              value={quotaFilter}
+              onChange={setQuotaFilter}
+              style={{ minInlineSize: 170 }}
+              options={[
+                { value: "all", label: t("filterAll") },
+                { value: "with", label: t("filterWithQuotas") },
+                { value: "without", label: t("filterWithoutQuotas") },
+              ]}
+            />
+          </>
+        ) : (
+          <Select
+            mode="multiple"
+            allowClear
+            maxTagCount="responsive"
+            placeholder={t("filterByPermission")}
+            value={permFilter}
+            onChange={setPermFilter}
+            style={{ minInlineSize: 220, maxInlineSize: 320 }}
+            optionFilterProp="label"
+            options={(permissions ?? []).map((p) => ({
+              value: p.key,
+              label: bilingualName(p.nameAr, p.nameEn, isAr),
+            }))}
+          />
+        )}
+        <DatePicker.RangePicker
+          allowEmpty={[true, true]}
+          value={dateRange}
+          onChange={(range) => setDateRange(range)}
+          placeholder={[t("createdAt"), t("createdAt")]}
+        />
+        <Select<SortBy>
+          value={sortBy}
+          onChange={setSortBy}
+          style={{ inlineSize: 150 }}
+          options={[
+            { value: "newest", label: t("sortNewest") },
+            { value: "oldest", label: t("sortOldest") },
+            { value: "name", label: t("sortByName") },
+          ]}
+        />
       </div>
     );
   }
@@ -535,6 +609,18 @@ export function RolesPage() {
           }}
         />
       )}
+
+      <RoleDetailDrawer
+        role={detailRole}
+        permissions={permissions}
+        products={products}
+        slaLevels={slaLevels}
+        onClose={() => setDetailRole(null)}
+        onEdit={(role) => {
+          setDetailRole(null);
+          setView({ mode: "edit", role });
+        }}
+      />
     </>
   );
 }

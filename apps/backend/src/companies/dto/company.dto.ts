@@ -14,10 +14,13 @@ export class CreateCompanyDto {
   @MinLength(2)
   nameAr!: string;
 
-  @ApiProperty({ example: 'Sonatrach SA' })
+  @ApiPropertyOptional({
+    example: 'Sonatrach SA',
+    description: "Anglais optionnel — l'arabe sert de repli",
+  })
   @IsString()
-  @MinLength(2)
-  nameEn!: string;
+  @IsOptional()
+  nameEn?: string;
 
   @ApiProperty({
     example: 'sonatrach-sa',

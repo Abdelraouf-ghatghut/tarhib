@@ -16,8 +16,8 @@ export class VipReplenishmentTask {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'inventory_item_id' })
-  inventoryItemId!: string;
+  @Column({ name: 'vip_location_product_id' })
+  vipLocationProductId!: string;
 
   @Column({ name: 'product_id' })
   productId!: string;

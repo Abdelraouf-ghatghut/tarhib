@@ -4,13 +4,12 @@ import { InventoryService } from './inventory.service.js';
 import { InventoryController } from './inventory.controller.js';
 import { InventoryItem } from './entities/inventory-item.entity.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
-import { VipSelfServiceModule } from '../vip-self-service/vip-self-service.module.js';
+import { Branch } from '../branches/entities/branch.entity.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InventoryItem]),
+    TypeOrmModule.forFeature([InventoryItem, Branch]),
     NotificationsModule,
-    VipSelfServiceModule,
   ],
   providers: [InventoryService],
   controllers: [InventoryController],

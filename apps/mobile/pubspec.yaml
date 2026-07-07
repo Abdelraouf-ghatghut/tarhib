@@ -37,6 +37,10 @@ dependencies:
   flutter_riverpod: ^2.6.1
   go_router: ^16.1.0
   dio: ^5.9.2
+  # Thmanyah (police produit) n'est disponible qu'en .woff2 (web) — pas de
+  # .ttf redistribuable pour Flutter. Cairo/Inter reproduisent la même pile
+  # de fallback que le Web Admin (tokens.css) pour une identité cohérente.
+  google_fonts: ^6.2.1
   tarhib_api_client:
     path: packages/tarhib_api_client
   intl: ^0.20.2

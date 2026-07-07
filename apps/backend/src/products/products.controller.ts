@@ -20,6 +20,7 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import {
   CreateProductDto,
   ProductAdminDto,
+  ProductAvailabilityDto,
   ProductDto,
 } from './dto/product.dto.js';
 import { ProductsService } from './products.service.js';
@@ -54,7 +55,19 @@ export class ProductsController {
   })
   @ApiResponse({ status: 200, type: [ProductDto] })
   findAll(@CurrentUser() user: JwtPayload): Promise<ProductDto[]> {
-    return this.productsService.findAll(user.role);
+    return this.productsService.findAll(user.role, user.roleId);
+  }
+
+  @Get('availability')
+  @ApiOperation({
+    summary:
+      'Disponibilité stock (branche de l\'appelant) — badge "non disponible" côté catalogue mobile',
+  })
+  @ApiResponse({ status: 200, type: [ProductAvailabilityDto] })
+  findAvailability(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<ProductAvailabilityDto[]> {
+    return this.productsService.findAvailability(user.companyId, user.branchId);
   }
 
   @Get(':id')

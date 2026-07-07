@@ -7,15 +7,31 @@ import { Role, SlaPriority } from '../roles/entities/role.entity.js';
 
 /** Durées SLA par défaut (minutes) quand l'entreprise n'a rien personnalisé. */
 export const DEFAULT_SLA_MINUTES: Record<SlaPriority, number> = {
-  [SlaPriority.P1]: 10,
-  [SlaPriority.P2]: 20,
-  [SlaPriority.P3]: 30,
+  [SlaPriority.P1]: 5,
+  [SlaPriority.P2]: 10,
+  [SlaPriority.P3]: 15,
   [SlaPriority.P4]: 45,
   [SlaPriority.P5]: 60,
 };
 
 /** Durée appliquée quand un code ne correspond à aucun niveau connu. */
 export const FALLBACK_SLA_MINUTES = 60;
+
+/**
+ * 3 niveaux créés automatiquement à la première consultation d'une
+ * entreprise n'ayant encore aucun niveau configuré. Modifiables ensuite
+ * comme n'importe quel niveau (pas de statut "système").
+ */
+const DEFAULT_SLA_LEVELS: Array<{
+  code: string;
+  nameAr: string;
+  nameEn: string;
+  targetMinutes: number;
+}> = [
+  { code: 'P1', nameAr: 'عاجل', nameEn: 'Urgent', targetMinutes: 5 },
+  { code: 'P2', nameAr: 'مرتفع', nameEn: 'High', targetMinutes: 10 },
+  { code: 'P3', nameAr: 'عادي', nameEn: 'Normal', targetMinutes: 15 },
+];
 
 @Injectable()
 export class PrioritySlaService {
@@ -27,27 +43,29 @@ export class PrioritySlaService {
   ) {}
 
   /**
-   * Niveaux de l'entreprise (nombre illimité, triés). Si elle n'a encore
-   * rien configuré, retourne les 5 défauts P1..P5 marqués isDefault.
+   * Niveaux de l'entreprise (nombre illimité, triés). Auto-créés (P1/P2/P3,
+   * voir DEFAULT_SLA_LEVELS) à la première consultation d'une entreprise qui
+   * n'en a encore aucun — modifiables ensuite librement.
    */
   async getLevels(companyId: string): Promise<SlaLevelDto[]> {
-    const levels = await this.levelRepo.find({
+    let levels = await this.levelRepo.find({
       where: { companyId },
       order: { sortOrder: 'ASC', targetMinutes: 'ASC' },
     });
 
     if (levels.length === 0) {
-      return Object.entries(DEFAULT_SLA_MINUTES).map(
-        ([code, targetMinutes], i) => ({
-          code,
-          nameAr: null,
-          nameEn: null,
-          targetMinutes,
+      const seeded = DEFAULT_SLA_LEVELS.map((l, index) =>
+        this.levelRepo.create({
+          companyId,
+          code: l.code,
+          nameAr: l.nameAr,
+          nameEn: l.nameEn,
+          targetMinutes: l.targetMinutes,
           active: true,
-          sortOrder: i,
-          isDefault: true,
+          sortOrder: index,
         }),
       );
+      levels = await this.levelRepo.save(seeded);
     }
 
     return levels.map((l) => ({
@@ -71,12 +89,10 @@ export class PrioritySlaService {
   ): Promise<SlaLevelDto[]> {
     const codes = dto.levels.map((l) => l.code);
     if (new Set(codes).size !== codes.length) {
-      throw new BadRequestException('Duplicate SLA level codes');
+      throw new BadRequestException('duplicateSlaLevelCodes');
     }
     if (!dto.levels.some((l) => l.active !== false)) {
-      throw new BadRequestException(
-        'At least one SLA level must remain active',
-      );
+      throw new BadRequestException('atLeastOneSlaLevelMustBeActive');
     }
 
     const existing = await this.levelRepo.find({ where: { companyId } });

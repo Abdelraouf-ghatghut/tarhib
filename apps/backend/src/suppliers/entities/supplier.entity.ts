@@ -6,13 +6,15 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+/**
+ * Fournisseur = ressource propre à Tarhib (le prestataire), pas à une
+ * société cliente — pas de scoping par company_id, partagé pour l'achat
+ * sur toutes les branches de toutes les sociétés.
+ */
 @Entity('suppliers')
 export class Supplier {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
-
-  @Column({ name: 'company_id' })
-  companyId!: string;
 
   @Column({ name: 'name_ar' })
   nameAr!: string;

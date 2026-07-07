@@ -50,7 +50,7 @@ export class OtpService {
     const raw = await this.redis.get(key);
 
     if (!raw) {
-      throw new UnauthorizedException('OTP expired or not requested');
+      throw new UnauthorizedException('otpExpiredOrNotRequested');
     }
 
     const record: OtpRecord = JSON.parse(raw) as OtpRecord;
@@ -58,15 +58,13 @@ export class OtpService {
 
     if (record.attempts > MAX_OTP_ATTEMPTS) {
       await this.redis.del(key);
-      throw new BadRequestException(
-        'Too many incorrect attempts — please request a new code',
-      );
+      throw new BadRequestException('tooManyOtpAttempts');
     }
 
     if (record.code !== code) {
       // Persist updated attempt count
       await this.redis.set(key, JSON.stringify(record), OTP_TTL_SECONDS);
-      throw new UnauthorizedException('Invalid OTP code');
+      throw new UnauthorizedException('invalidOtpCode');
     }
 
     // Code is correct — consume it

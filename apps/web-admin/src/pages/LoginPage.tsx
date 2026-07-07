@@ -17,8 +17,9 @@ export function LoginPage() {
     try {
       await login(values.email, values.password);
       navigate("/");
-    } catch {
-      void message.error(t("invalidCredentials"));
+    } catch (err) {
+      const internalOnly = err instanceof Error && err.message === "INTERNAL_ONLY";
+      void message.error(internalOnly ? t("internalOnlyAccess") : t("invalidCredentials"));
     } finally {
       setLoading(false);
     }

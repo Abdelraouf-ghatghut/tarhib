@@ -44,6 +44,18 @@ export class InventoryItem {
   @Column({ name: 'location_name', type: 'varchar', nullable: true })
   locationName!: string | null;
 
+  /**
+   * Emplacements VIP uniquement (produit LIBRE_SERVICE_VIP) : rattachement
+   * optionnel à un département et/ou à un employé précis — un employé VIP a
+   * son propre emplacement (ex. frigo personnel), distinct du stock de
+   * branche partagé. Sans effet sur les items non-VIP (toujours null).
+   */
+  @Column({ name: 'department_id', type: 'uuid', nullable: true })
+  departmentId!: string | null;
+
+  @Column({ name: 'assigned_employee_id', type: 'uuid', nullable: true })
+  assignedEmployeeId!: string | null;
+
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 }

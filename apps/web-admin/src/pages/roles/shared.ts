@@ -1,3 +1,5 @@
+export { bilingualName } from "../../lib/bilingualName";
+
 export interface RoleQuotaInput {
   productId: string;
   periodType: "DAILY" | "WEEKLY" | "MONTHLY";
@@ -81,20 +83,10 @@ export function slaColor(code: string, levels?: SlaLevel[]): string {
   return SLA_PALETTE[Math.min(idx, SLA_PALETTE.length - 1)];
 }
 
-/** L'anglais est optionnel : s'il est absent, l'arabe est affiché par défaut. */
-export function bilingualName(
-  nameAr: string,
-  nameEn: string | null | undefined,
-  isAr: boolean,
-): string {
-  if (isAr) return nameAr;
-  return nameEn?.trim() ? nameEn : nameAr;
-}
-
 /** Libellé d'un niveau SLA : nom personnalisé de l'entreprise sinon le code. */
 export function slaLevelLabel(code: string, levels: SlaLevel[] | undefined, isAr: boolean): string {
   const level = levels?.find((l) => l.code === code);
   if (!level) return code;
-  const custom = isAr ? level.nameAr : (level.nameEn ?? level.nameAr);
+  const custom = isAr ? level.nameAr : level.nameEn;
   return custom?.trim() ? `${code} — ${custom}` : code;
 }

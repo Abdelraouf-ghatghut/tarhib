@@ -102,6 +102,20 @@
   /* ── Glint boutons ─────────────────────────────────────────────────── */
   --color-1-400: rgba(255, 255, 255, 0.18);
   --color-1-700: rgba(15, 23, 42, 0.06);
+
+  /* ── Cartes stats dashboard (light : fond pastel, pas de glow) ─────── */
+  --stat-card-brand: var(--brand-softer);
+  --stat-card-danger: var(--danger-soft);
+  --stat-card-success: var(--success-soft);
+  --stat-card-violet: #eef2ff;
+  --stat-icon-brand-bg: var(--brand-soft);
+  --stat-icon-danger-bg: var(--danger-medium);
+  --stat-icon-success-bg: var(--success-medium);
+  --stat-icon-violet-bg: #e0e7ff;
+  --stat-glow-brand: none;
+  --stat-glow-danger: none;
+  --stat-glow-success: none;
+  --stat-glow-violet: none;
 }
 
 [data-theme="dark"] {
@@ -179,4 +193,18 @@
 
   --color-1-400: rgba(255, 255, 255, 0.08);
   --color-1-700: rgba(0, 0, 0, 0.3);
+
+  /* Cartes stats dashboard (dark : carte sombre, icône avec halo néon) */
+  --stat-card-brand: var(--neutral-primary-soft);
+  --stat-card-danger: var(--neutral-primary-soft);
+  --stat-card-success: var(--neutral-primary-soft);
+  --stat-card-violet: var(--neutral-primary-soft);
+  --stat-icon-brand-bg: rgba(124, 139, 255, 0.2);
+  --stat-icon-danger-bg: rgba(251, 113, 133, 0.18);
+  --stat-icon-success-bg: rgba(52, 211, 153, 0.18);
+  --stat-icon-violet-bg: rgba(165, 180, 252, 0.18);
+  --stat-glow-brand: 0 0 22px rgba(124, 139, 255, 0.45);
+  --stat-glow-danger: 0 0 22px rgba(251, 113, 133, 0.4);
+  --stat-glow-success: 0 0 22px rgba(52, 211, 153, 0.4);
+  --stat-glow-violet: 0 0 22px rgba(165, 180, 252, 0.4);
 }

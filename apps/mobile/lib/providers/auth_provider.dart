@@ -8,6 +8,7 @@ import '../api/api_client.dart';
 
 const _storage = FlutterSecureStorage();
 const _keyToken = 'auth_token';
+const _keyRefreshToken = 'auth_refresh_token';
 const _keyRole = 'auth_role';
 const _keyEmail = 'auth_email';
 const _keyRoleId = 'auth_role_id';
@@ -16,6 +17,7 @@ const _keyScope = 'auth_scope';
 
 class AuthState {
   final String? token;
+  final String? refreshToken;
   final String? role;
   final String? roleId;
   final String? email;
@@ -26,6 +28,7 @@ class AuthState {
 
   const AuthState({
     this.token,
+    this.refreshToken,
     this.role,
     this.roleId,
     this.email,
@@ -53,6 +56,7 @@ class AuthState {
 
   AuthState copyWith({
     String? token,
+    String? refreshToken,
     String? role,
     String? roleId,
     String? email,
@@ -63,6 +67,7 @@ class AuthState {
   }) =>
       AuthState(
         token: token ?? this.token,
+        refreshToken: refreshToken ?? this.refreshToken,
         role: role ?? this.role,
         roleId: roleId ?? this.roleId,
         email: email ?? this.email,
@@ -73,23 +78,33 @@ class AuthState {
       );
 }
 
+/// Le token d'accès est de courte durée. Sans rafraîchissement automatique,
+/// toute session de plus de quelques minutes déclenchait une cascade de 401
+/// (catalogue, commandes…). ApiClient rafraîchit désormais la session en
+/// silence via /auth/refresh ; ce notifier se contente de persister les
+/// nouveaux tokens ([_onTokenRefreshed]) et de se déconnecter proprement si
+/// le refresh token est lui-même expiré ([_onSessionExpired]).
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier() : super(const AuthState()) {
+    ApiClient.onSessionExpired = logout;
+    ApiClient.onTokenRefreshed = _onTokenRefreshed;
     _restoreSession();
   }
 
   Future<void> _restoreSession() async {
     final token = await _storage.read(key: _keyToken);
     if (token == null) return;
+    final refreshToken = await _storage.read(key: _keyRefreshToken) ?? '';
     final role = await _storage.read(key: _keyRole) ?? 'EMPLOYEE';
     final roleId = await _storage.read(key: _keyRoleId);
     final email = await _storage.read(key: _keyEmail) ?? '';
     final scope = await _storage.read(key: _keyScope) ?? 'CLIENT';
     final permsRaw = await _storage.read(key: _keyPermissions) ?? '';
     final permissions = permsRaw.isEmpty ? <String>[] : permsRaw.split(',');
-    ApiClient.setToken(token);
+    ApiClient.setSession(token, refreshToken);
     state = AuthState(
       token: token,
+      refreshToken: refreshToken,
       role: role,
       roleId: roleId,
       email: email,
@@ -101,12 +116,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> _persist(AuthState s) async {
     if (s.token != null) {
       await _storage.write(key: _keyToken, value: s.token);
+      await _storage.write(key: _keyRefreshToken, value: s.refreshToken ?? '');
       await _storage.write(key: _keyRole, value: s.role ?? '');
       await _storage.write(key: _keyRoleId, value: s.roleId ?? '');
       await _storage.write(key: _keyEmail, value: s.email ?? '');
       await _storage.write(key: _keyScope, value: s.scope ?? 'CLIENT');
       await _storage.write(key: _keyPermissions, value: s.permissions.join(','));
     }
+  }
+
+  /// Callback ApiClient : un rafraîchissement silencieux a réussi — on garde
+  /// l'état (et le stockage sécurisé) synchronisés avec les nouveaux tokens.
+  void _onTokenRefreshed(String accessToken, String refreshToken) {
+    state = state.copyWith(token: accessToken, refreshToken: refreshToken);
+    _persist(state);
   }
 
   Future<bool> login(String email, String password) async {
@@ -118,6 +141,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       final data = response.data!;
       final token = data['accessToken'] as String;
+      final refreshToken = data['refreshToken'] as String? ?? '';
       final role = data['role'] as String? ?? 'EMPLOYEE';
       final roleId = data['roleId'] as String?;
       final scope = data['scope'] as String? ?? 'CLIENT';
@@ -126,9 +150,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
           ? rawPerms.cast<String>()
           : <String>[];
 
-      ApiClient.setToken(token);
+      ApiClient.setSession(token, refreshToken);
       final next = AuthState(
         token: token,
+        refreshToken: refreshToken,
         role: role,
         roleId: roleId,
         email: email,
@@ -146,6 +171,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Utilisé par le flux OTP — pas de refresh token disponible dans ce
+  /// parcours, la session n'est donc pas rafraîchie automatiquement.
   Future<void> loginWithToken(String token) async {
     state = state.copyWith(isLoading: true, error: null);
     try {

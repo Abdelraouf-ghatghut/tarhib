@@ -8,10 +8,11 @@ import {
 } from 'typeorm';
 
 /**
- * Niveaux de priorité SLA personnalisés par entreprise : nombre illimité,
+ * Niveaux de priorité personnalisés par entreprise : nombre illimité,
  * code libre (ex. P1, VIP, URGENT), libellés bilingues, durée cible en
- * minutes, activation et ordre d'affichage. En l'absence de configuration,
- * les 5 défauts globaux (P1..P5) s'appliquent.
+ * minutes, activation et ordre d'affichage. Chaque entreprise démarre avec
+ * 3 niveaux par défaut (P1/P2/P3, voir DEFAULT_SLA_LEVELS) qu'elle peut
+ * ensuite modifier, compléter ou remplacer intégralement.
  */
 @Entity('company_sla_levels')
 @Unique(['companyId', 'code'])

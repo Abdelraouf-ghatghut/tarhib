@@ -60,8 +60,29 @@ export class AuthService {
     );
   }
 
-  getCurrentUser(payload: JwtPayload): JwtPayload {
-    return payload;
+  async getCurrentUser(payload: JwtPayload): Promise<
+    JwtPayload & {
+      firstNameAr?: string;
+      firstNameEn?: string;
+      lastNameAr?: string;
+      lastNameEn?: string;
+      departmentId?: string | null;
+    }
+  > {
+    // Le JWT ne porte que les claims d'autorisation — le nom affiché dans le
+    // profil vient de la fiche employé.
+    const employee = await this.employeeRepo.findOne({
+      where: { id: payload.sub },
+    });
+    if (!employee) return payload;
+    return {
+      ...payload,
+      firstNameAr: employee.firstNameAr,
+      firstNameEn: employee.firstNameEn,
+      lastNameAr: employee.lastNameAr,
+      lastNameEn: employee.lastNameEn,
+      departmentId: employee.departmentId,
+    };
   }
 
   // ── TARHIB-21: Login email/mdp ───────────────────────────────────────────
@@ -104,14 +125,17 @@ export class AuthService {
     if (!employee) return tokens;
 
     let permissions: string[] = [];
+    let roleName: string | undefined;
 
     if (employee.roleId) {
-      // Nouveau RBAC dynamique
+      // Nouveau RBAC dynamique — le nom du rôle vient du rôle, pas du
+      // champ legacy (souvent null pour les employés créés via le portail)
       const role = await this.roleRepo.findOne({
         where: { id: employee.roleId },
         relations: ['permissions'],
       });
       permissions = role?.permissions?.map((p) => p.key) ?? [];
+      roleName = role?.nameEn ?? role?.nameAr;
     } else {
       // Fallback legacy : mapping rôle string → permissions
       permissions = legacyPermissions(employee.role);
@@ -120,7 +144,7 @@ export class AuthService {
     return {
       ...tokens,
       email: employee.email,
-      role: employee.role ?? undefined,
+      role: roleName ?? employee.role ?? undefined,
       roleId: employee.roleId ?? undefined,
       scope: employee.scope ?? undefined,
       permissions,
@@ -166,7 +190,7 @@ export class AuthService {
     const email = await this.redis.get(key);
 
     if (!email) {
-      throw new UnauthorizedException('Reset token is invalid or has expired');
+      throw new UnauthorizedException('resetTokenInvalidOrExpired');
     }
 
     // Single-use: delete before calling Keycloak to prevent race conditions
@@ -189,12 +213,12 @@ export class AuthService {
     const company = await this.companyRepo.findOne({
       where: { slug: dto.companySlug },
     });
-    if (!company) throw new BadRequestException('Company code not found');
+    if (!company) throw new BadRequestException('companyCodeNotFound');
 
     const existing = await this.employeeRepo.findOne({
       where: { email: dto.email },
     });
-    if (existing) throw new BadRequestException('Email already registered');
+    if (existing) throw new BadRequestException('emailAlreadyRegistered');
 
     const employee = this.employeeRepo.create({
       email: dto.email,
@@ -204,8 +228,8 @@ export class AuthService {
       lastNameAr: dto.lastNameAr,
       lastNameEn: dto.lastNameEn,
       companyId: company.id,
-      branchId: company.id, // placeholder — admin will assign branch on approval
-      departmentId: company.id,
+      branchId: null, // admin assigne la branche (et le département) à l'approbation
+      departmentId: null,
       role: 'employee',
       status: EmployeeStatus.PENDING,
       active: false,
@@ -224,7 +248,7 @@ export class AuthService {
     const existing = await this.employeeRepo.findOne({
       where: { email: dto.email },
     });
-    if (existing) throw new BadRequestException('Email already registered');
+    if (existing) throw new BadRequestException('emailAlreadyRegistered');
 
     const employee = this.employeeRepo.create({
       email: dto.email,
@@ -235,7 +259,7 @@ export class AuthService {
       lastNameEn: '',
       companyId: dto.companyId,
       branchId: dto.branchId,
-      departmentId: dto.departmentId ?? dto.branchId,
+      departmentId: dto.departmentId ?? null,
       roleId: dto.roleId ?? null,
       role: 'employee',
       status: EmployeeStatus.INVITED,
@@ -264,7 +288,7 @@ export class AuthService {
     const key = `${INVITE_PREFIX}${dto.token}`;
     const employeeId = await this.redis.get(key);
     if (!employeeId)
-      throw new UnauthorizedException('Invite token invalid or expired');
+      throw new UnauthorizedException('inviteTokenInvalidOrExpired');
 
     const employee = await this.employeeRepo.findOne({
       where: { id: employeeId },
@@ -277,6 +301,8 @@ export class AuthService {
     const keycloakId = await this.keycloak.createUser(
       employee.email,
       dto.password,
+      dto.firstNameEn,
+      dto.lastNameEn,
     );
 
     employee.keycloakId = keycloakId;
@@ -303,7 +329,7 @@ export class AuthService {
     const employee = await this.employeeRepo.findOne({ where: { id } });
     if (!employee) throw new NotFoundException('Employee not found');
     if (employee.status !== EmployeeStatus.PENDING) {
-      throw new BadRequestException('Employee is not in pending state');
+      throw new BadRequestException('employeeNotPending');
     }
 
     const tmpPassword = await this.redis.get(`pending_pwd:${id}`);
@@ -311,6 +337,8 @@ export class AuthService {
       const keycloakId = await this.keycloak.createUser(
         employee.email,
         tmpPassword,
+        employee.firstNameEn,
+        employee.lastNameEn,
       );
       employee.keycloakId = keycloakId;
       await this.redis.del(`pending_pwd:${id}`);

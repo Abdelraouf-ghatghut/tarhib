@@ -78,6 +78,12 @@ export class ReceivePurchaseOrderDto {
   lines!: ReceiveLineDto[];
 }
 
+export class RejectPurchaseOrderDto {
+  @ApiProperty({ example: 'Prix trop élevé, demander un autre devis' })
+  @IsString()
+  reason!: string;
+}
+
 // ── Response DTOs ─────────────────────────────────────────────────────────────
 
 export class PurchaseOrderLineDto {
@@ -121,6 +127,39 @@ export class PurchaseOrderDto {
 
   @ApiProperty()
   createdBy!: string;
+
+  @ApiProperty({ nullable: true })
+  validatedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  validatedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  rejectionReason!: string | null;
+
+  @ApiProperty({ nullable: true })
+  rejectedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  rejectedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  sentBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  sentAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  receivedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  receivedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  cancelledBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  cancelledAt!: Date | null;
 
   @ApiProperty({ type: [PurchaseOrderLineDto] })
   lines!: PurchaseOrderLineDto[];

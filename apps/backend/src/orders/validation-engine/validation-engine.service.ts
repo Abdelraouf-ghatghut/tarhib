@@ -29,7 +29,10 @@ export interface ValidationContext {
   employeeId: string;
   companyId: string;
   branchId: string;
+  /** Nom de rôle legacy — conservé pour compat descendante (anciens produits) */
   role: string;
+  /** UUID du rôle dynamique — source de vérité pour allowedRoles */
+  roleId: string | null;
   products: ProductSnapshot[];
   stocks: StockSnapshot[];
   quotas: QuotaSnapshot[];
@@ -84,7 +87,13 @@ export class ValidationEngineService {
         reason: 'PRODUCT_NOT_COMMANDABLE',
       };
     }
-    if (product.allowedRoles && !product.allowedRoles.includes(ctx.role)) {
+    // allowedRoles contient désormais des roleId (UUID) — le nom de rôle
+    // legacy reste accepté pour la compatibilité des anciens produits.
+    if (
+      product.allowedRoles &&
+      !product.allowedRoles.includes(ctx.role) &&
+      !(ctx.roleId && product.allowedRoles.includes(ctx.roleId))
+    ) {
       return {
         productId,
         quantity,

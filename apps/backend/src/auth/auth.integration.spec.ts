@@ -11,16 +11,29 @@
  *   3. 200 with a valid token on a public-but-guarded route (GET /auth/me)
  *   4. 403 when the authenticated user lacks the required role
  */
-import { INestApplication, Controller, Get, UseGuards } from '@nestjs/common';
+import {
+  INestApplication,
+  Injectable,
+  Controller,
+  Get,
+  UseGuards,
+} from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { PassportStrategy } from '@nestjs/passport';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ExtractJwt, Strategy } from 'passport-jwt';
 import supertest, { type Agent } from 'supertest';
 import jwt from 'jsonwebtoken';
 import { EmployeeRole } from '../employees/dto/employee.dto';
+import { Employee } from '../employees/entities/employee.entity';
+import { Company } from '../companies/entities/company.entity';
+import { Role } from '../roles/entities/role.entity';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import { AuthModule } from './auth.module';
 import { AuthService } from './auth.service';
 import { OtpService } from './otp/otp.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
@@ -29,6 +42,28 @@ import { CurrentUser } from './decorators/current-user.decorator';
 const TEST_SECRET = 'integration-test-secret';
 const COMPANY_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
 const BRANCH_ID = 'bbbbbbbb-0000-0000-0000-000000000002';
+
+/**
+ * Remplace la stratégie de prod (JWKS Keycloak + enrichissement DB) par une
+ * vérification HS256 locale : on teste ici le câblage requête→guard→contrôleur,
+ * pas Keycloak.
+ */
+@Injectable()
+class TestJwtStrategy extends PassportStrategy(Strategy) {
+  constructor() {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ignoreExpiration: false,
+      secretOrKey: TEST_SECRET,
+    });
+  }
+
+  validate(payload: JwtPayload): JwtPayload {
+    return payload;
+  }
+}
+
+const repoStub = { findOne: jest.fn().mockResolvedValue(null) };
 
 function signToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
   return jwt.sign(payload, TEST_SECRET, { expiresIn: '5m' });
@@ -77,11 +112,19 @@ describe('Auth guards (integration)', () => {
       ],
       controllers: [TestAuthController],
     })
-      // Mock service-layer deps so tests run without Redis/Keycloak/Twilio
+      // Mock service-layer deps so tests run without Redis/Keycloak/Twilio/DB
       .overrideProvider(AuthService)
       .useValue({ getCurrentUser: (p: JwtPayload) => p })
       .overrideProvider(OtpService)
       .useValue({})
+      .overrideProvider(JwtStrategy)
+      .useClass(TestJwtStrategy)
+      .overrideProvider(getRepositoryToken(Employee))
+      .useValue(repoStub)
+      .overrideProvider(getRepositoryToken(Company))
+      .useValue(repoStub)
+      .overrideProvider(getRepositoryToken(Role))
+      .useValue(repoStub)
       .compile();
 
     app = moduleFixture.createNestApplication();

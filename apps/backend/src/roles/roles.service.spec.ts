@@ -5,6 +5,7 @@ import { RolesService } from './roles.service.js';
 import { Role, RoleScope, SlaPriority } from './entities/role.entity.js';
 import { Permission } from './entities/permission.entity.js';
 import { RoleQuota, QuotaPeriodType } from './entities/role-quota.entity.js';
+import { Employee } from '../employees/entities/employee.entity.js';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 
 const mockRepo = () => ({
@@ -29,6 +30,7 @@ describe('RolesService', () => {
   let service: RolesService;
   let roleRepo: ReturnType<typeof mockRepo>;
   let quotaRepo: ReturnType<typeof mockRepo>;
+  let employeeRepo: ReturnType<typeof mockRepo>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -37,12 +39,14 @@ describe('RolesService', () => {
         { provide: getRepositoryToken(Role), useFactory: mockRepo },
         { provide: getRepositoryToken(Permission), useFactory: mockRepo },
         { provide: getRepositoryToken(RoleQuota), useFactory: mockRepo },
+        { provide: getRepositoryToken(Employee), useFactory: mockRepo },
       ],
     }).compile();
 
     service = module.get(RolesService);
     roleRepo = module.get(getRepositoryToken(Role));
     quotaRepo = module.get(getRepositoryToken(RoleQuota));
+    employeeRepo = module.get(getRepositoryToken(Employee));
 
     roleRepo.save.mockImplementation((v: Partial<Role>) =>
       Promise.resolve({
@@ -139,14 +143,37 @@ describe('RolesService', () => {
       expect(result.quotasEnabled).toBe(false);
     });
 
-    it('rejects modification of system roles', async () => {
+    it('allows modification of default (seeded) roles like any other role', async () => {
       roleRepo.findOne.mockResolvedValue({
-        id: 'role-sys',
-        isSystem: true,
+        id: 'role-default',
+        nameAr: 'old',
+        permissions: [],
+        quotas: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
-      await expect(service.update('role-sys', { nameAr: 'x' })).rejects.toThrow(
+      roleRepo.save.mockImplementation((r: unknown) => Promise.resolve(r));
+
+      const result = await service.update('role-default', { nameAr: 'x' });
+      expect(result.nameAr).toBe('x');
+    });
+  });
+
+  describe('remove', () => {
+    it('rejects deletion when the role is currently assigned to employees', async () => {
+      roleRepo.findOne.mockResolvedValue({ id: 'role-1' });
+      employeeRepo.count.mockResolvedValue(3);
+      await expect(service.remove('role-1')).rejects.toThrow(
         BadRequestException,
       );
+      expect(roleRepo.remove).not.toHaveBeenCalled();
+    });
+
+    it('allows deletion when no employee is assigned to the role, regardless of whether it was seeded by default', async () => {
+      roleRepo.findOne.mockResolvedValue({ id: 'role-1' });
+      employeeRepo.count.mockResolvedValue(0);
+      await service.remove('role-1');
+      expect(roleRepo.remove).toHaveBeenCalled();
     });
   });
 });

@@ -5,15 +5,23 @@ import {
   Checkbox,
   Collapse,
   Divider,
+  Empty,
   Form,
   Input,
   InputNumber,
+  Modal,
   Select,
   Space,
+  Switch,
   Tooltip,
   Typography,
 } from "antd";
-import { CloseOutlined, InfoCircleOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  CloseOutlined,
+  InfoCircleOutlined,
+  SearchOutlined,
+  ShoppingOutlined,
+} from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import {
   bilingualName,
@@ -27,6 +35,12 @@ import {
 } from "./shared";
 
 const { Text, Title } = Typography;
+
+// Base toujours accordée à tout rôle client : commander et consulter ses
+// commandes/quotas ne sont pas des permissions activables — seule la gestion
+// des réunions (réserver une salle + commander des packages de service) l'est.
+const CLIENT_BASE_PERMISSIONS = ["order.create", "catalog.view", "quota.view", "profile.edit"];
+const MEETING_PERMISSIONS = ["meeting.book", "meeting.order_services"];
 
 export interface RoleFormPayload {
   nameAr: string;
@@ -88,6 +102,9 @@ export function RoleForm({
   const [selectedPerms, setSelectedPerms] = useState<Set<string>>(
     () => new Set(editing?.permissions ?? []),
   );
+  const [meetingEnabled, setMeetingEnabled] = useState<boolean>(
+    () => editing?.permissions?.includes("meeting.book") ?? false,
+  );
   const [permSearch, setPermSearch] = useState("");
   const [quotas, setQuotas] = useState<RoleQuotaInput[]>(
     () =>
@@ -97,19 +114,28 @@ export function RoleForm({
         maxQuantity: q.maxQuantity,
       })) ?? [],
   );
-  const [quotaFormOpen, setQuotaFormOpen] = useState(false);
-  const [quotaDraft, setQuotaDraft] = useState<Partial<RoleQuotaInput>>({
-    periodType: "MONTHLY",
-  });
+  // Le switch reflète quotasEnabled (dérivé serveur : ≥1 quota = activé)
+  const [quotasEnabled, setQuotasEnabled] = useState(
+    () => (editing?.quotasEnabled ?? false) || (editing?.quotas.length ?? 0) > 0,
+  );
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
 
-  // Seuls les produits commandables sont proposés ; les produits déjà
-  // configurés et les VIP libre-service sont exclus (§3 CLAUDE.md)
-  const availableProducts = useMemo(() => {
-    const used = new Set(quotas.map((q) => q.productId));
-    return (products ?? []).filter(
-      (p) => (p.type === "COMMANDABLE" || p.type === "commandable") && !used.has(p.id),
+  // Seuls les produits commandables peuvent recevoir un quota ;
+  // les VIP libre-service sont exclus (§3 CLAUDE.md)
+  const commandableProducts = useMemo(
+    () => (products ?? []).filter((p) => p.type === "COMMANDABLE" || p.type === "commandable"),
+    [products],
+  );
+
+  const modalProducts = useMemo(() => {
+    if (!productSearch.trim()) return commandableProducts;
+    const needle = productSearch.trim().toLowerCase();
+    return commandableProducts.filter((p) =>
+      `${p.nameAr} ${p.nameEn}`.toLowerCase().includes(needle),
     );
-  }, [products, quotas]);
+  }, [commandableProducts, productSearch]);
 
   const permGroups = useMemo(() => {
     const filtered = (permissions ?? []).filter((p) => {
@@ -152,17 +178,37 @@ export function RoleForm({
     return p ? bilingualName(p.nameAr, p.nameEn, isAr) : id;
   }
 
-  function periodLabel(period: string) {
-    if (period === "DAILY") return t("quotaPeriodDaily");
-    if (period === "WEEKLY") return t("quotaPeriodWeekly");
-    return t("quotaPeriodMonthly");
+  function openProductModal() {
+    setTempSelected(new Set(quotas.map((q) => q.productId)));
+    setProductSearch("");
+    setProductModalOpen(true);
   }
 
-  function addQuota() {
-    if (!quotaDraft.productId || !quotaDraft.periodType || !quotaDraft.maxQuantity) return;
-    setQuotas((prev) => [...prev, quotaDraft as RoleQuotaInput]);
-    setQuotaDraft({ periodType: "MONTHLY" });
-    setQuotaFormOpen(false);
+  function toggleProduct(id: string, checked: boolean) {
+    setTempSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Valide la sélection : conserve les quotas existants, ajoute les nouveaux
+   *  produits avec des valeurs par défaut, retire les produits décochés. */
+  function confirmProductSelection() {
+    setQuotas((prev) => {
+      const kept = prev.filter((q) => tempSelected.has(q.productId));
+      const existing = new Set(kept.map((q) => q.productId));
+      const added = [...tempSelected]
+        .filter((id) => !existing.has(id))
+        .map((id) => ({ productId: id, periodType: "MONTHLY" as const, maxQuantity: 1 }));
+      return [...kept, ...added];
+    });
+    setProductModalOpen(false);
+  }
+
+  function updateQuota(productId: string, patch: Partial<RoleQuotaInput>) {
+    setQuotas((prev) => prev.map((q) => (q.productId === productId ? { ...q, ...patch } : q)));
   }
 
   async function handleSubmit() {
@@ -180,7 +226,14 @@ export function RoleForm({
         payload.permissionKeys = [...selectedPerms];
       } else {
         payload.slaPriority = values.slaPriority;
-        payload.quotas = quotas;
+        // Base toujours accordée + gestion des réunions si activée : c'est la
+        // seule permission togglable pour un rôle client
+        payload.permissionKeys = [
+          ...CLIENT_BASE_PERMISSIONS,
+          ...(meetingEnabled ? MEETING_PERMISSIONS : []),
+        ];
+        // Switch désactivé = aucun quota (le serveur dérive quotasEnabled=false)
+        payload.quotas = quotasEnabled ? quotas : [];
       }
       onSubmit(payload);
     } catch {
@@ -231,6 +284,11 @@ export function RoleForm({
           <>
             <Divider style={{ marginBlock: 24 }} />
             <SectionTitle>{t("formSectionConfig")}</SectionTitle>
+            {activeLevels.length === 0 && (
+              <Text type="warning" style={{ display: "block", fontSize: 13, marginBlockEnd: 12 }}>
+                {t("defineSlaLevelsFirst")}
+              </Text>
+            )}
             <Form.Item
               name="slaPriority"
               label={
@@ -241,10 +299,12 @@ export function RoleForm({
                   </Tooltip>
                 </Space>
               }
-              rules={[{ required: true }]}
+              rules={[{ required: true, message: t("defineSlaLevelsFirst") }]}
               style={{ maxInlineSize: 360 }}
             >
               <Select
+                disabled={activeLevels.length === 0}
+                placeholder={activeLevels.length === 0 ? t("noSlaLevels") : undefined}
                 options={activeLevels.map((l) => ({
                   value: l.code,
                   label: (
@@ -269,131 +329,170 @@ export function RoleForm({
             </Form.Item>
 
             <Divider style={{ marginBlock: 24 }} />
+            <SectionTitle>{t("meetingManagementSection")}</SectionTitle>
+            <Space align="center" style={{ marginBlockEnd: 8 }}>
+              <Switch checked={meetingEnabled} onChange={setMeetingEnabled} />
+              <Text strong>{t("enableMeetingManagement")}</Text>
+            </Space>
+            <Text type="secondary" style={{ display: "block", fontSize: 13, marginBlockEnd: 16 }}>
+              {t("enableMeetingManagementHint")}
+            </Text>
+
+            <Divider style={{ marginBlock: 24 }} />
             <SectionTitle>{t("quotasOptional")}</SectionTitle>
 
-            {quotas.length === 0 && !quotaFormOpen && (
-              <Text type="secondary" style={{ display: "block", marginBlockEnd: 8 }}>
-                {t("noQuotaConfigured")}
-              </Text>
-            )}
+            <Space align="center" style={{ marginBlockEnd: 8 }}>
+              <Switch checked={quotasEnabled} onChange={(checked) => setQuotasEnabled(checked)} />
+              <Text strong>{t("enableQuotas")}</Text>
+            </Space>
+            <Text type="secondary" style={{ display: "block", fontSize: 13, marginBlockEnd: 16 }}>
+              {t("enableQuotasHint")}
+            </Text>
 
-            {quotas.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  marginBlockEnd: 16,
-                }}
-              >
-                {quotas.map((q) => (
+            {quotasEnabled && (
+              <>
+                <Space style={{ marginBlockEnd: 16 }} wrap>
+                  <Button
+                    icon={<ShoppingOutlined />}
+                    onClick={openProductModal}
+                    disabled={commandableProducts.length === 0}
+                  >
+                    {t("chooseProducts")}
+                  </Button>
+                  {quotas.length > 0 && (
+                    <Text type="secondary" style={{ fontSize: 13 }}>
+                      {t("productsSelected", { count: quotas.length })}
+                    </Text>
+                  )}
+                </Space>
+
+                {quotas.length === 0 ? (
+                  <Text type="secondary" style={{ display: "block", marginBlockEnd: 8 }}>
+                    {t("noQuotaProductsSelected")}
+                  </Text>
+                ) : (
                   <div
-                    key={q.productId}
                     style={{
                       display: "flex",
-                      alignItems: "center",
+                      flexDirection: "column",
                       gap: 8,
-                      borderRadius: 8,
-                      paddingBlock: 4,
-                      paddingInline: 12,
-                      background: "var(--neutral-secondary-soft)",
+                      maxInlineSize: 640,
                     }}
                   >
-                    <div>
-                      <Text strong style={{ display: "block", fontSize: 13 }}>
-                        {productName(q.productId)}
-                      </Text>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {periodLabel(q.periodType)} • {q.maxQuantity}
-                      </Text>
-                    </div>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<CloseOutlined style={{ fontSize: 10 }} />}
-                      onClick={() =>
-                        setQuotas((prev) => prev.filter((x) => x.productId !== q.productId))
-                      }
-                    />
+                    {quotas.map((q) => (
+                      <div
+                        key={q.productId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          flexWrap: "wrap",
+                          borderRadius: 8,
+                          paddingBlock: 8,
+                          paddingInline: 12,
+                          background: "var(--neutral-secondary-soft)",
+                        }}
+                      >
+                        <Text strong style={{ flex: "1 1 160px", fontSize: 13 }}>
+                          {productName(q.productId)}
+                        </Text>
+                        <Select
+                          size="small"
+                          style={{ inlineSize: 130 }}
+                          value={q.periodType}
+                          onChange={(v: RoleQuotaInput["periodType"]) =>
+                            updateQuota(q.productId, { periodType: v })
+                          }
+                          options={[
+                            { value: "DAILY", label: t("quotaPeriodDaily") },
+                            { value: "WEEKLY", label: t("quotaPeriodWeekly") },
+                            { value: "MONTHLY", label: t("quotaPeriodMonthly") },
+                          ]}
+                        />
+                        <InputNumber
+                          size="small"
+                          min={1}
+                          style={{ inlineSize: 90 }}
+                          value={q.maxQuantity}
+                          onChange={(v) => updateQuota(q.productId, { maxQuantity: v ?? 1 })}
+                        />
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<CloseOutlined style={{ fontSize: 10 }} />}
+                          onClick={() =>
+                            setQuotas((prev) => prev.filter((x) => x.productId !== q.productId))
+                          }
+                        />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                )}
 
-            {quotaFormOpen ? (
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  alignItems: "flex-end",
-                  marginBlockEnd: 16,
-                }}
-              >
-                <div style={{ flex: "1 1 220px" }}>
-                  <Text style={{ display: "block", fontSize: 12, marginBlockEnd: 4 }}>
-                    {t("products")}
-                  </Text>
-                  <Select
-                    showSearch
-                    optionFilterProp="label"
+                <Modal
+                  title={t("chooseProducts")}
+                  open={productModalOpen}
+                  onOk={confirmProductSelection}
+                  onCancel={() => setProductModalOpen(false)}
+                  okText={t("confirm")}
+                  cancelText={t("cancel")}
+                  width={520}
+                >
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined style={{ color: "var(--fg-body-subtle)" }} />}
                     placeholder={t("searchProduct")}
-                    style={{ inlineSize: "100%" }}
-                    value={quotaDraft.productId}
-                    onChange={(v: string) => setQuotaDraft((d) => ({ ...d, productId: v }))}
-                    options={availableProducts.map((p) => ({
-                      value: p.id,
-                      label: bilingualName(p.nameAr, p.nameEn, isAr),
-                    }))}
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    style={{ marginBlockEnd: 12 }}
                   />
-                </div>
-                <div>
-                  <Text style={{ display: "block", fontSize: 12, marginBlockEnd: 4 }}>
-                    {t("periodType")}
-                  </Text>
-                  <Select
-                    style={{ inlineSize: 140 }}
-                    value={quotaDraft.periodType}
-                    onChange={(v: RoleQuotaInput["periodType"]) =>
-                      setQuotaDraft((d) => ({ ...d, periodType: v }))
-                    }
-                    options={[
-                      { value: "DAILY", label: t("quotaPeriodDaily") },
-                      { value: "WEEKLY", label: t("quotaPeriodWeekly") },
-                      { value: "MONTHLY", label: t("quotaPeriodMonthly") },
-                    ]}
-                  />
-                </div>
-                <div>
-                  <Text style={{ display: "block", fontSize: 12, marginBlockEnd: 4 }}>
-                    {t("maxQuantity")}
-                  </Text>
-                  <InputNumber
-                    min={1}
-                    style={{ inlineSize: 100 }}
-                    value={quotaDraft.maxQuantity}
-                    onChange={(v) => setQuotaDraft((d) => ({ ...d, maxQuantity: v ?? undefined }))}
-                  />
-                </div>
-                <Space>
-                  <Button
-                    type="primary"
-                    disabled={!quotaDraft.productId || !quotaDraft.maxQuantity}
-                    onClick={addQuota}
+                  {modalProducts.length === 0 ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noData")} />
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 4,
+                        maxBlockSize: 360,
+                        overflowY: "auto",
+                      }}
+                    >
+                      {modalProducts.map((p) => (
+                        <label
+                          key={p.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            borderRadius: 8,
+                            paddingBlock: 8,
+                            paddingInline: 10,
+                            cursor: "pointer",
+                            background: tempSelected.has(p.id)
+                              ? "var(--brand-softer)"
+                              : "transparent",
+                          }}
+                        >
+                          <Checkbox
+                            checked={tempSelected.has(p.id)}
+                            onChange={(e) => toggleProduct(p.id, e.target.checked)}
+                          />
+                          <Text style={{ fontSize: 13 }}>
+                            {bilingualName(p.nameAr, p.nameEn, isAr)}
+                          </Text>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <Text
+                    type="secondary"
+                    style={{ display: "block", fontSize: 12, marginBlockStart: 12 }}
                   >
-                    {t("add")}
-                  </Button>
-                  <Button onClick={() => setQuotaFormOpen(false)}>{t("cancel")}</Button>
-                </Space>
-              </div>
-            ) : (
-              <Button
-                icon={<PlusOutlined />}
-                onClick={() => setQuotaFormOpen(true)}
-                disabled={availableProducts.length === 0}
-              >
-                {t("addQuota")}
-              </Button>
+                    {t("productsSelected", { count: tempSelected.size })}
+                  </Text>
+                </Modal>
+              </>
             )}
           </>
         )}
@@ -449,7 +548,7 @@ export function RoleForm({
                             checked={selectedPerms.has(p.key)}
                             onChange={(e) => togglePerm(p.key, e.target.checked)}
                           >
-                            {isAr ? p.nameAr : p.nameEn}
+                            {bilingualName(p.nameAr, p.nameEn, isAr)}
                           </Checkbox>
                         ))}
                       </div>

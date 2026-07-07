@@ -74,7 +74,10 @@ export class InventoryTransfersController {
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Annuler un transfert PENDING' })
   @ApiResponse({ status: 200, type: InventoryTransferDto })
-  cancel(@Param('id') id: string): Promise<InventoryTransferDto> {
-    return this.service.cancel(id);
+  cancel(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<InventoryTransferDto> {
+    return this.service.cancel(id, user.sub);
   }
 }

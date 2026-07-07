@@ -1,20 +1,20 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsDateString, IsInt, IsUUID, Min } from "class-validator";
+import { ApiProperty, PartialType } from '@nestjs/swagger';
+import { IsDateString, IsInt, IsUUID, Min } from 'class-validator';
 
 export class CreateQuotaDto {
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0851" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0851' })
   @IsUUID()
   employeeId!: string;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0852" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0852' })
   @IsUUID()
   productId!: string;
 
-  @ApiProperty({ example: "2026-06-01" })
+  @ApiProperty({ example: '2026-06-01' })
   @IsDateString()
   periodStart!: string;
 
-  @ApiProperty({ example: "2026-06-30" })
+  @ApiProperty({ example: '2026-06-30' })
   @IsDateString()
   periodEnd!: string;
 
@@ -23,29 +23,31 @@ export class CreateQuotaDto {
   @Min(1)
   maxQuantity!: number;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0854" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0854' })
   @IsUUID()
   companyId!: string;
 }
 
+export class UpdateQuotaDto extends PartialType(CreateQuotaDto) {}
+
 export class QuotaDto {
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0850" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0850' })
   @IsUUID()
   id!: string;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0851" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0851' })
   @IsUUID()
   employeeId!: string;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0852" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0852' })
   @IsUUID()
   productId!: string;
 
-  @ApiProperty({ example: "2026-06-01" })
+  @ApiProperty({ example: '2026-06-01' })
   @IsDateString()
   periodStart!: string;
 
-  @ApiProperty({ example: "2026-06-30" })
+  @ApiProperty({ example: '2026-06-30' })
   @IsDateString()
   periodEnd!: string;
 
@@ -59,7 +61,7 @@ export class QuotaDto {
   @Min(0)
   usedQuantity!: number;
 
-  @ApiProperty({ example: "d290f1ee-6c54-4b01-90e6-d701748f0854" })
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0854' })
   @IsUUID()
   companyId!: string;
 }

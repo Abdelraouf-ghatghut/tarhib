@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, IsNull, Repository } from 'typeorm';
 import { InventoryItem, StockZone } from './entities/inventory-item.entity.js';
 import {
   CreateInventoryItemDto,
@@ -18,7 +18,7 @@ import {
   InventoryAdjustmentDto,
 } from './dto/inventory-adjustment.dto.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import { VipSelfServiceService } from '../vip-self-service/vip-self-service.service.js';
+import { Branch } from '../branches/entities/branch.entity.js';
 
 @Injectable()
 export class InventoryService {
@@ -27,24 +27,28 @@ export class InventoryService {
   constructor(
     @InjectRepository(InventoryItem)
     private readonly repo: Repository<InventoryItem>,
+    @InjectRepository(Branch)
+    private readonly branchRepo: Repository<Branch>,
     private readonly notificationsService: NotificationsService,
-    private readonly vipService: VipSelfServiceService,
   ) {}
 
   async create(dto: CreateInventoryItemDto): Promise<InventoryItemDto> {
     const zone = dto.zone ?? StockZone.BRANCH;
+    // Un emplacement VIP assigné à un employé précis est distinct de tout
+    // autre emplacement du même produit/branche/zone — sans cette précision
+    // dans la clé de doublon, le 2e employé VIP se verrait refuser la création.
     const existing = await this.repo.findOne({
       where: {
         companyId: dto.companyId,
         branchId: dto.branchId,
         productId: dto.productId,
         zone,
+        departmentId: dto.departmentId ?? IsNull(),
+        assignedEmployeeId: dto.assignedEmployeeId ?? IsNull(),
       },
     });
     if (existing) {
-      throw new ConflictException(
-        `Inventory item already exists for this product/branch/zone (${zone}). Use PATCH to update.`,
-      );
+      throw new ConflictException('inventoryItemAlreadyExists');
     }
     const entity = this.repo.create({
       companyId: dto.companyId,
@@ -55,6 +59,8 @@ export class InventoryService {
       minThreshold: dto.minThreshold ?? 0,
       maxThreshold: dto.maxThreshold ?? null,
       locationName: dto.locationName ?? null,
+      departmentId: dto.departmentId ?? null,
+      assignedEmployeeId: dto.assignedEmployeeId ?? null,
     });
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
@@ -103,6 +109,10 @@ export class InventoryService {
     if (dto.quantity !== undefined) entity.quantity = dto.quantity;
     if (dto.minThreshold !== undefined) entity.minThreshold = dto.minThreshold;
     if (dto.maxThreshold !== undefined) entity.maxThreshold = dto.maxThreshold;
+    if (dto.locationName !== undefined) entity.locationName = dto.locationName;
+    if (dto.departmentId !== undefined) entity.departmentId = dto.departmentId;
+    if (dto.assignedEmployeeId !== undefined)
+      entity.assignedEmployeeId = dto.assignedEmployeeId;
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
   }
@@ -135,16 +145,28 @@ export class InventoryService {
           this.logger.error(`Low-stock notification failed: ${String(err)}`),
         );
 
-      this.vipService
-        .createTaskIfNeeded(saved)
-        .catch((err: unknown) =>
-          this.logger.error(
-            `VIP replenishment task creation failed: ${String(err)}`,
-          ),
-        );
+      // Notifie le responsable stock de la branche (s'il est configuré) pour
+      // qu'il crée un bon de commande — première étape de la chaîne d'achat.
+      this.notifyStockResponsible(saved).catch((err: unknown) =>
+        this.logger.error(
+          `Stock-responsible notification failed: ${String(err)}`,
+        ),
+      );
     }
 
     return this.toDto(saved);
+  }
+
+  private async notifyStockResponsible(item: InventoryItem): Promise<void> {
+    const branch = await this.branchRepo.findOne({
+      where: { id: item.branchId },
+    });
+    if (!branch?.stockResponsibleId) return;
+    await this.notificationsService.notifyEmployee(
+      branch.stockResponsibleId,
+      'Stock bas — créer un bon de commande',
+      `Produit ${item.productId.slice(0, 8).toUpperCase()} : ${item.quantity} unité(s) restante(s)`,
+    );
   }
 
   /**
@@ -204,6 +226,8 @@ export class InventoryService {
     dto.minThreshold = e.minThreshold;
     dto.maxThreshold = e.maxThreshold;
     dto.locationName = e.locationName;
+    dto.departmentId = e.departmentId;
+    dto.assignedEmployeeId = e.assignedEmployeeId;
     dto.belowThreshold = e.quantity <= e.minThreshold;
     return dto;
   }

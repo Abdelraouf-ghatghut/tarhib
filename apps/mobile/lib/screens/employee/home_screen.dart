@@ -6,6 +6,7 @@ import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/orders_provider.dart';
+import '../../theme/snow_colors.dart';
 import '../../widgets/glass_nav_bar.dart';
 
 class EmployeeHomeScreen extends ConsumerWidget {
@@ -46,107 +47,130 @@ class EmployeeHomeScreen extends ConsumerWidget {
             ? l.goodAfternoon
             : l.goodEvening;
 
+    final initials = (auth.email ?? 'U')
+        .split('@')
+        .first
+        .split('.')
+        .map((s) => s.isNotEmpty ? s[0].toUpperCase() : '')
+        .take(2)
+        .join();
+
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              greeting,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.55),
-                letterSpacing: 0.3,
-              ),
-            ),
-            Text(
-              auth.email ?? l.appTitle,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.2,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-        actions: [
-          // Badge panier rapide (hors onglet panier)
-          if (cartCount > 0 && idx != 1)
-            GestureDetector(
-              onTap: () => context.go('/employee/cart'),
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.3),
-                  ),
+      // ── Header SnowUI : carte blanche flottante, avatar + salutation ────────
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight + 16),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: SnowColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.shopping_cart_rounded,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(width: 5),
-                    Text(
-                      '$cartCount',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
+              ],
+            ),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () => context.push('/profile'),
+                  child: CircleAvatar(
+                    radius: 19,
+                    backgroundColor: SnowColors.primarySoft,
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
+                        color: SnowColors.primaryStrong,
+                        fontWeight: FontWeight.w800,
                         fontSize: 13,
-                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        greeting,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: SnowColors.textMuted,
+                          height: 1.15,
+                        ),
+                      ),
+                      Text(
+                        auth.email ?? l.appTitle,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: SnowColors.textPrimary,
+                          height: 1.15,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
 
-          // Toggle langue AR/EN
-          IconButton(
-            icon: Text(
-              locale.languageCode == 'ar' ? 'EN' : 'ع',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: Theme.of(context).colorScheme.primary,
-              ),
+                // Badge panier rapide (hors onglet panier)
+                if (cartCount > 0 && idx != 1)
+                  _HeaderIconButton(
+                    icon: Icons.shopping_cart_rounded,
+                    badge: cartCount,
+                    accent: SnowColors.primary,
+                    accentSoft: SnowColors.primarySoft,
+                    onTap: () => context.go('/employee/cart'),
+                  ),
+                const SizedBox(width: 6),
+                _HeaderIconButton(
+                  icon: Icons.meeting_room_outlined,
+                  accent: SnowColors.textSecondary,
+                  accentSoft: SnowColors.surfaceMuted,
+                  onTap: () => context.push('/employee/rooms'),
+                ),
+                const SizedBox(width: 6),
+                _HeaderIconButton(
+                  icon: Icons.notifications_none_rounded,
+                  accent: SnowColors.textSecondary,
+                  accentSoft: SnowColors.surfaceMuted,
+                  onTap: () => context.push('/profile'),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () {
+                    final next = locale.languageCode == 'ar' ? 'en' : 'ar';
+                    ref.read(localeProvider.notifier).state = Locale(next);
+                  },
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: SnowColors.surfaceMuted,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      locale.languageCode == 'ar' ? 'EN' : 'ع',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: SnowColors.primaryStrong,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            onPressed: () {
-              final next = locale.languageCode == 'ar' ? 'en' : 'ar';
-              ref.read(localeProvider.notifier).state = Locale(next);
-            },
-            tooltip: l.language,
           ),
-
-          // Meeting rooms shortcut
-          IconButton(
-            icon: const Icon(Icons.meeting_room_outlined, size: 22),
-            onPressed: () => context.push('/employee/rooms'),
-            tooltip: l.meetingRooms,
-          ),
-          // Profil
-          IconButton(
-            icon: const Icon(Icons.person_outline_rounded, size: 22),
-            onPressed: () => context.push('/profile'),
-            tooltip: l.profile,
-          ),
-          const SizedBox(width: 4),
-        ],
+        ),
       ),
       bottomNavigationBar: GlassNavBar(
         selectedIndex: idx,
@@ -186,6 +210,67 @@ class EmployeeHomeScreen extends ConsumerWidget {
         ],
       ),
       body: child,
+    );
+  }
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.accent,
+    required this.accentSoft,
+    this.badge,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color accent;
+  final Color accentSoft;
+  final int? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: accentSoft, shape: BoxShape.circle),
+            child: Icon(icon, size: 18, color: accent),
+          ),
+          if (badge != null && badge! > 0)
+            Positioned(
+              top: -2,
+              right: -2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                constraints: const BoxConstraints(minWidth: 16),
+                decoration: BoxDecoration(
+                  color: SnowColors.primary,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: [
+                    BoxShadow(
+                        color: SnowColors.primary.withValues(alpha: 0.4),
+                        blurRadius: 6),
+                  ],
+                ),
+                child: Text(
+                  '$badge',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

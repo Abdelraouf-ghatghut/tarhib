@@ -7,8 +7,12 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import {
   ApiBearerAuth,
   ApiNoContentResponse,
@@ -27,15 +31,20 @@ import { OtpRequestDto } from './dto/otp-request.dto';
 import { OtpVerifyDto } from './dto/otp-verify.dto';
 import { PasswordResetDto } from './dto/password-reset.dto';
 import { PasswordResetRequestDto } from './dto/password-reset-request.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RefreshRequestDto } from './dto/refresh-request.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { RequirePermission } from './decorators/require-permission.decorator';
+import { Public } from './decorators/public.decorator';
 import { RegisterDto } from './dto/register.dto';
 import { InviteEmployeeDto } from './dto/invite-employee.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
+
+/** Cookie HttpOnly portant le refresh token pour le Web Admin (anti-XSS). */
+const REFRESH_COOKIE = 'tarhib_rt';
+const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 
 @ApiTags('auth')
 @Controller('auth')
@@ -45,18 +54,47 @@ export class AuthController {
     private readonly otpService: OtpService,
   ) {}
 
+  private setRefreshCookie(res: Response, refreshToken: string): void {
+    res.cookie(REFRESH_COOKIE, refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      // Limité aux routes /auth : le cookie n'accompagne jamais les appels API
+      path: '/auth',
+      maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+    });
+  }
+
+  private clearRefreshCookie(res: Response): void {
+    res.clearCookie(REFRESH_COOKIE, { path: '/auth' });
+  }
+
+  private refreshTokenFrom(req: Request, dto?: RefreshRequestDto): string {
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const token = cookies?.[REFRESH_COOKIE] ?? dto?.refreshToken;
+    if (!token) throw new UnauthorizedException('missingRefreshToken');
+    return token;
+  }
+
   // ── TARHIB-21 ────────────────────────────────────────────────────────────
+  @Public()
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Login with email and password' })
   @ApiOkResponse({ type: TokenResponseDto })
   @ApiUnauthorizedResponse({ description: 'Invalid credentials' })
   @ApiTooManyRequestsResponse({ description: 'Account temporarily locked' })
-  login(@Body() dto: LoginDto): Promise<TokenResponseDto> {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<TokenResponseDto> {
+    const tokens = await this.authService.login(dto);
+    this.setRefreshCookie(res, tokens.refreshToken);
+    return tokens;
   }
 
   // ── TARHIB-22 ────────────────────────────────────────────────────────────
+  @Public()
   @Post('otp/request')
   @HttpCode(204)
   @ApiOperation({ summary: 'Request an OTP code by SMS' })
@@ -67,6 +105,7 @@ export class AuthController {
     await this.otpService.requestOtp(dto.phoneNumber);
   }
 
+  @Public()
   @Post('otp/verify')
   @HttpCode(200)
   @ApiOperation({ summary: 'Verify OTP code and obtain tokens' })
@@ -77,6 +116,7 @@ export class AuthController {
   }
 
   // ── TARHIB-23 ────────────────────────────────────────────────────────────
+  @Public()
   @Post('password/reset-request')
   @HttpCode(204)
   @ApiOperation({ summary: 'Request password reset link by email' })
@@ -89,6 +129,7 @@ export class AuthController {
     await this.authService.requestPasswordReset(dto);
   }
 
+  @Public()
   @Post('password/reset')
   @HttpCode(204)
   @ApiOperation({ summary: 'Set a new password using a reset token' })
@@ -101,21 +142,41 @@ export class AuthController {
   }
 
   // ── TARHIB-24 ────────────────────────────────────────────────────────────
+  @Public()
   @Post('refresh')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Renew access token using a refresh token' })
+  @ApiOperation({
+    summary:
+      'Renew access token using a refresh token (HttpOnly cookie or body)',
+  })
   @ApiOkResponse({ type: TokenResponseDto })
   @ApiUnauthorizedResponse({ description: 'Refresh token invalid or expired' })
-  refresh(@Body() dto: RefreshTokenDto): Promise<TokenResponseDto> {
-    return this.authService.refresh(dto);
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Body() dto?: RefreshRequestDto,
+  ): Promise<TokenResponseDto> {
+    const refreshToken = this.refreshTokenFrom(req, dto);
+    const tokens = await this.authService.refresh({ refreshToken });
+    // Rotation : le nouveau refresh token remplace l'ancien dans le cookie
+    this.setRefreshCookie(res, tokens.refreshToken);
+    return tokens;
   }
 
+  @Public()
   @Post('logout')
   @HttpCode(204)
   @ApiOperation({ summary: 'Revoke the refresh token (logout)' })
   @ApiNoContentResponse({ description: 'Session revoked' })
-  async logout(@Body() dto: RefreshTokenDto): Promise<void> {
-    await this.authService.logout(dto);
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Body() dto?: RefreshRequestDto,
+  ): Promise<void> {
+    this.clearRefreshCookie(res);
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const refreshToken = cookies?.[REFRESH_COOKIE] ?? dto?.refreshToken;
+    if (refreshToken) await this.authService.logout({ refreshToken });
   }
 
   // ── Public ───────────────────────────────────────────────────────────────
@@ -125,11 +186,12 @@ export class AuthController {
   @ApiOperation({ summary: 'Return the authenticated user from the JWT' })
   @ApiOkResponse({ type: CurrentUserDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
-  getMe(@CurrentUser() user: JwtPayload): JwtPayload {
+  getMe(@CurrentUser() user: JwtPayload) {
     return this.authService.getCurrentUser(user);
   }
 
   // ── Signup ────────────────────────────────────────────────────────────────
+  @Public()
   @Post('register')
   @HttpCode(204)
   @ApiOperation({
@@ -153,6 +215,7 @@ export class AuthController {
     await this.authService.inviteEmployee(dto);
   }
 
+  @Public()
   @Post('accept-invite')
   @HttpCode(200)
   @ApiOperation({ summary: 'Accept invitation and set up account' })

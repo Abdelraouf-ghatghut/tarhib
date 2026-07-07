@@ -48,6 +48,16 @@ const makeOrder = (priority: OrderPriority): Order => ({
   priority,
   slaDeadline: new Date(),
   createdAt: new Date(),
+  approvedAt: null,
+  approvedBy: null,
+  rejectedAt: null,
+  rejectedBy: null,
+  prepStartedAt: null,
+  preparedBy: null,
+  readyAt: null,
+  readyBy: null,
+  deliveredAt: null,
+  deliveredBy: null,
   lines: [],
 });
 

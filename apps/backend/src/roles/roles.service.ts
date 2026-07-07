@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { Role, RoleScope, SlaPriority } from './entities/role.entity.js';
 import { Permission } from './entities/permission.entity.js';
 import { RoleQuota, QuotaPeriodType } from './entities/role-quota.entity.js';
+import { Employee } from '../employees/entities/employee.entity.js';
 import {
   CreateRoleDto,
   CreateRoleQuotaDto,
@@ -27,16 +28,22 @@ export class RolesService {
     private readonly permissionRepo: Repository<Permission>,
     @InjectRepository(RoleQuota)
     private readonly roleQuotaRepo: Repository<RoleQuota>,
+    @InjectRepository(Employee)
+    private readonly employeeRepo: Repository<Employee>,
   ) {}
 
   async findAll(caller: JwtPayload): Promise<RoleDto[]> {
+    // Portail interne : un admin plateforme (role.manage) voit tous les rôles,
+    // internes comme clients — il n'est pas cantonné à une société (le
+    // superadmin n'a d'ailleurs aucune affectation). Les autres appelants ne
+    // voient que les rôles clients de leur société.
     const isTarhibAdmin = caller.permissions?.includes('role.manage');
-    const where = isTarhibAdmin
-      ? [{ scope: RoleScope.TARHIB }, { companyId: caller.companyId }]
-      : [{ companyId: caller.companyId, scope: RoleScope.CLIENT }];
+    if (!isTarhibAdmin && !caller.companyId) return [];
 
     const roles = await this.roleRepo.find({
-      where,
+      where: isTarhibAdmin
+        ? undefined
+        : { companyId: caller.companyId, scope: RoleScope.CLIENT },
       relations: ['permissions', 'quotas'],
     });
     return roles.map(this.toDto);
@@ -60,6 +67,10 @@ export class RolesService {
       );
     }
     if (dto.scope === RoleScope.CLIENT && !dto.companyId) {
+      // Un appelant sans affectation (superadmin) doit expliciter la société
+      if (!caller.companyId) {
+        throw new BadRequestException('companyRequiredForClientRole');
+      }
       dto.companyId = caller.companyId;
     }
 
@@ -95,8 +106,9 @@ export class RolesService {
       relations: ['permissions', 'quotas'],
     });
     if (!role) throw new NotFoundException(`Role ${id} not found`);
-    if (role.isSystem)
-      throw new BadRequestException('System roles cannot be modified');
+    // Les rôles système (internes seedés) restent modifiables — le superadmin
+    // ajuste leurs permissions via la même page ; seule la suppression est
+    // bloquée (voir remove) pour garder la base de rôles cohérente.
 
     if (dto.nameAr) role.nameAr = dto.nameAr;
     if (dto.nameEn !== undefined) role.nameEn = dto.nameEn?.trim() || null;
@@ -120,8 +132,14 @@ export class RolesService {
   async remove(id: string): Promise<void> {
     const role = await this.roleRepo.findOne({ where: { id } });
     if (!role) throw new NotFoundException(`Role ${id} not found`);
-    if (role.isSystem)
-      throw new BadRequestException('System roles cannot be deleted');
+    // Pas de notion de « rôle système » : tout rôle actuellement assigné à un
+    // employé est protégé, qu'il ait été créé par défaut ou par un admin.
+    const assignedCount = await this.employeeRepo.count({
+      where: { roleId: id },
+    });
+    if (assignedCount > 0) {
+      throw new BadRequestException('roleInUseCannotDelete');
+    }
     await this.roleRepo.remove(role);
   }
 

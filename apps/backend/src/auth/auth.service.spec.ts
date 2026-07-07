@@ -2,10 +2,14 @@
 import { HttpException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { KeycloakService } from './keycloak/keycloak.service';
 import { EmailService } from './email/email.service';
 import { RedisService } from '../redis/redis.service';
+import { Employee } from '../employees/entities/employee.entity';
+import { Company } from '../companies/entities/company.entity';
+import { Role } from '../roles/entities/role.entity';
 import { EmployeeRole } from '../employees/dto/employee.dto';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { TokenResponseDto } from './dto/token-response.dto';
@@ -48,12 +52,23 @@ async function buildService(
   keycloak: KeycloakService,
   email: EmailService = makeEmail(),
 ): Promise<AuthService> {
+  const repoMock = () => ({
+    findOne: jest.fn().mockResolvedValue(null),
+    find: jest.fn().mockResolvedValue([]),
+    create: jest.fn((v: unknown) => v),
+    save: jest.fn((v: unknown) => Promise.resolve(v)),
+    remove: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue(undefined),
+  });
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       AuthService,
       { provide: KeycloakService, useValue: keycloak },
       { provide: RedisService, useValue: redis },
       { provide: EmailService, useValue: email },
+      { provide: getRepositoryToken(Employee), useValue: repoMock() },
+      { provide: getRepositoryToken(Company), useValue: repoMock() },
+      { provide: getRepositoryToken(Role), useValue: repoMock() },
       {
         provide: ConfigService,
         useValue: { get: (_key: string, def: unknown) => def },
@@ -74,7 +89,7 @@ describe('AuthService.getCurrentUser', () => {
       branchId: 'b1',
       permissions: [],
     };
-    expect(svc.getCurrentUser(payload)).toBe(payload);
+    expect(await svc.getCurrentUser(payload)).toBe(payload);
   });
 });
 

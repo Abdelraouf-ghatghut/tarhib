@@ -81,6 +81,26 @@ describe('QuotasService', () => {
     });
   });
 
+  describe('update', () => {
+    it('updates the editable fields and preserves usedQuantity', async () => {
+      const q = baseQuota();
+      repo.findOne.mockResolvedValue(q);
+      repo.save.mockImplementation((v: Quota) => Promise.resolve(v));
+
+      const result = await service.update('q-1', { maxQuantity: 25 });
+
+      expect(result.maxQuantity).toBe(25);
+      expect(result.usedQuantity).toBe(0);
+    });
+
+    it('throws NotFoundException for unknown id', async () => {
+      repo.findOne.mockResolvedValue(null);
+      await expect(
+        service.update('unknown', { maxQuantity: 5 }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('remove', () => {
     it('should hard-delete the quota', async () => {
       const q = baseQuota();

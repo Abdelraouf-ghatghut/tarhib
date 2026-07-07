@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/theme_provider.dart';
+import '../../providers/bookings_provider.dart';
+import '../../providers/orders_provider.dart';
+import '../../providers/quotas_provider.dart';
+import '../../theme/snow_colors.dart';
 import '../../widgets/glass_app_bar.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/kpi_card.dart';
+import '../../widgets/settings_tile.dart';
+import '../../widgets/status_badge.dart';
 import '../../widgets/tarhib_scaffold.dart';
 
+/// Carte profil + statistiques rapides + navigation vers les réglages —
+/// reprend exactement les codes visuels du Dashboard SnowUI (Web Admin).
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
@@ -15,9 +24,10 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context)!;
     final auth = ref.watch(authProvider);
-    final locale = ref.watch(localeProvider);
-    final themeMode = ref.watch(themeModeProvider);
-    final scheme = Theme.of(context).colorScheme;
+
+    final ordersCount = ref.watch(ordersProvider).value?.length;
+    final bookingsCount = ref.watch(myBookingsCountProvider).value;
+    final quotasCount = ref.watch(quotasProvider).value?.length;
 
     final initials = (auth.email ?? 'U')
         .split('@')
@@ -33,130 +43,119 @@ class ProfileScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, kToolbarHeight + 24, 20, 32),
           children: [
-            // ── Avatar ──────────────────────────────────────────────────────────
-            Center(
-              child: GlassCard(
-                padding: EdgeInsets.zero,
-                borderRadius: 999,
-                child: Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: scheme.primary.withValues(alpha: 0.15),
-                  ),
-                  child: Center(
-                    child: Text(
-                      initials,
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: scheme.primary,
+            // ── Profile card ──────────────────────────────────────────────
+            GlassCard(
+              padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+              child: Column(
+                children: [
+                  Container(
+                    width: 84,
+                    height: 84,
+                    decoration: const BoxDecoration(
+                      color: SnowColors.primarySoft,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        initials,
+                        style: const TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          color: SnowColors.primaryStrong,
+                        ),
                       ),
                     ),
                   ),
+                  const SizedBox(height: 14),
+                  Text(
+                    auth.email ?? '—',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: SnowColors.textPrimary),
+                  ),
+                  const SizedBox(height: 8),
+                  StatusBadge(
+                    label: l.accountApproved,
+                    tone: SnowStatusTone.success,
+                    icon: Icons.verified_rounded,
+                    dense: true,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Quick stats ───────────────────────────────────────────────
+            Row(
+              children: [
+                Expanded(
+                  child: KpiCard(
+                    icon: Icons.receipt_long_rounded,
+                    value: '${ordersCount ?? '—'}',
+                    label: l.myOrders,
+                    accent: SnowColors.primary,
+                    accentSoft: SnowColors.primarySoft,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: KpiCard(
+                    icon: Icons.meeting_room_rounded,
+                    value: '${bookingsCount ?? '—'}',
+                    label: l.myBookings,
+                    accent: SnowColors.info,
+                    accentSoft: SnowColors.infoSoft,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: KpiCard(
+                    icon: Icons.pie_chart_rounded,
+                    value: '${quotasCount ?? '—'}',
+                    label: l.quotasTracked,
+                    accent: SnowColors.successStrong,
+                    accentSoft: SnowColors.successSoft,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              auth.email ?? '—',
-              textAlign: TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _roleLabel(auth.role, l),
-              textAlign: TextAlign.center,
-              style:
-                  TextStyle(fontSize: 13, color: scheme.primary, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
 
-            // ── Info card ────────────────────────────────────────────────────────
-            GlassCard(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                children: [
-                  _InfoRow(icon: Icons.badge_outlined, label: l.roleLabel, value: _roleLabel(auth.role, l)),
-                  const Divider(indent: 56, endIndent: 16, height: 1),
-                  _InfoRow(icon: Icons.email_outlined, label: l.email, value: auth.email ?? '—'),
-                ],
-              ),
+            // ── Navigation list ───────────────────────────────────────────
+            SettingsSectionLabel(l.settingsTitle),
+            SettingsTile(
+              icon: Icons.person_outline_rounded,
+              title: l.personalInfo,
+              subtitle: auth.email,
+              onTap: () => _showPersonalInfo(context, l, auth.email, auth.role),
             ),
-            const SizedBox(height: 20),
-
-            // ── Language toggle ──────────────────────────────────────────────────
-            GlassCard(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _SectionLabel(l.language),
-                  _LanguageTile(
-                    code: 'ar',
-                    label: l.arabic,
-                    selected: locale.languageCode == 'ar',
-                    onTap: () => ref.read(localeProvider.notifier).state = const Locale('ar'),
-                  ),
-                  const Divider(indent: 56, endIndent: 16, height: 1),
-                  _LanguageTile(
-                    code: 'en',
-                    label: l.english,
-                    selected: locale.languageCode == 'en',
-                    onTap: () => ref.read(localeProvider.notifier).state = const Locale('en'),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 8),
+            SettingsTile(
+              icon: Icons.language_rounded,
+              title: l.languageAppearance,
+              onTap: () => context.push('/settings/language'),
             ),
-            const SizedBox(height: 20),
-
-            // ── Theme selector ───────────────────────────────────────────────────
-            GlassCard(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _SectionLabel(l.theme),
-                  _ThemeTile(
-                    icon: Icons.brightness_auto_rounded,
-                    label: l.themeSystem,
-                    selected: themeMode == ThemeMode.system,
-                    onTap: () => ref.read(themeModeProvider.notifier).set(ThemeMode.system),
-                  ),
-                  const Divider(indent: 56, endIndent: 16, height: 1),
-                  _ThemeTile(
-                    icon: Icons.light_mode_rounded,
-                    label: l.themeLight,
-                    selected: themeMode == ThemeMode.light,
-                    onTap: () => ref.read(themeModeProvider.notifier).set(ThemeMode.light),
-                  ),
-                  const Divider(indent: 56, endIndent: 16, height: 1),
-                  _ThemeTile(
-                    icon: Icons.dark_mode_rounded,
-                    label: l.themeDark,
-                    selected: themeMode == ThemeMode.dark,
-                    onTap: () => ref.read(themeModeProvider.notifier).set(ThemeMode.dark),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 8),
+            SettingsTile(
+              icon: Icons.notifications_none_rounded,
+              title: l.notifications,
+              onTap: () => context.push('/settings/notifications'),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 8),
+            SettingsTile(
+              icon: Icons.info_outline_rounded,
+              title: l.aboutApp,
+              onTap: () => context.push('/settings/about'),
+            ),
+            const SizedBox(height: 24),
 
-            // ── Logout ───────────────────────────────────────────────────────────
-            FilledButton.icon(
-              onPressed: () => ref.read(authProvider.notifier).logout(),
-              icon: const Icon(Icons.logout_rounded),
-              label: Text(l.logout),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-                backgroundColor: scheme.error,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
-              ),
+            SettingsTile(
+              icon: Icons.logout_rounded,
+              title: l.logout,
+              destructive: true,
+              onTap: () => ref.read(authProvider.notifier).logout(),
             ),
           ],
         ),
@@ -164,110 +163,53 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  static String _roleLabel(String? role, AppLocalizations l) => switch (role) {
-        'HOSPITALITY_AGENT' => l.roleAgent,
-        'DEPARTMENT_MANAGER' => l.roleManager,
-        'ADMIN' => l.roleAdmin,
-        _ => l.roleEmployee,
-      };
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
-          letterSpacing: 0.8,
+  void _showPersonalInfo(
+      BuildContext context, AppLocalizations l, String? email, String? role) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+        decoration: const BoxDecoration(
+          color: SnowColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l.personalInfo,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+            const SizedBox(height: 16),
+            _InfoLine(icon: Icons.email_outlined, label: l.email, value: email ?? '—'),
+            const SizedBox(height: 12),
+            _InfoLine(
+                icon: Icons.badge_outlined,
+                label: l.roleLabel,
+                value: role ?? l.roleEmployee),
+          ],
         ),
       ),
     );
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.icon, required this.label, required this.value});
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({required this.icon, required this.label, required this.value});
   final IconData icon;
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: scheme.primary.withValues(alpha: 0.8)),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: scheme.onSurface.withValues(alpha: 0.5))),
-                const SizedBox(height: 2),
-                Text(value,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LanguageTile extends StatelessWidget {
-  const _LanguageTile(
-      {required this.code, required this.label, required this.selected, required this.onTap});
-  final String code;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ListTile(
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      leading: Text(code == 'ar' ? '🇸🇦' : '🇬🇧', style: const TextStyle(fontSize: 22)),
-      title: Text(label,
-          style: TextStyle(fontWeight: selected ? FontWeight.w700 : FontWeight.w400)),
-      trailing: selected ? Icon(Icons.check_rounded, color: scheme.primary, size: 20) : null,
-    );
-  }
-}
-
-class _ThemeTile extends StatelessWidget {
-  const _ThemeTile(
-      {required this.icon, required this.label, required this.selected, required this.onTap});
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ListTile(
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      leading: Icon(icon, color: selected ? scheme.primary : scheme.onSurface.withValues(alpha: 0.55)),
-      title: Text(label,
-          style: TextStyle(fontWeight: selected ? FontWeight.w700 : FontWeight.w400)),
-      trailing: selected ? Icon(Icons.check_rounded, color: scheme.primary, size: 20) : null,
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: SnowColors.primary),
+        const SizedBox(width: 12),
+        Text(label, style: const TextStyle(fontSize: 13, color: SnowColors.textMuted)),
+        const Spacer(),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+      ],
     );
   }
 }

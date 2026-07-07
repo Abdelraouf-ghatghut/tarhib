@@ -36,26 +36,31 @@ export class Employee {
   })
   keycloakId!: string | null;
 
-  @Column({ name: 'company_id' })
-  companyId!: string;
+  /**
+   * Site d'affectation (société cliente + branche) : obligatoire pour les
+   * employés clients, optionnel pour le personnel interne Tarhib qui est
+   * dispatché en mission (le superadmin n'est affecté nulle part).
+   */
+  @Column({ name: 'company_id', nullable: true })
+  companyId!: string | null;
 
-  @ManyToOne(() => Company)
+  @ManyToOne(() => Company, { nullable: true })
   @JoinColumn({ name: 'company_id' })
-  company!: Company;
+  company!: Company | null;
 
-  @Column({ name: 'branch_id' })
-  branchId!: string;
+  @Column({ name: 'branch_id', nullable: true })
+  branchId!: string | null;
 
-  @ManyToOne(() => Branch)
+  @ManyToOne(() => Branch, { nullable: true })
   @JoinColumn({ name: 'branch_id' })
-  branch!: Branch;
+  branch!: Branch | null;
 
-  @Column({ name: 'department_id' })
-  departmentId!: string;
+  @Column({ name: 'department_id', nullable: true })
+  departmentId!: string | null;
 
-  @ManyToOne(() => Department)
+  @ManyToOne(() => Department, { nullable: true })
   @JoinColumn({ name: 'department_id' })
-  department!: Department;
+  department!: Department | null;
 
   @Column({ name: 'first_name_ar' })
   firstNameAr!: string;

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -16,7 +17,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
-import { CreateQuotaDto, QuotaDto } from './dto/quota.dto.js';
+import { CreateQuotaDto, QuotaDto, UpdateQuotaDto } from './dto/quota.dto.js';
 import { QuotasService } from './quotas.service.js';
 
 @ApiTags('quotas')
@@ -52,6 +53,18 @@ export class QuotasController {
   @ApiResponse({ status: 200, type: QuotaDto })
   findOne(@Param('id') id: string): Promise<QuotaDto> {
     return this.quotasService.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Modifier un quota (produit, période, quantité maximale)',
+  })
+  @ApiResponse({ status: 200, type: QuotaDto })
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateQuotaDto,
+  ): Promise<QuotaDto> {
+    return this.quotasService.update(id, dto);
   }
 
   @Delete(':id')

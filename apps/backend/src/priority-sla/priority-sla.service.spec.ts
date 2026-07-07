@@ -37,12 +37,12 @@ describe('PrioritySlaService', () => {
   });
 
   describe('getLevels', () => {
-    it('returns the 5 defaults when the company has no override', async () => {
+    it('auto-seeds 3 default levels (P1/P2/P3) when the company has none yet', async () => {
       levelRepo.find.mockResolvedValue([]);
       const levels = await service.getLevels('co-1');
-      expect(levels).toHaveLength(5);
-      expect(levels.every((l) => l.isDefault)).toBe(true);
-      expect(levels.map((l) => l.code)).toEqual(['P1', 'P2', 'P3', 'P4', 'P5']);
+      expect(levels).toHaveLength(3);
+      expect(levels.map((l) => l.code)).toEqual(['P1', 'P2', 'P3']);
+      expect(levelRepo.save).toHaveBeenCalled();
     });
 
     it('returns the company custom set as-is (unlimited, free codes)', async () => {
@@ -73,11 +73,16 @@ describe('PrioritySlaService', () => {
 
   describe('setLevels', () => {
     it('accepts more than 5 custom levels', async () => {
-      levelRepo.find.mockResolvedValue([]);
       const levels = Array.from({ length: 8 }, (_, i) => ({
         code: `N${i + 1}`,
         targetMinutes: (i + 1) * 10,
       }));
+      // 1er appel (existing) : rien encore ; 2e appel (getLevels final) :
+      // simule les 8 niveaux tout juste enregistrés — évite le déclenchement
+      // du seed par défaut (réservé aux entreprises réellement sans niveaux)
+      levelRepo.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(levels.map((l) => ({ ...l, sortOrder: 0 })));
       await service.setLevels('co-1', { levels });
       expect(levelRepo.save).toHaveBeenCalledTimes(8);
     });

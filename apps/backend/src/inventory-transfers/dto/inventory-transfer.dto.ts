@@ -81,4 +81,10 @@ export class InventoryTransferDto {
 
   @ApiProperty({ nullable: true })
   confirmedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  cancelledBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  cancelledAt!: Date | null;
 }
