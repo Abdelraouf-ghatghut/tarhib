@@ -72,10 +72,12 @@ Deux applications mobiles distinctes sont prévues :
 
 ## Mobile
 
-Deux applications Flutter indépendantes :
+Deux applications **React Native (Expo)** indépendantes, partageant `packages/mobile-shared` (thème Snow UI, client API, store d'auth, navigation) :
 
-- Tarhib Employee
-- Tarhib Operations
+- Tarhib Employee — `apps/mobile-employee` (couleur principale : vert `#55CFA8`)
+- Tarhib Operations — `apps/mobile-operations` (couleur principale : bleu `#5B8CFF`)
+
+> **Transition en cours** : l'ancienne app Flutter (`apps/mobile`) est en cours de remplacement par React Native et n'est pas encore retirée. Tant que la parité n'est pas atteinte, tout nouveau développement mobile cible React Native ; Flutter ne reçoit que des hotfixes. Ne pas ajouter de fonctionnalité à `apps/mobile`.
 
 ---
 

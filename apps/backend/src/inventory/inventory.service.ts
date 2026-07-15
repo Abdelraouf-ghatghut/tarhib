@@ -117,6 +117,37 @@ export class InventoryService {
     return this.toDto(saved);
   }
 
+  async adjustAtomic(
+    id: string,
+    dto: InventoryAdjustmentDto,
+  ): Promise<InventoryItemDto> {
+    const saved = await this.repo.manager.transaction(async (manager) => {
+      const inventory = manager.getRepository(InventoryItem);
+      const entity = await inventory.findOne({
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!entity) throw new NotFoundException(`InventoryItem ${id} not found`);
+      if (dto.type === AdjustmentType.SORTIE) {
+        if (entity.quantity < dto.quantity)
+          throw new BadRequestException('insufficientInventoryStock');
+        entity.quantity -= dto.quantity;
+      } else {
+        entity.quantity = dto.quantity;
+      }
+      return inventory.save(entity);
+    });
+    if (saved.quantity <= saved.minThreshold) {
+      void this.notificationsService.notifyLowStock(
+        saved.productId,
+        saved.branchId,
+        saved.quantity,
+      );
+      void this.notifyStockResponsible(saved);
+    }
+    return this.toDto(saved);
+  }
+
   async adjust(
     id: string,
     dto: InventoryAdjustmentDto,

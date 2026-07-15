@@ -31,6 +31,7 @@ Thumbs.db
 
 # Tests
 coverage/
+.backups/
 
 # Mobile — Flutter / Dart (apps/mobile)
 **/.dart_tool/
@@ -46,8 +47,10 @@ android/.gradle/
 # Client Dart généré depuis OpenAPI
 # apps/backend/openapi/openapi.json est intentionnellement committé (contrat d'API lisible dans les diffs)
 apps/mobile/packages/tarhib_api_client/
-EOF
 # Police Thmanyah - fichiers sous licence, non redistribuables (voir apps/web-admin/public/fonts/thmanyah/README.md)
 apps/web-admin/public/fonts/thmanyah/*.woff2
 apps/web-admin/public/fonts/thmanyah/*.ttf
 apps/web-admin/public/fonts/thmanyah/*.otf
+packages/mobile-shared/assets/fonts/thmanyahsans-*.woff2
+packages/mobile-shared/assets/fonts/thmanyahsans-*.ttf
+packages/mobile-shared/assets/fonts/thmanyahsans-*.otf

@@ -9,7 +9,7 @@ import 'providers/auth_provider.dart';
 import 'providers/offline_queue_provider.dart';
 import 'providers/theme_provider.dart';
 import 'router.dart';
-import 'theme.dart';
+import 'theme/app_theme.dart';
 
 /// Handler de messages FCM en arrière-plan (top-level, obligatoire)
 @pragma('vm:entry-point')
@@ -40,6 +40,7 @@ class TarhibApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
     final locale = ref.watch(localeProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final isAr = locale.languageCode == 'ar';
     // Active le re-sync auto de la file au retour de connectivité
     ref.watch(syncQueueProvider);
 
@@ -58,8 +59,8 @@ class TarhibApp extends ConsumerWidget {
       ],
 
       // ── Thème ──────────────────────────────────────────────────────────
-      theme: buildLightTheme(),
-      darkTheme: buildDarkTheme(),
+      theme: AppTheme.clientLight(isAr: isAr),
+      darkTheme: AppTheme.clientDark(isAr: isAr),
       themeMode: themeMode,
 
       // ── Routing ────────────────────────────────────────────────────────

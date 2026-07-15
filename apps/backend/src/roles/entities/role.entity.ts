@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Permission } from './permission.entity.js';
 import { RoleQuota } from './role-quota.entity.js';
+import { MeetingRoom } from '../../meeting-rooms/entities/meeting-room.entity.js';
 
 export enum RoleScope {
   TARHIB = 'TARHIB',
@@ -51,6 +52,21 @@ export class Role {
 
   @Column({ name: 'quotas_enabled', type: 'boolean', default: false })
   quotasEnabled!: boolean;
+
+  /**
+   * Accès aux salles de réunion (rôles CLIENT avec meeting.book) :
+   * true = toutes les salles de la société ; false = seulement allowedRooms.
+   */
+  @Column({ name: 'all_rooms_allowed', type: 'boolean', default: true })
+  allRoomsAllowed!: boolean;
+
+  @ManyToMany(() => MeetingRoom)
+  @JoinTable({
+    name: 'role_meeting_rooms',
+    joinColumn: { name: 'role_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'room_id', referencedColumnName: 'id' },
+  })
+  allowedRooms!: MeetingRoom[];
 
   @ManyToMany(() => Permission, (p) => p.roles, { eager: true })
   @JoinTable({

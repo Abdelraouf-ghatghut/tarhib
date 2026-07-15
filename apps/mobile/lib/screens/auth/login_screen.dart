@@ -336,15 +336,6 @@ class _OtpFormState extends ConsumerState<_OtpForm> {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final inputBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(
-        color: isDark
-            ? const Color(0x40FFFFFF)
-            : scheme.outline.withValues(alpha: 0.3),
-      ),
-    );
-
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF141414) : Colors.white,

@@ -1,12 +1,16 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
   IsDateString,
   IsEnum,
+  IsInt,
+  IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { CreateOrderLineDto } from './create-order-line.dto';
@@ -35,6 +39,38 @@ export class CreateOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOrderLineDto)
   lines!: CreateOrderLineDto[];
+
+  @ApiPropertyOptional({
+    description: 'Commentaire libre de l employe (CDC §7 — panier)',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+
+/**
+ * Ligne de commande renvoyée par l'API : inclut la décision du moteur de
+ * validation (§3.3) — le mobile affiche la raison de rejet par ligne.
+ * Valeurs alignées sur LineValidationStatus (order-line.entity), redéclarées
+ * ici en union pour éviter le cycle d'import dto ↔ entité.
+ */
+export class OrderLineDto {
+  @ApiProperty({ example: 'a1b2c3d4-...' })
+  @IsUUID()
+  productId!: string;
+
+  @ApiProperty({ example: 2, minimum: 1 })
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+
+  @ApiProperty({ enum: ['APPROVED', 'REJECTED', 'PENDING_APPROVAL'] })
+  validationStatus!: 'APPROVED' | 'REJECTED' | 'PENDING_APPROVAL';
+
+  @ApiProperty({ nullable: true, example: 'quotaExceeded' })
+  rejectionReason!: string | null;
 }
 
 export class OrderDto {
@@ -106,9 +142,15 @@ export class OrderDto {
   @ApiProperty({ nullable: true })
   deliveredBy!: string | null;
 
-  @ApiProperty({ type: () => [CreateOrderLineDto] })
+  @ApiProperty({
+    nullable: true,
+    description: 'Commentaire libre saisi par l employe a la commande',
+  })
+  note!: string | null;
+
+  @ApiProperty({ type: () => [OrderLineDto] })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateOrderLineDto)
-  lines!: CreateOrderLineDto[];
+  @Type(() => OrderLineDto)
+  lines!: OrderLineDto[];
 }

@@ -82,6 +82,68 @@ export class InventoryTransfersService {
     return entities.map((e) => this.toDto(e));
   }
 
+  async findOne(id: string): Promise<InventoryTransferDto> {
+    const transfer = await this.repo.findOne({ where: { id } });
+    if (!transfer) throw new NotFoundException(`Transfer ${id} introuvable`);
+    return this.toDto(transfer);
+  }
+
+  async confirmAtomic(
+    id: string,
+    confirmedBy: string,
+  ): Promise<InventoryTransferDto> {
+    return this.repo.manager.transaction(async (manager) => {
+      const transfers = manager.getRepository(InventoryTransfer);
+      const inventory = manager.getRepository(InventoryItem);
+      const transfer = await transfers.findOne({
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!transfer) throw new NotFoundException(`Transfer ${id} not found`);
+      if (transfer.status === TransferStatus.CONFIRMED)
+        return this.toDto(transfer);
+      if (transfer.status !== TransferStatus.PENDING)
+        throw new BadRequestException(`transferAlready${transfer.status}`);
+      const source = await inventory.findOne({
+        where: {
+          companyId: transfer.companyId,
+          branchId: transfer.branchId,
+          productId: transfer.productId,
+          zone: transfer.fromZone,
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!source || source.quantity < transfer.quantity)
+        throw new BadRequestException('insufficientTransferSourceStock');
+      source.quantity -= transfer.quantity;
+      await inventory.save(source);
+      let destination = await inventory.findOne({
+        where: {
+          companyId: transfer.companyId,
+          branchId: transfer.branchId,
+          productId: transfer.productId,
+          zone: transfer.toZone,
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (destination) destination.quantity += transfer.quantity;
+      else
+        destination = inventory.create({
+          companyId: transfer.companyId,
+          branchId: transfer.branchId,
+          productId: transfer.productId,
+          zone: transfer.toZone,
+          quantity: transfer.quantity,
+          minThreshold: 0,
+        });
+      await inventory.save(destination);
+      transfer.status = TransferStatus.CONFIRMED;
+      transfer.confirmedBy = confirmedBy;
+      transfer.confirmedAt = new Date();
+      return this.toDto(await transfers.save(transfer));
+    });
+  }
+
   async confirm(
     id: string,
     confirmedBy: string,

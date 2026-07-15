@@ -4,6 +4,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Twilio } from 'twilio';
 import { Employee } from '../employees/entities/employee.entity.js';
+import { Notification } from './entities/notification.entity.js';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
 /**
  * NotificationsService — TARHIB-9
@@ -24,6 +27,8 @@ export class NotificationsService {
     private readonly config: ConfigService,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
+    @InjectRepository(Notification)
+    private readonly notificationRepo: Repository<Notification>,
   ) {
     const sid = config.get<string>('TWILIO_ACCOUNT_SID');
     const token = config.get<string>('TWILIO_AUTH_TOKEN');
@@ -73,6 +78,7 @@ export class NotificationsService {
     deviceToken: string,
     title: string,
     body: string,
+    data?: Record<string, string>,
   ): Promise<void> {
     if (!this.fcmApp) {
       this.logger.log(
@@ -86,6 +92,7 @@ export class NotificationsService {
       await admin.messaging(this.fcmApp as any).send({
         token: deviceToken,
         notification: { title, body },
+        data,
         android: { priority: 'high' },
         apns: { payload: { aps: { sound: 'default' } } },
       });
@@ -122,6 +129,13 @@ export class NotificationsService {
     employeeId: string,
     title: string,
     body: string,
+    options?: {
+      domain?: string;
+      referenceId?: string;
+      titleAr?: string;
+      bodyAr?: string;
+      data?: Record<string, string>;
+    },
   ): Promise<void> {
     const employee = await this.employeeRepo.findOne({
       where: { id: employeeId },
@@ -130,10 +144,99 @@ export class NotificationsService {
       this.logger.warn(`notifyEmployee: employee ${employeeId} not found`);
       return;
     }
+    await this.notificationRepo.save(
+      this.notificationRepo.create({
+        employeeId: employee.id,
+        domain: options?.domain ?? 'general',
+        titleAr: options?.titleAr ?? title,
+        titleEn: title,
+        bodyAr: options?.bodyAr ?? body,
+        bodyEn: body,
+        referenceId: options?.referenceId ?? null,
+        data: options?.data ?? null,
+        readAt: null,
+      }),
+    );
     await this.sendSms(employee.phoneNumber, `[Tarhib] ${title} — ${body}`);
     if (employee.fcmToken) {
       await this.sendPush(employee.fcmToken, title, body);
     }
+  }
+
+  async listForUser(user: JwtPayload): Promise<Notification[]> {
+    const employee = await this.resolveEmployee(user);
+    return this.notificationRepo.find({
+      where: { employeeId: employee.id },
+      order: { createdAt: 'DESC' },
+      take: 100,
+    });
+  }
+  async markRead(id: string, user: JwtPayload): Promise<Notification> {
+    const employee = await this.resolveEmployee(user);
+    const notification = await this.notificationRepo.findOne({ where: { id } });
+    if (!notification) throw new NotFoundException('notificationNotFound');
+    if (notification.employeeId !== employee.id)
+      throw new ForbiddenException('notificationOutsideScope');
+    notification.readAt = new Date();
+    return this.notificationRepo.save(notification);
+  }
+  async markAllRead(user: JwtPayload): Promise<void> {
+    const employee = await this.resolveEmployee(user);
+    await this.notificationRepo
+      .createQueryBuilder()
+      .update(Notification)
+      .set({ readAt: new Date() })
+      .where('employee_id = :employeeId AND read_at IS NULL', {
+        employeeId: employee.id,
+      })
+      .execute();
+  }
+  async notifyByPermission(
+    permission: string,
+    scope: { companyId?: string; branchId?: string },
+    content: {
+      domain: string;
+      titleAr: string;
+      titleEn: string;
+      bodyAr: string;
+      bodyEn: string;
+      referenceId?: string;
+      data?: Record<string, string>;
+    },
+  ): Promise<void> {
+    const employees = await this.employeeRepo.find({
+      where: {
+        ...(scope.companyId ? { companyId: scope.companyId } : {}),
+        ...(scope.branchId ? { branchId: scope.branchId } : {}),
+        active: true,
+      },
+      relations: [
+        'dynamicRole',
+        'dynamicRole.permissions',
+        'additionalRoles',
+        'additionalRoles.permissions',
+      ],
+    });
+    const targets = employees.filter((e) =>
+      [
+        ...(e.dynamicRole?.permissions ?? []),
+        ...(e.additionalRoles ?? []).flatMap((r) => r.permissions ?? []),
+      ].some((p) => p.key === permission),
+    );
+    await Promise.all(
+      targets.map((e) =>
+        this.notifyEmployee(e.id, content.titleEn, content.bodyEn, {
+          ...content,
+        }),
+      ),
+    );
+  }
+  private async resolveEmployee(user: JwtPayload): Promise<Employee> {
+    const employee = await this.employeeRepo.findOne({
+      where: [{ id: user.employeeId ?? user.sub }, { keycloakId: user.sub }],
+    });
+    if (!employee) throw new NotFoundException('employeeNotFound');
+    return employee;
   }
 
   /**

@@ -13,12 +13,18 @@ class EmployeeHomeScreen extends ConsumerWidget {
   final Widget child;
   const EmployeeHomeScreen({super.key, required this.child});
 
-  static const _tabs = ['/employee', '/employee/cart', '/employee/orders'];
+  static const _tabs = [
+    '/employee',
+    '/employee/favorites',
+    '/employee/cart',
+    '/employee/orders',
+  ];
 
   int _currentIndex(BuildContext context) {
     final loc = GoRouterState.of(context).matchedLocation;
-    if (loc.startsWith('/employee/orders')) return 2;
-    if (loc.startsWith('/employee/cart')) return 1;
+    if (loc.startsWith('/employee/orders')) return 3;
+    if (loc.startsWith('/employee/cart')) return 2;
+    if (loc.startsWith('/employee/favorites')) return 1;
     return 0;
   }
 
@@ -30,6 +36,8 @@ class EmployeeHomeScreen extends ConsumerWidget {
     final idx = _currentIndex(context);
     final auth = ref.watch(authProvider);
     final locale = ref.watch(localeProvider);
+    final favoritesLabel =
+        locale.languageCode == 'ar' ? 'المفضلة' : 'Favorites';
 
     // Badge commandes en cours sur l'onglet historique
     final inProgressCount = ref
@@ -65,12 +73,15 @@ class EmployeeHomeScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: SnowColors.surface,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: SnowColors.primary.withValues(alpha: 0.08),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0F172A).withValues(alpha: 0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
+                  color: SnowColors.primary.withValues(alpha: 0.10),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
@@ -121,7 +132,7 @@ class EmployeeHomeScreen extends ConsumerWidget {
                 ),
 
                 // Badge panier rapide (hors onglet panier)
-                if (cartCount > 0 && idx != 1)
+                if (cartCount > 0 && idx != 2)
                   _HeaderIconButton(
                     icon: Icons.shopping_cart_rounded,
                     badge: cartCount,
@@ -130,13 +141,15 @@ class EmployeeHomeScreen extends ConsumerWidget {
                     onTap: () => context.go('/employee/cart'),
                   ),
                 const SizedBox(width: 6),
-                _HeaderIconButton(
-                  icon: Icons.meeting_room_outlined,
-                  accent: SnowColors.textSecondary,
-                  accentSoft: SnowColors.surfaceMuted,
-                  onTap: () => context.push('/employee/rooms'),
-                ),
-                const SizedBox(width: 6),
+                if (auth.canBookMeeting) ...[
+                  _HeaderIconButton(
+                    icon: Icons.meeting_room_outlined,
+                    accent: SnowColors.textSecondary,
+                    accentSoft: SnowColors.surfaceMuted,
+                    onTap: () => context.push('/employee/rooms'),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 _HeaderIconButton(
                   icon: Icons.notifications_none_rounded,
                   accent: SnowColors.textSecondary,
@@ -182,6 +195,11 @@ class EmployeeHomeScreen extends ConsumerWidget {
             label: l.catalog,
           ),
           NavigationDestination(
+            icon: const Icon(Icons.favorite_border_rounded),
+            selectedIcon: const Icon(Icons.favorite_rounded),
+            label: favoritesLabel,
+          ),
+          NavigationDestination(
             icon: Badge(
               isLabelVisible: cartCount > 0,
               label: Text('$cartCount'),
@@ -209,7 +227,20 @@ class EmployeeHomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: child,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              SnowColors.primary.withValues(alpha: 0.055),
+              SnowColors.background,
+              SnowColors.background,
+            ],
+          ),
+        ),
+        child: child,
+      ),
     );
   }
 }

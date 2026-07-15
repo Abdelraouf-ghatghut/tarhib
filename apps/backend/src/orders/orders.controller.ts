@@ -58,6 +58,27 @@ export class OrdersController {
     return this.ordersService.findAll(companyId, employeeId, status);
   }
 
+  @Get('dashboard/stats')
+  @ApiOperation({
+    summary: 'Statistiques Operations pour le dashboard manager',
+  })
+  dashboardStats(@CurrentUser() user: JwtPayload) {
+    return this.ordersService.dashboardStats(user);
+  }
+
+  @Get('me')
+  @ApiOperation({
+    summary: "Commandes de l'appelant (filtre employeeId imposé côté serveur)",
+  })
+  @ApiQuery({ name: 'status', required: false })
+  @ApiResponse({ status: 200, type: [OrderDto] })
+  findMine(
+    @CurrentUser() user: JwtPayload,
+    @Query('status') status?: string,
+  ): Promise<OrderDto[]> {
+    return this.ordersService.findMine(user, status);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Récupérer une commande par ID' })
   @ApiResponse({ status: 200, type: OrderDto })
@@ -73,6 +94,6 @@ export class OrdersController {
     @Body() dto: UpdateOrderStatusDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<OrderDto> {
-    return this.ordersService.updateStatus(id, dto.status, user);
+    return this.ordersService.updateStatus(id, dto.status, user, dto.reason);
   }
 }

@@ -17,7 +17,15 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
-import { CreateEmployeeDto, EmployeeDto } from './dto/employee.dto.js';
+import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
+import {
+  CreateEmployeeDto,
+  EmployeeAdminDto,
+  EmployeeDto,
+} from './dto/employee.dto.js';
 import { EmployeesService } from './employees.service.js';
 
 @ApiTags('employees')
@@ -27,11 +35,39 @@ import { EmployeesService } from './employees.service.js';
 export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
 
+  @Get('admin')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('employee.salary.manage')
+  @ApiOperation({
+    summary: 'Liste admin (inclut salary) — réservée à employee.salary.manage',
+  })
+  @ApiResponse({ status: 200, type: [EmployeeAdminDto] })
+  findAllAdmin(
+    @Query('companyId') companyId?: string,
+    @Query('branchId') branchId?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('role') role?: string,
+    @Query('active') active?: string,
+    @Query('roleId') roleId?: string,
+  ): Promise<EmployeeAdminDto[]> {
+    return this.employeesService.findAllAdmin(
+      companyId,
+      branchId,
+      departmentId,
+      role,
+      active,
+      roleId,
+    );
+  }
+
   @Post()
   @ApiOperation({ summary: 'Créer un employé' })
   @ApiResponse({ status: 201, type: EmployeeDto })
-  create(@Body() dto: CreateEmployeeDto): Promise<EmployeeDto> {
-    return this.employeesService.create(dto);
+  create(
+    @Body() dto: CreateEmployeeDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<EmployeeDto> {
+    return this.employeesService.create(dto, user.permissions);
   }
 
   @Get()
@@ -89,8 +125,9 @@ export class EmployeesController {
   update(
     @Param('id') id: string,
     @Body() dto: Partial<CreateEmployeeDto>,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EmployeeDto> {
-    return this.employeesService.update(id, dto);
+    return this.employeesService.update(id, dto, user.permissions);
   }
 
   @Delete(':id')

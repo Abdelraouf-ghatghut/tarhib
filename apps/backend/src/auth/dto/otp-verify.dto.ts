@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Length, Matches } from 'class-validator';
+import { IsEnum, IsString, Length, Matches } from 'class-validator';
+import { OtpAppMode } from './otp-request.dto';
 
 export class OtpVerifyDto {
   @ApiProperty({ example: '+218912345678', description: 'E.164 format' })
@@ -12,5 +13,10 @@ export class OtpVerifyDto {
   @ApiProperty({ example: '847291', description: '6-digit OTP code' })
   @IsString()
   @Length(6, 6)
+  @Matches(/^\d{6}$/)
   code!: string;
+
+  @ApiProperty({ enum: OtpAppMode, default: OtpAppMode.EMPLOYEE })
+  @IsEnum(OtpAppMode)
+  appMode!: OtpAppMode;
 }

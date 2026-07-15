@@ -8,6 +8,7 @@ import '../screens/employee/home_screen.dart';
 import '../screens/employee/catalog_screen.dart';
 import '../screens/employee/cart_screen.dart';
 import '../screens/employee/history_screen.dart';
+import '../screens/employee/favorites_screen.dart';
 import '../screens/employee/meeting_rooms_screen.dart';
 import '../screens/employee/order_tracking_screen.dart';
 import '../screens/profile/profile_screen.dart';
@@ -39,6 +40,10 @@ final clientRouterProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(path: '/employee', builder: (_, __) => const CatalogScreen()),
           GoRoute(
+            path: '/employee/favorites',
+            builder: (_, __) => const FavoritesScreen(),
+          ),
+          GoRoute(
             path: '/employee/cart',
             builder: (_, __) => const CartScreen(),
           ),
@@ -53,6 +58,8 @@ final clientRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/employee/rooms',
+            redirect: (_, __) =>
+                authState.canBookMeeting ? null : '/employee',
             builder: (_, __) => const MeetingRoomsScreen(),
           ),
         ],

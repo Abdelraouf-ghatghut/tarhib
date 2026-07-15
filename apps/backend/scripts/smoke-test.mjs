@@ -45,21 +45,27 @@ const token = login.data.accessToken;
 
 // ── Référentiel : société démo, branche, département, rôles, produits ──────
 const companies = (await call("GET", "/companies", { token })).data;
-const demo = companies.find((c) => c.slug === "al-aman-bank");
+const demo = companies.find((c) => c.slug === "al-aman-bank") ?? companies[0];
 check("Société cliente seedée présente", !!demo, "al-aman-bank introuvable — lancer npm run seed");
 
+if (!demo) process.exit(1);
 const branches = (await call("GET", `/branches?companyId=${demo.id}`, { token })).data;
 const departments = (
   await call("GET", `/departments?companyId=${demo.id}`, { token })
 ).data;
 const roles = (await call("GET", "/roles", { token })).data;
-const tarhibRole = roles.find((r) => r.scope === "TARHIB" && r.nameEn === "Cuisinier");
-const clientRole = roles.find(
+const tarhibRole = roles.find((r) => r.scope === "TARHIB" && r.nameEn === "Cook");
+let clientRole = roles.find(
   (r) => r.scope === "CLIENT" && r.companyId === demo.id && r.nameEn === "Employee",
 );
 const products = (await call("GET", "/products/admin", { token })).data.filter(
   (p) => p.type === "COMMANDABLE",
 );
+let temporaryClientRole = null;
+if (!clientRole) {
+  const created = await call("POST", "/roles", { token, body: { nameAr: `موظف اختبار ${ts}`, nameEn: `Smoke Employee ${ts}`, scope: "CLIENT", companyId: demo.id, slaPriority: "P3" } });
+  if (created.status === 201) { clientRole = created.data; temporaryClientRole = created.data; }
+}
 check("Référentiel chargé (branche/département/rôles/produits)",
   branches.length > 0 && departments.length > 0 && !!tarhibRole && !!clientRole && products.length >= 2,
   `branches=${branches.length} depts=${departments.length} tarhibRole=${!!tarhibRole} clientRole=${!!clientRole} produits=${products.length}`,
@@ -178,6 +184,7 @@ if (roleWithQuotas.data?.id) {
   const del = await call("DELETE", `/roles/${roleWithQuotas.data.id}`, { token });
   check("Nettoyage : rôle de test supprimé", del.status === 200 || del.status === 204, `status=${del.status}`);
 }
+if (temporaryClientRole?.id) await call("DELETE", `/roles/${temporaryClientRole.id}`, { token });
 for (const emp of [intern.data, extern.data, emptyFields.data]) {
   if (emp?.id) await call("DELETE", `/employees/${emp.id}`, { token });
 }

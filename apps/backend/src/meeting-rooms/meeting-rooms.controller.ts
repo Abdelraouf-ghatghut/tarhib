@@ -18,6 +18,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
+import { RequireAnyPermission } from '../auth/decorators/require-permission.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import { MeetingRoomsService } from './meeting-rooms.service.js';
@@ -71,6 +72,13 @@ export class MeetingRoomsController {
     return this.service.findRooms(caller);
   }
 
+  @Get(':roomId/bookings')
+  @RequirePermission('branch.manage')
+  @ApiOperation({ summary: "Réservations d'une salle (admin)" })
+  findRoomBookings(@Param('roomId') roomId: string) {
+    return this.service.findRoomBookings(roomId);
+  }
+
   @Post(':roomId/bookings')
   @RequirePermission('meeting.book')
   createBooking(
@@ -85,6 +93,21 @@ export class MeetingRoomsController {
   @RequirePermission('meeting.book')
   myBookings(@CurrentUser() caller: JwtPayload) {
     return this.service.findMyBookings(caller);
+  }
+
+  @Get('bookings/upcoming')
+  @RequireAnyPermission(
+    'meeting.order_services',
+    'meeting.preparation.view',
+    'meeting.preparation.execute',
+    'meeting.preparation.manage',
+  )
+  @ApiOperation({
+    summary:
+      "Réservations confirmées à venir (toute la société) — préparation du service par l'agent d'hospitalité",
+  })
+  upcomingBookings(@CurrentUser() caller: JwtPayload) {
+    return this.service.findUpcomingBookings(caller);
   }
 
   @Delete('bookings/:bookingId')

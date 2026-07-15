@@ -15,7 +15,7 @@ import { EyeOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CrudTable } from "../../components/CrudTable";
-import { meetingRoomsAdminApi, branchesApi, companiesApi } from "../../lib/api";
+import { meetingRoomsAdminApi, branchesApi, companiesApi, employeesApi } from "../../lib/api";
 import { useAuth } from "../../hooks/useAuth";
 import { bilingualName } from "../../lib/bilingualName";
 
@@ -38,6 +38,21 @@ interface Booking {
   startTime: string;
   endTime: string;
   status: string;
+  // Snapshot du package de service posé à la réservation (نوع الخدمة)
+  services: {
+    packageNameAr?: string;
+    packageNameEn?: string;
+  } | null;
+}
+
+interface Employee {
+  id: string;
+  keycloakId: string | null;
+  firstNameAr: string;
+  lastNameAr: string;
+  firstNameEn: string;
+  lastNameEn: string;
+  email: string;
 }
 
 interface NamedEntity {
@@ -45,6 +60,13 @@ interface NamedEntity {
   nameAr: string;
   nameEn: string;
   companyId?: string;
+}
+
+function formatBookingDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /** Formulaire salle : la branche proposée dépend de la société choisie. */
@@ -129,6 +151,15 @@ export function MeetingRoomsAdminPage() {
     enabled: !!viewRoom,
   });
 
+  const { data: employees = [] } = useQuery({
+    queryKey: ["employees", viewRoom?.companyId],
+    queryFn: () =>
+      employeesApi
+        .list(viewRoom ? { companyId: viewRoom.companyId } : undefined)
+        .then((r) => r.data as Employee[]),
+    enabled: !!viewRoom,
+  });
+
   async function onSave(values: Record<string, unknown>, id?: string) {
     if (id) await meetingRoomsAdminApi.update(id, values);
     else await meetingRoomsAdminApi.create(values);
@@ -144,6 +175,14 @@ export function MeetingRoomsAdminPage() {
   const branchName = (id: string) => {
     const b = branches.find((x) => x.id === id);
     return b ? label(b) : id.slice(0, 8);
+  };
+  const employeeName = (id: string) => {
+    const employee = employees.find((item) => item.keycloakId === id || item.id === id);
+    if (!employee) return id.slice(0, 8);
+    const fullName = isAr
+      ? `${employee.firstNameAr} ${employee.lastNameAr}`.trim()
+      : `${employee.firstNameEn} ${employee.lastNameEn}`.trim();
+    return fullName || employee.email;
   };
 
   return (
@@ -215,14 +254,27 @@ export function MeetingRoomsAdminPage() {
           columns={[
             { title: "ID", dataIndex: "id", render: (v: string) => v.slice(0, 8) },
             {
+              title: t("employee"),
+              dataIndex: "employeeId",
+              render: employeeName,
+            },
+            {
               title: t("startTime"),
               dataIndex: "startTime",
-              render: (v: string) => v.slice(0, 16),
+              render: formatBookingDateTime,
             },
             {
               title: t("endTime"),
               dataIndex: "endTime",
-              render: (v: string) => v.slice(0, 16),
+              render: formatBookingDateTime,
+            },
+            {
+              title: t("serviceType"),
+              dataIndex: "services",
+              render: (v: Booking["services"]) =>
+                v?.packageNameAr
+                  ? bilingualName(v.packageNameAr, v.packageNameEn ?? null, isAr)
+                  : t("noService"),
             },
             {
               title: t("status"),

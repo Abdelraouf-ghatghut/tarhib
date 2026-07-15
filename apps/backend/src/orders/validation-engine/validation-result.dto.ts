@@ -8,6 +8,7 @@ export type LineValidationDecision =
 export type LineRejectionReason =
   | 'PRODUCT_NOT_COMMANDABLE'
   | 'ROLE_NOT_ALLOWED'
+  | 'BRANCH_NOT_ALLOWED'
   | 'INSUFFICIENT_STOCK'
   | 'QUOTA_EXCEEDED';
 

@@ -76,6 +76,13 @@ export class CreateBookingDto {
   @ApiProperty({ description: 'ISO 8601 UTC end time' })
   @IsDateString()
   endTime!: string;
+
+  @ApiPropertyOptional({
+    description: 'Package de service (نوع الخدمة) — optionnel',
+  })
+  @IsOptional()
+  @IsUUID()
+  packageId?: string;
 }
 
 export class OrderMeetingServicesDto {

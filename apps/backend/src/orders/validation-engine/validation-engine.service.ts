@@ -9,6 +9,7 @@ export interface ProductSnapshot {
   id: string;
   type: 'COMMANDABLE' | 'LIBRE_SERVICE_VIP';
   allowedRoles: string[] | null;
+  allowedBranches: string[] | null;
   active: boolean;
 }
 
@@ -40,7 +41,7 @@ export interface ValidationContext {
 
 /**
  * Moteur de validation des commandes — ordre STRICT (CLAUDE.md §3.3) :
- *  1. Produit commandable + rôle autorisé (serveur, jamais UI seule)
+ *  1. Produit commandable + rôle autorisé + branche autorisée (serveur, jamais UI seule)
  *  2. Stock disponible branche >= quantité (revérifié à la confirmation)
  *  3. Quota restant période >= quantité
  *
@@ -99,6 +100,18 @@ export class ValidationEngineService {
         quantity,
         decision: 'REJECTED',
         reason: 'ROLE_NOT_ALLOWED',
+      };
+    }
+    if (
+      product.allowedBranches &&
+      product.allowedBranches.length > 0 &&
+      !product.allowedBranches.includes(ctx.branchId)
+    ) {
+      return {
+        productId,
+        quantity,
+        decision: 'REJECTED',
+        reason: 'BRANCH_NOT_ALLOWED',
       };
     }
 

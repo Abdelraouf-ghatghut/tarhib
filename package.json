@@ -12,6 +12,10 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
+    "mobile:employee": "npm run start -w apps/mobile-employee",
+    "mobile:employee:web": "npm run web -w apps/mobile-employee",
+    "mobile:operations": "npm run start -w apps/mobile-operations",
+    "mobile:operations:web": "npm run web -w apps/mobile-operations",
     "generate:mobile-api": "npm run export:openapi -w apps/backend && docker run --rm -v \"%CD%:/local\" openapitools/openapi-generator-cli generate -i /local/apps/backend/openapi/openapi.json -g dart-dio -o /local/apps/mobile/packages/tarhib_api_client --additional-properties=pubName=tarhib_api_client,nullSafe=true,pubAuthor=Tarhib && cd apps/mobile && flutter pub get",
     "prepare": "husky"
   },

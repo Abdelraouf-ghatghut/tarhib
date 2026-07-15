@@ -72,9 +72,41 @@ export class AuditInterceptor implements NestInterceptor {
 
   private sanitizeBody(body: Record<string, unknown>): Record<string, unknown> {
     if (!body || typeof body !== 'object') return {};
-    const REDACTED = new Set(['password', 'token', 'fcmToken']);
+    return this.redactRecord(body);
+  }
+
+  private redactRecord(
+    value: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const redactedKeys = new Set([
+      'password',
+      'token',
+      'accesstoken',
+      'refreshtoken',
+      'fcmtoken',
+      'authorization',
+      'secret',
+      'otp',
+      'code',
+      'serviceaccount',
+    ]);
     return Object.fromEntries(
-      Object.entries(body).filter(([k]) => !REDACTED.has(k)),
+      Object.entries(value).map(([key, item]) => {
+        const normalized = key.replace(/[_-]/g, '').toLowerCase();
+        if (redactedKeys.has(normalized)) return [key, '[REDACTED]'];
+        if (Array.isArray(item))
+          return [
+            key,
+            item.map((entry: unknown) =>
+              entry && typeof entry === 'object'
+                ? this.redactRecord(entry as Record<string, unknown>)
+                : entry,
+            ),
+          ];
+        if (item && typeof item === 'object')
+          return [key, this.redactRecord(item as Record<string, unknown>)];
+        return [key, item];
+      }),
     );
   }
 }

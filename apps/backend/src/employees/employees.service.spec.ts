@@ -5,6 +5,7 @@ import { EmployeesService } from './employees.service.js';
 import { Employee } from './entities/employee.entity.js';
 import { EmployeeRole } from './dto/employee.dto.js';
 import { KeycloakService } from '../auth/keycloak/keycloak.service.js';
+import { Role } from '../roles/entities/role.entity.js';
 
 const mockRepo = () => ({
   create: jest.fn(),
@@ -44,6 +45,7 @@ describe('EmployeesService', () => {
       providers: [
         EmployeesService,
         { provide: getRepositoryToken(Employee), useFactory: mockRepo },
+        { provide: getRepositoryToken(Role), useFactory: mockRepo },
         { provide: KeycloakService, useFactory: mockKeycloak },
       ],
     }).compile();

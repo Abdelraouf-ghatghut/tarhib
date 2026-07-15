@@ -3,6 +3,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException } from '@nestjs/common';
 import { QuotasService } from './quotas.service.js';
 import { Quota } from './entities/quota.entity.js';
+import { RoleQuota } from '../roles/entities/role-quota.entity.js';
+import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
 
 const mockRepo = () => ({
   create: jest.fn(),
@@ -11,6 +13,13 @@ const mockRepo = () => ({
   findOne: jest.fn(),
   remove: jest.fn(),
   createQueryBuilder: jest.fn(),
+});
+
+// Query builder chaînable dont getMany renvoie `rows`.
+const mockQb = (rows: unknown[]) => ({
+  where: jest.fn().mockReturnThis(),
+  andWhere: jest.fn().mockReturnThis(),
+  getMany: jest.fn().mockResolvedValue(rows),
 });
 
 const baseQuota = (): Quota => ({
@@ -27,17 +36,26 @@ const baseQuota = (): Quota => ({
 describe('QuotasService', () => {
   let service: QuotasService;
   let repo: ReturnType<typeof mockRepo>;
+  let roleQuotaRepo: ReturnType<typeof mockRepo>;
+  let usageRepo: ReturnType<typeof mockRepo>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         QuotasService,
         { provide: getRepositoryToken(Quota), useFactory: mockRepo },
+        { provide: getRepositoryToken(RoleQuota), useFactory: mockRepo },
+        {
+          provide: getRepositoryToken(EmployeeQuotaUsage),
+          useFactory: mockRepo,
+        },
       ],
     }).compile();
 
     service = module.get<QuotasService>(QuotasService);
     repo = module.get(getRepositoryToken(Quota));
+    roleQuotaRepo = module.get(getRepositoryToken(RoleQuota));
+    usageRepo = module.get(getRepositoryToken(EmployeeQuotaUsage));
   });
 
   it('should be defined', () => {
@@ -126,6 +144,85 @@ describe('QuotasService', () => {
       expect(repo.find).toHaveBeenCalledWith(
         expect.objectContaining({ where: { companyId: 'co-1' } }),
       );
+    });
+  });
+
+  describe('snapshotsFor — source unique moteur de validation + /mobile/quotas', () => {
+    const roleCaller = { sub: 'emp-1', roleId: 'role-1', companyId: 'co-1' };
+    const legacyCaller = { sub: 'emp-1', roleId: null, companyId: 'co-1' };
+
+    it('prefers role-based quotas and merges the current period usage', async () => {
+      roleQuotaRepo.createQueryBuilder.mockReturnValue(
+        mockQb([
+          { productId: 'prod-1', maxQuantity: 10 },
+          { productId: 'prod-2', maxQuantity: 4 },
+        ]),
+      );
+      usageRepo.createQueryBuilder.mockReturnValue(
+        mockQb([{ productId: 'prod-1', usedQuantity: 7 }]),
+      );
+
+      const snapshots = await service.snapshotsFor(roleCaller);
+
+      expect(snapshots).toEqual([
+        {
+          employeeId: 'emp-1',
+          productId: 'prod-1',
+          maxQuantity: 10,
+          usedQuantity: 7,
+        },
+        {
+          employeeId: 'emp-1',
+          productId: 'prod-2',
+          maxQuantity: 4,
+          usedQuantity: 0,
+        },
+      ]);
+      // Sans roleId, le legacy aurait été interrogé — ici non.
+      expect(repo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('applies the productIds filter when provided', async () => {
+      const rqQb = mockQb([{ productId: 'prod-1', maxQuantity: 10 }]);
+      const usageQb = mockQb([]);
+      roleQuotaRepo.createQueryBuilder.mockReturnValue(rqQb);
+      usageRepo.createQueryBuilder.mockReturnValue(usageQb);
+
+      await service.snapshotsFor(roleCaller, ['prod-1']);
+
+      expect(rqQb.andWhere).toHaveBeenCalledWith(
+        'rq.product_id IN (:...productIds)',
+        { productIds: ['prod-1'] },
+      );
+      expect(usageQb.andWhere).toHaveBeenCalledWith(
+        'u.product_id IN (:...productIds)',
+        { productIds: ['prod-1'] },
+      );
+    });
+
+    it('falls back to legacy per-employee quotas when the caller has no roleId', async () => {
+      repo.createQueryBuilder.mockReturnValue(
+        mockQb([
+          {
+            employeeId: 'emp-1',
+            productId: 'prod-9',
+            maxQuantity: 3,
+            usedQuantity: 1,
+          },
+        ]),
+      );
+
+      const snapshots = await service.snapshotsFor(legacyCaller);
+
+      expect(snapshots).toEqual([
+        {
+          employeeId: 'emp-1',
+          productId: 'prod-9',
+          maxQuantity: 3,
+          usedQuantity: 1,
+        },
+      ]);
+      expect(roleQuotaRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
   });
 });

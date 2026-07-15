@@ -4,6 +4,7 @@ import { EditOutlined, UserOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import {
   bilingualName,
+  permissionGroupLabel,
   slaColor,
   slaLevelLabel,
   type Permission,
@@ -183,12 +184,11 @@ export function RoleDetailDrawer({
                         style={{
                           display: "block",
                           fontSize: 12,
-                          textTransform: "capitalize",
                           color: "var(--fg-body-subtle)",
                           marginBlockEnd: 6,
                         }}
                       >
-                        {group}
+                        {permissionGroupLabel(group, t)}
                       </Text>
                       <Space size={6} wrap>
                         {labels.map((label) => (

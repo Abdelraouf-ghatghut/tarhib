@@ -14,7 +14,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CrudTable } from "../../components/CrudTable";
-import { productsApi, productsAdminApi, rolesApi, companiesApi } from "../../lib/api";
+import { productsApi, productsAdminApi, rolesApi, companiesApi, branchesApi } from "../../lib/api";
 import { bilingualName } from "../../lib/bilingualName";
 
 const { Title } = Typography;
@@ -33,6 +33,7 @@ interface NamedEntity {
   id: string;
   nameAr: string;
   nameEn: string;
+  companyId?: string;
 }
 
 interface Product {
@@ -42,6 +43,7 @@ interface Product {
   category: string;
   type: string;
   allowedRoles: string[] | null;
+  allowedBranches: string[] | null;
   active: boolean;
   unitCost: number | null;
 }
@@ -78,6 +80,19 @@ export function ProductsPage() {
     const c = companies.find((x) => x.id === id);
     return c ? bilingualName(c.nameAr, c.nameEn, isAr) : null;
   };
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => branchesApi.list().then((r) => r.data as NamedEntity[]),
+  });
+  const branchName = (id: string) => {
+    const b = branches.find((x) => x.id === id);
+    if (!b) return id.slice(0, 8);
+    const name = bilingualName(b.nameAr, b.nameEn, isAr);
+    const company = companyName(b.companyId ?? null);
+    return company ? `${name} (${company})` : name;
+  };
+  const branchOptions = branches.map((b) => ({ value: b.id, label: branchName(b.id) }));
 
   const clientRoleOptions = roles
     .filter((r) => r.scope === "CLIENT")
@@ -160,6 +175,19 @@ export function ProductsPage() {
             <Form.Item name="allowedRoles" label={t("allowedRoles")}>
               <Select mode="multiple" allowClear options={clientRoleOptions} />
             </Form.Item>
+            <Form.Item
+              name="allowedBranches"
+              label={t("allowedBranches")}
+              tooltip={t("allowedBranchesHint")}
+            >
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={branchOptions}
+              />
+            </Form.Item>
             <Form.Item name="unitCost" label={t("unitCost")} tooltip={t("unitCostHint")}>
               <InputNumber min={0} style={{ width: "100%" }} />
             </Form.Item>
@@ -201,6 +229,17 @@ export function ProductsPage() {
                 <Space wrap size={4}>
                   {selected.allowedRoles.map((id) => (
                     <Tag key={id}>{roleName(id)}</Tag>
+                  ))}
+                </Space>
+              ) : (
+                "—"
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label={t("allowedBranches")}>
+              {selected.allowedBranches?.length ? (
+                <Space wrap size={4}>
+                  {selected.allowedBranches.map((id) => (
+                    <Tag key={id}>{branchName(id)}</Tag>
                   ))}
                 </Space>
               ) : (

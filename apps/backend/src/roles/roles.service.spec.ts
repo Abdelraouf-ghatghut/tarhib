@@ -6,6 +6,7 @@ import { Role, RoleScope, SlaPriority } from './entities/role.entity.js';
 import { Permission } from './entities/permission.entity.js';
 import { RoleQuota, QuotaPeriodType } from './entities/role-quota.entity.js';
 import { Employee } from '../employees/entities/employee.entity.js';
+import { MeetingRoom } from '../meeting-rooms/entities/meeting-room.entity.js';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 
 const mockRepo = () => ({
@@ -16,6 +17,10 @@ const mockRepo = () => ({
   remove: jest.fn(),
   delete: jest.fn(),
   count: jest.fn().mockResolvedValue(0),
+  createQueryBuilder: jest.fn(() => ({
+    innerJoin: jest.fn().mockReturnThis(),
+    getCount: jest.fn().mockResolvedValue(0),
+  })),
 });
 
 const tarhibAdmin: JwtPayload = {
@@ -40,6 +45,7 @@ describe('RolesService', () => {
         { provide: getRepositoryToken(Permission), useFactory: mockRepo },
         { provide: getRepositoryToken(RoleQuota), useFactory: mockRepo },
         { provide: getRepositoryToken(Employee), useFactory: mockRepo },
+        { provide: getRepositoryToken(MeetingRoom), useFactory: mockRepo },
       ],
     }).compile();
 

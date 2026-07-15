@@ -107,14 +107,14 @@ class _AgentOrderDetailScreenState
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !context.mounted) return;
     try {
       await ApiClient.rawDio.patch('/inventory/report-stockout', data: {
         'productId': productId,
         'orderId': widget.orderId,
       });
     } catch (_) {}
-    if (mounted) {
+    if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(l.outOfStockReported),

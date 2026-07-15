@@ -5,6 +5,7 @@ import {
   Drawer,
   Form,
   Input,
+  InputNumber,
   Popconfirm,
   Select,
   Space,
@@ -20,7 +21,15 @@ import { CrudTable } from "../../components/CrudTable";
 import { ScopeFilterBar } from "../../components/ScopeFilterBar";
 import { FilterBar } from "../../components/FilterBar";
 import { useScope } from "../../contexts/ScopeContext";
-import { employeesApi, companiesApi, branchesApi, departmentsApi, rolesApi } from "../../lib/api";
+import { useAuth } from "../../hooks/useAuth";
+import {
+  employeesApi,
+  employeesAdminApi,
+  companiesApi,
+  branchesApi,
+  departmentsApi,
+  rolesApi,
+} from "../../lib/api";
 import { getErrorMessage } from "../../lib/errors";
 import { bilingualName } from "../../lib/bilingualName";
 
@@ -46,12 +55,18 @@ interface Employee {
   phoneNumber: string;
   role: string;
   roleId: string | null;
+  additionalRoleIds: string[];
   scope: EmployeeScope | null;
   // Site d'affectation — null pour un interne non affecté (ex. superadmin)
   companyId: string | null;
   branchId: string | null;
   departmentId: string | null;
+  // Emplacement dans le site (employés clients)
+  floor: string | null;
+  officeNumber: string | null;
   active: boolean;
+  // Présent uniquement via /employees/admin (employee.salary.manage)
+  salary?: number | null;
 }
 
 interface NamedEntity {
@@ -73,17 +88,20 @@ function EmployeeFormFields({
   companies,
   allRoles,
   isAr,
+  canManageSalary,
 }: {
   isClientPage: boolean;
   isNew: boolean;
   companies: NamedEntity[];
   allRoles: DynamicRole[];
   isAr: boolean;
+  canManageSalary: boolean;
 }) {
   const { t } = useTranslation();
   const form = Form.useFormInstance();
   const companyId = Form.useWatch("companyId", form) as string | undefined;
   const branchId = Form.useWatch("branchId", form) as string | undefined;
+  const roleId = Form.useWatch("roleId", form) as string | undefined;
 
   const label = (e: NamedEntity) => bilingualName(e.nameAr, e.nameEn, isAr);
 
@@ -152,6 +170,7 @@ function EmployeeFormFields({
             form.setFieldValue("branchId", undefined);
             form.setFieldValue("departmentId", undefined);
             if (isClientPage) form.setFieldValue("roleId", undefined);
+            form.setFieldValue("additionalRoleIds", []);
           }}
         />
       </Form.Item>
@@ -163,18 +182,35 @@ function EmployeeFormFields({
           disabled={!companyId}
           placeholder={!companyId ? t("noCompanySelected") : undefined}
           options={companyBranches.map((b) => ({ value: b.id, label: label(b) }))}
-          onChange={() => form.setFieldValue("departmentId", undefined)}
+          onChange={() => {
+            form.setFieldValue("departmentId", undefined);
+          }}
         />
       </Form.Item>
-      {/* Le قسم ne concerne que les employés clients */}
+      {/* Le قسم et l'emplacement physique ne concernent que les employés clients */}
       {isClientPage && (
-        <Form.Item name="departmentId" label={t("department")} rules={[{ required: true }]}>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            disabled={!branchId}
-            options={branchDepartments.map((d) => ({ value: d.id, label: label(d) }))}
-          />
+        <>
+          <Form.Item name="departmentId" label={t("department")} rules={[{ required: true }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              disabled={!branchId}
+              options={branchDepartments.map((d) => ({ value: d.id, label: label(d) }))}
+            />
+          </Form.Item>
+          <Form.Item name="floor" label={t("floor")}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="officeNumber" label={t("officeNumber")}>
+            <Input />
+          </Form.Item>
+        </>
+      )}
+
+      {/* Le salaire est réservé au personnel interne et à employee.salary.manage */}
+      {!isClientPage && canManageSalary && (
+        <Form.Item name="salary" label={t("salary")}>
+          <InputNumber style={{ width: "100%" }} min={0} step={50} />
         </Form.Item>
       )}
 
@@ -184,10 +220,34 @@ function EmployeeFormFields({
           optionFilterProp="label"
           disabled={isClientPage && !companyId}
           placeholder={isClientPage && !companyId ? t("noCompanySelected") : undefined}
+          onChange={(value: string) => {
+            const current = (form.getFieldValue("additionalRoleIds") as string[] | undefined) ?? [];
+            form.setFieldValue(
+              "additionalRoleIds",
+              current.filter((id) => id !== value),
+            );
+          }}
           options={roleOptions.map((r) => ({
             value: r.id,
             label: bilingualName(r.nameAr, r.nameEn, isAr),
           }))}
+        />
+      </Form.Item>
+
+      <Form.Item name="additionalRoleIds" label={t("additionalRoles")} initialValue={[]}>
+        <Select
+          mode="multiple"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          disabled={isClientPage && !companyId}
+          placeholder={isClientPage && !companyId ? t("noCompanySelected") : undefined}
+          options={roleOptions
+            .filter((r) => r.id !== roleId)
+            .map((r) => ({
+              value: r.id,
+              label: bilingualName(r.nameAr, r.nameEn, isAr),
+            }))}
         />
       </Form.Item>
 
@@ -201,8 +261,12 @@ function EmployeeFormFields({
 export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
+  const { hasPermission } = useAuth();
   const isAr = i18n.language === "ar";
   const isClientPage = scope === "CLIENT";
+  // Le salaire n'a de sens que pour le personnel interne, et reste réservé
+  // à employee.salary.manage même sur cette page (voir EmployeesController).
+  const canManageSalary = !isClientPage && hasPermission("employee.salary.manage");
   const { companyId: scopeCompanyId, branchId: scopeBranchId } = useScope();
 
   const [filterRoleId, setFilterRoleId] = useState<string | undefined>();
@@ -225,8 +289,11 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
   if (!isClientPage && filterBranchId) queryParams.branchId = filterBranchId;
 
   const { data: allEmployees, isPending } = useQuery({
-    queryKey: ["employees", queryParams],
-    queryFn: () => employeesApi.list(queryParams).then((r) => r.data as Employee[]),
+    queryKey: ["employees", queryParams, canManageSalary],
+    queryFn: () =>
+      (canManageSalary ? employeesAdminApi.list(queryParams) : employeesApi.list(queryParams)).then(
+        (r) => r.data as Employee[],
+      ),
   });
 
   // Séparation client / interne : le scope de l'employé (défaut CLIENT)
@@ -293,6 +360,19 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
     const r = allRoles.find((x) => x.id === (rec.roleId ?? rec.role));
     return r ? bilingualName(r.nameAr, r.nameEn, isAr) : (rec.role ?? "—");
   };
+  const roleName = (id?: string | null) => {
+    if (!id) return null;
+    const r = allRoles.find((x) => x.id === id);
+    return r ? bilingualName(r.nameAr, r.nameEn, isAr) : id.substring(0, 8);
+  };
+  const roleTags = (rec: Employee) => (
+    <Space size={[4, 4]} wrap>
+      <Tag color="blue">{roleLabel(rec)}</Tag>
+      {(rec.additionalRoleIds ?? []).map((id) => (
+        <Tag key={id}>{roleName(id)}</Tag>
+      ))}
+    </Space>
+  );
   const departmentName = (id: string | null) => {
     if (!id) return null;
     const d = departments.find((x) => x.id === id);
@@ -439,7 +519,7 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
           {
             title: t("role"),
             key: "role",
-            render: (_: unknown, rec: Employee) => <Tag>{roleLabel(rec)}</Tag>,
+            render: (_: unknown, rec: Employee) => roleTags(rec),
           },
           // Interne : où l'employé est dispatché en mission
           ...(!isClientPage
@@ -459,6 +539,29 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
                 },
               ]
             : []),
+          // Client : emplacement physique (étage + bureau)
+          ...(isClientPage
+            ? [
+                {
+                  title: t("location"),
+                  key: "location",
+                  render: (_: unknown, rec: Employee) =>
+                    rec.floor || rec.officeNumber
+                      ? [rec.floor, rec.officeNumber].filter(Boolean).join(" — ")
+                      : "—",
+                },
+              ]
+            : []),
+          // Interne + employee.salary.manage uniquement
+          ...(canManageSalary
+            ? [
+                {
+                  title: t("salary"),
+                  dataIndex: "salary",
+                  render: (v: number | null | undefined) => (v != null ? v : "—"),
+                },
+              ]
+            : []),
           {
             title: t("active"),
             dataIndex: "active",
@@ -473,6 +576,7 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
             companies={companies}
             allRoles={allRoles}
             isAr={isAr}
+            canManageSalary={canManageSalary}
           />
         )}
       />
@@ -490,7 +594,18 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
               <span dir="ltr">{selected.phoneNumber}</span>
             </Descriptions.Item>
             <Descriptions.Item label={t("role")}>
-              <Tag>{roleLabel(selected)}</Tag>
+              <Tag color="blue">{roleLabel(selected)}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label={t("additionalRoles")}>
+              {selected.additionalRoleIds?.length ? (
+                <Space size={[4, 4]} wrap>
+                  {selected.additionalRoleIds.map((id) => (
+                    <Tag key={id}>{roleName(id)}</Tag>
+                  ))}
+                </Space>
+              ) : (
+                "-"
+              )}
             </Descriptions.Item>
             {isClientPage ? (
               <>
@@ -500,17 +615,28 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
                 <Descriptions.Item label={t("department")}>
                   {departmentName(selected.departmentId) ?? "—"}
                 </Descriptions.Item>
+                <Descriptions.Item label={t("floor")}>{selected.floor ?? "—"}</Descriptions.Item>
+                <Descriptions.Item label={t("officeNumber")}>
+                  {selected.officeNumber ?? "—"}
+                </Descriptions.Item>
               </>
             ) : (
-              <Descriptions.Item label={t("assignmentSite")}>
-                {selected.companyId ? (
-                  [companyName(selected.companyId), branchName(selected.branchId)]
-                    .filter(Boolean)
-                    .join(" — ")
-                ) : (
-                  <Tag>{t("unassigned")}</Tag>
+              <>
+                <Descriptions.Item label={t("assignmentSite")}>
+                  {selected.companyId ? (
+                    [companyName(selected.companyId), branchName(selected.branchId)]
+                      .filter(Boolean)
+                      .join(" — ")
+                  ) : (
+                    <Tag>{t("unassigned")}</Tag>
+                  )}
+                </Descriptions.Item>
+                {canManageSalary && (
+                  <Descriptions.Item label={t("salary")}>
+                    {selected.salary != null ? selected.salary : "—"}
+                  </Descriptions.Item>
                 )}
-              </Descriptions.Item>
+              </>
             )}
             <Descriptions.Item label={t("active")}>
               <Tag color={selected.active ? "green" : "default"}>{selected.active ? "✓" : "✗"}</Tag>

@@ -11,7 +11,7 @@ import type { TokenResponseDto } from '../dto/token-response.dto';
 
 interface KeycloakTokenResponse {
   access_token: string;
-  refresh_token: string;
+  refresh_token?: string;
   expires_in: number;
 }
 
@@ -57,7 +57,7 @@ export class KeycloakService {
       );
       return {
         accessToken: data.access_token,
-        refreshToken: data.refresh_token,
+        refreshToken: data.refresh_token!,
         expiresIn: data.expires_in,
       };
     } catch (err: unknown) {
@@ -97,7 +97,7 @@ export class KeycloakService {
       );
       return {
         accessToken: data.access_token,
-        refreshToken: data.refresh_token,
+        refreshToken: data.refresh_token!,
         expiresIn: data.expires_in,
       };
     } catch {
@@ -106,18 +106,23 @@ export class KeycloakService {
   }
 
   /**
-   * TARHIB-22: After OTP is verified in-app, we authenticate the user in Keycloak
-   * using a custom grant or the resource-owner flow with phone as username.
-   * The phone number must match the Keycloak username or a mapped attribute.
+   * OTP has already been verified by Twilio Verify. The confidential backend
+   * client exchanges its service-account token for a user token. This keeps
+   * Keycloak as the sole JWT issuer and avoids manufacturing a fake password.
+   *
+   * Keycloak 24 requires the token-exchange preview feature plus the
+   * service-account `impersonation` role configured in tarhib-realm.json.
    */
-  async loginWithPhoneOtp(phoneNumber: string): Promise<TokenResponseDto> {
+  async loginWithPhoneOtp(keycloakUserId: string): Promise<TokenResponseDto> {
+    const serviceToken = await this.getServiceAccountToken();
     const params = new URLSearchParams({
-      grant_type: 'password',
+      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
       client_id: this.clientId,
       client_secret: this.clientSecret,
-      username: phoneNumber,
-      // Keycloak receives a one-time internal marker; real OTP already verified by OtpService
-      password: `__otp_verified__${Date.now()}`,
+      subject_token: serviceToken,
+      requested_subject: keycloakUserId,
+      audience: this.clientId,
+      requested_token_type: 'urn:ietf:params:oauth:token-type:refresh_token',
     });
 
     try {
@@ -130,10 +135,32 @@ export class KeycloakService {
       );
       return {
         accessToken: data.access_token,
-        refreshToken: data.refresh_token,
+        refreshToken: data.refresh_token!,
         expiresIn: data.expires_in,
       };
-    } catch {
+    } catch (err) {
+      this.logger.error('Keycloak OTP token exchange failed', err);
+      throw new UnauthorizedException('otpAuthFailed');
+    }
+  }
+
+  private async getServiceAccountToken(): Promise<string> {
+    const params = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: this.clientId,
+      client_secret: this.clientSecret,
+    });
+    try {
+      const { data } = await firstValueFrom(
+        this.http.post<KeycloakTokenResponse>(
+          this.tokenUrl,
+          params.toString(),
+          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+        ),
+      );
+      return data.access_token;
+    } catch (err) {
+      this.logger.error('Keycloak service-account login failed', err);
       throw new UnauthorizedException('otpAuthFailed');
     }
   }

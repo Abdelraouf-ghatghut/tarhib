@@ -7,8 +7,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { passportJwtSecret } from 'jwks-rsa';
 import { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 import { Employee } from '../../employees/entities/employee.entity.js';
-import { Role } from '../../roles/entities/role.entity.js';
-import { legacyPermissions } from '../legacy-permissions.js';
+import { AccessPolicyService } from '../../access/access-policy.service.js';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -16,8 +15,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     config: ConfigService,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
-    @InjectRepository(Role)
-    private readonly roleRepo: Repository<Role>,
+    private readonly accessPolicy: AccessPolicyService,
   ) {
     const keycloakUrl = config.get<string>(
       'KEYCLOAK_ADMIN_URL',
@@ -38,11 +36,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  /**
-   * Le token Keycloak brut ne porte ni rôle ni permissions (pas de mapper configuré).
-   * On enrichit ici depuis la DB (employé → rôle dynamique ou fallback legacy)
-   * pour que req.user soit complet AVANT l'exécution des guards de permission.
-   */
   async validate(payload: JwtPayload): Promise<JwtPayload> {
     const raw = payload as JwtPayload & Record<string, unknown>;
     const email =
@@ -63,41 +56,42 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       exp: payload.exp,
     };
 
-    // Lookup employé par keycloakId (sub) puis fallback email
     let employee: Employee | null = null;
     if (payload.sub) {
       employee = await this.employeeRepo.findOne({
         where: { keycloakId: payload.sub },
+        relations: ['additionalRoles'],
       });
     }
     if (!employee && email) {
-      employee = await this.employeeRepo.findOne({ where: { email } });
+      employee = await this.employeeRepo.findOne({
+        where: { email },
+        relations: ['additionalRoles'],
+      });
     }
     if (!employee) return base;
 
+    base.employeeId = employee.id;
     base.email = employee.email || base.email;
     base.companyId = employee.companyId || base.companyId;
     base.branchId = employee.branchId || base.branchId;
 
-    if (employee.roleId) {
-      const role = await this.roleRepo.findOne({
-        where: { id: employee.roleId },
-        relations: ['permissions'],
-      });
-      if (role) {
-        base.roleId = role.id;
-        base.roleName = role.nameEn ?? role.nameAr;
-        base.scope = role.scope;
-        base.role = role.nameEn ?? role.nameAr;
-        base.slaPriority = role.slaPriority;
-        base.permissions = role.permissions.map((p) => p.key);
-        return base;
-      }
+    const access = await this.accessPolicy.resolve(employee);
+    const primary = access.roles.find((r) => r.primary) ?? access.roles[0];
+    if (primary) {
+      base.roleId = primary.id;
+      base.roleIds = access.roles.map((r) => r.id);
+      base.roleName = primary.nameEn ?? primary.nameAr;
+      base.roleNames = access.roles.map((r) => r.nameEn ?? r.nameAr);
+      base.scope = primary.scope;
+      base.role = primary.nameEn ?? primary.nameAr;
+    } else {
+      base.role = employee.role ?? 'EMPLOYEE';
     }
-
-    // Fallback legacy : rôle string → permissions
-    base.role = employee.role ?? 'EMPLOYEE';
-    base.permissions = legacyPermissions(employee.role);
+    base.permissions = access.permissions;
+    base.capabilities = access.capabilities;
+    base.modules = access.modules.map((m) => m.key);
+    base.dataScope = access.dataScope;
     return base;
   }
 }

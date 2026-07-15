@@ -22,8 +22,7 @@ final agentRouterProvider = Provider<GoRouter>((ref) {
 
       if (!loggedIn && !onLogin) return '/login';
       if (loggedIn && onLogin) {
-        if (authState.isManager) return '/manager/orders';
-        return '/agent/queue';
+        return authState.operationsHomePath;
       }
       return null;
     },
@@ -31,29 +30,46 @@ final agentRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
 
       // ── Agent d'hospitalité ────────────────────────────────────────────────
-      GoRoute(path: '/agent/queue', builder: (_, __) => const QueueScreen()),
+      GoRoute(
+        path: '/agent/queue',
+        redirect: (_, __) =>
+            authState.canViewOrderQueue ? null : authState.operationsHomePath,
+        builder: (_, __) => const QueueScreen(),
+      ),
       GoRoute(
         path: '/agent/orders/:id',
+        redirect: (_, __) =>
+            authState.canViewOrderQueue ? null : authState.operationsHomePath,
         builder: (_, state) =>
             AgentOrderDetailScreen(orderId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/agent/vip-stock',
+        redirect: (_, __) =>
+            authState.canViewVip ? null : authState.operationsHomePath,
         builder: (_, __) => const VipStockScreen(),
       ),
 
       // ── Manager de département ─────────────────────────────────────────────
       GoRoute(
         path: '/manager/orders',
+        redirect: (_, __) =>
+            authState.isManager ? null : authState.operationsHomePath,
         builder: (_, __) => const ManagerOrdersScreen(),
       ),
       GoRoute(
         path: '/manager/orders/:id',
+        redirect: (_, __) =>
+            authState.isManager ? null : authState.operationsHomePath,
         builder: (_, state) =>
             ManagerOrderDetailScreen(orderId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/manager/dashboard',
+        redirect: (_, __) =>
+            authState.canViewOperationsDashboard
+                ? null
+                : authState.operationsHomePath,
         builder: (_, __) => const ManagerDashboardScreen(),
       ),
 

@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tarhib_api_client/tarhib_api_client.dart';
 
-import '../../api/api_client.dart';
 import '../../l10n/app_localizations.dart';
 import '../../providers/availability_provider.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/favorites_provider.dart';
 import '../../providers/products_provider.dart';
 import '../../providers/quotas_provider.dart';
 import '../../theme/snow_colors.dart';
@@ -360,6 +360,8 @@ class _ProductCard extends ConsumerWidget {
     final locale = Localizations.localeOf(context);
     final l = AppLocalizations.of(context)!;
     final name = locale.languageCode == 'ar' ? product.nameAr : product.nameEn;
+    final favoriteIds = ref.watch(favoriteProductIdsProvider).value;
+    final isFavorite = favoriteIds?.contains(product.id) ?? false;
 
     final qty = ref.watch(
       cartProvider.select((lines) => lines
@@ -400,29 +402,10 @@ class _ProductCard extends ConsumerWidget {
                 child: Stack(
                   children: [
                     Center(
-                      child: ClipRRect(
-                        borderRadius:
-                            const BorderRadius.vertical(top: Radius.circular(19)),
-                        child: Image.network(
-                          '${ApiClient.baseUrl}/products/${product.id}/image',
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          errorBuilder: (_, __, ___) => Center(
-                            child: Text(
-                              _emojiFor(product.category),
-                              style: const TextStyle(fontSize: 44),
-                            ),
-                          ),
-                          loadingBuilder: (_, child, progress) =>
-                              progress == null
-                                  ? child
-                                  : Center(
-                                      child: Text(
-                                          _emojiFor(product.category),
-                                          style: const TextStyle(fontSize: 44)),
-                                    ),
-                        ),
+                      child: _ProductVisual(
+                        category: product.category,
+                        accentColor: accentColor,
+                        size: 76,
                       ),
                     ),
                     // Indisponible (stock) ou quota épuisé — l'indisponibilité
@@ -483,6 +466,16 @@ class _ProductCard extends ConsumerWidget {
                           ),
                         ),
                       ),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: _FavoriteButton(
+                        active: isFavorite,
+                        onTap: () => ref
+                            .read(favoriteProductIdsProvider.notifier)
+                            .toggle(product.id),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -690,6 +683,100 @@ class _StepButton extends StatelessWidget {
 
 // ── Product detail bottom sheet ──────────────────────────────────────────────
 
+class _FavoriteButton extends StatelessWidget {
+  const _FavoriteButton({required this.active, required this.onTap});
+
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 30,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.92),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(
+          active ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          size: 17,
+          color: active ? SnowColors.danger : SnowColors.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductVisual extends StatelessWidget {
+  const _ProductVisual({
+    required this.category,
+    required this.accentColor,
+    required this.size,
+    this.emojiSize = 42,
+  });
+
+  final String category;
+  final Color accentColor;
+  final double size;
+  final double emojiSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.94),
+              accentColor.withValues(alpha: 0.12),
+            ],
+          ),
+        ),
+        child: Center(
+          child: Text(
+            _emojiFor(category),
+            style: TextStyle(fontSize: emojiSize),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ProductDetailSheet extends StatelessWidget {
   const _ProductDetailSheet({
     required this.product,
@@ -741,40 +828,11 @@ class _ProductDetailSheet extends StatelessWidget {
 
             // Product image / emoji fallback
             Center(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.network(
-                  '${ApiClient.baseUrl}/products/${product.id}/image',
-                  width: 96,
-                  height: 96,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 96,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      color: accentColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Center(
-                      child: Text(_emojiFor(product.category),
-                          style: const TextStyle(fontSize: 52)),
-                    ),
-                  ),
-                  loadingBuilder: (_, child, progress) => progress == null
-                      ? child
-                      : Container(
-                          width: 96,
-                          height: 96,
-                          decoration: BoxDecoration(
-                            color: accentColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Center(
-                            child: Text(_emojiFor(product.category),
-                                style: const TextStyle(fontSize: 52)),
-                          ),
-                        ),
-                ),
+              child: _ProductVisual(
+                category: product.category,
+                accentColor: accentColor,
+                size: 96,
+                emojiSize: 48,
               ),
             ),
             const SizedBox(height: 16),
@@ -899,40 +957,3 @@ class _DetailRow extends StatelessWidget {
 
 // ── Empty catalog state ───────────────────────────────────────────────────────
 
-class _EmptyCatalog extends StatelessWidget {
-  const _EmptyCatalog({required this.l});
-  final AppLocalizations l;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: GlassCard(
-        margin: const EdgeInsets.symmetric(horizontal: 32),
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('🛒', style: TextStyle(fontSize: 56)),
-            const SizedBox(height: 16),
-            Text(l.catalogEmpty,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-                textAlign: TextAlign.center),
-            const SizedBox(height: 8),
-            Text(l.catalogEmptySubtitle,
-                style: TextStyle(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.55),
-                    fontSize: 13,
-                    height: 1.5),
-                textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
-}

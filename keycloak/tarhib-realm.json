@@ -18,7 +18,7 @@
       "directAccessGrantsEnabled": true,
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
-      "serviceAccountsEnabled": false,
+      "serviceAccountsEnabled": true,
       "fullScopeAllowed": true,
       "protocolMappers": [
         {
@@ -85,6 +85,15 @@
     }
   ],
   "users": [
+    {
+      "id": "00000000-0000-4000-8000-000000000099",
+      "username": "service-account-tarhib-backend",
+      "enabled": true,
+      "serviceAccountClientId": "tarhib-backend",
+      "clientRoles": {
+        "realm-management": ["impersonation"]
+      }
+    },
     {
       "id": "00000001-0000-4000-8000-000000000001",
       "username": "sarah.benali",

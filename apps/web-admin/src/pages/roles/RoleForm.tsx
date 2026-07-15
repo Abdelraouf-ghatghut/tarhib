@@ -10,13 +10,16 @@ import {
   Input,
   InputNumber,
   Modal,
+  Radio,
   Select,
   Space,
   Switch,
+  Tag,
   Tooltip,
   Typography,
 } from "antd";
 import {
+  BankOutlined,
   CloseOutlined,
   InfoCircleOutlined,
   SearchOutlined,
@@ -25,8 +28,10 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   bilingualName,
+  permissionGroupLabel,
   slaColor,
   slaLevelLabel,
+  type MeetingRoomLite,
   type Permission,
   type Product,
   type Role,
@@ -48,6 +53,8 @@ export interface RoleFormPayload {
   slaPriority?: string;
   permissionKeys?: string[];
   quotas?: RoleQuotaInput[];
+  allRoomsAllowed?: boolean;
+  roomIds?: string[];
 }
 
 interface Props {
@@ -55,6 +62,7 @@ interface Props {
   editing: Role | null;
   permissions?: Permission[];
   products?: Product[];
+  rooms?: MeetingRoomLite[];
   slaLevels?: SlaLevel[];
   saving: boolean;
   onCancel: () => void;
@@ -90,6 +98,7 @@ export function RoleForm({
   editing,
   permissions,
   products,
+  rooms,
   slaLevels,
   saving,
   onCancel,
@@ -105,6 +114,16 @@ export function RoleForm({
   const [meetingEnabled, setMeetingEnabled] = useState<boolean>(
     () => editing?.permissions?.includes("meeting.book") ?? false,
   );
+  // Accès aux salles : toutes (défaut) ou une sélection explicite
+  const [allRoomsAllowed, setAllRoomsAllowed] = useState<boolean>(
+    () => editing?.allRoomsAllowed ?? true,
+  );
+  const [selectedRoomIds, setSelectedRoomIds] = useState<Set<string>>(
+    () => new Set(editing?.roomIds ?? []),
+  );
+  const [roomModalOpen, setRoomModalOpen] = useState(false);
+  const [roomSearch, setRoomSearch] = useState("");
+  const [tempRooms, setTempRooms] = useState<Set<string>>(new Set());
   const [permSearch, setPermSearch] = useState("");
   const [quotas, setQuotas] = useState<RoleQuotaInput[]>(
     () =>
@@ -128,6 +147,14 @@ export function RoleForm({
     () => (products ?? []).filter((p) => p.type === "COMMANDABLE" || p.type === "commandable"),
     [products],
   );
+
+  const activeRooms = useMemo(() => (rooms ?? []).filter((r) => r.active), [rooms]);
+
+  const modalRooms = useMemo(() => {
+    if (!roomSearch.trim()) return activeRooms;
+    const needle = roomSearch.trim().toLowerCase();
+    return activeRooms.filter((r) => `${r.nameAr} ${r.nameEn}`.toLowerCase().includes(needle));
+  }, [activeRooms, roomSearch]);
 
   const modalProducts = useMemo(() => {
     if (!productSearch.trim()) return commandableProducts;
@@ -176,6 +203,26 @@ export function RoleForm({
   function productName(id: string) {
     const p = products?.find((x) => x.id === id);
     return p ? bilingualName(p.nameAr, p.nameEn, isAr) : id;
+  }
+
+  function roomName(id: string) {
+    const r = rooms?.find((x) => x.id === id);
+    return r ? bilingualName(r.nameAr, r.nameEn, isAr) : id;
+  }
+
+  function openRoomModal() {
+    setTempRooms(new Set(selectedRoomIds));
+    setRoomSearch("");
+    setRoomModalOpen(true);
+  }
+
+  function toggleRoom(id: string, checked: boolean) {
+    setTempRooms((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   }
 
   function openProductModal() {
@@ -234,6 +281,11 @@ export function RoleForm({
         ];
         // Switch désactivé = aucun quota (le serveur dérive quotasEnabled=false)
         payload.quotas = quotasEnabled ? quotas : [];
+        // Accès aux salles : « toutes » vide la sélection ; sans gestion des
+        // réunions on remet le défaut (toutes) pour ne pas garder une
+        // restriction fantôme.
+        payload.allRoomsAllowed = meetingEnabled ? allRoomsAllowed : true;
+        payload.roomIds = meetingEnabled && !allRoomsAllowed ? [...selectedRoomIds] : [];
       }
       onSubmit(payload);
     } catch {
@@ -337,6 +389,131 @@ export function RoleForm({
             <Text type="secondary" style={{ display: "block", fontSize: 13, marginBlockEnd: 16 }}>
               {t("enableMeetingManagementHint")}
             </Text>
+
+            {meetingEnabled && (
+              <>
+                <Radio.Group
+                  value={allRoomsAllowed ? "all" : "selected"}
+                  onChange={(e) => setAllRoomsAllowed(e.target.value === "all")}
+                  style={{ display: "block", marginBlockEnd: 12 }}
+                  options={[
+                    { value: "all", label: t("allRoomsOption") },
+                    { value: "selected", label: t("selectedRoomsOption") },
+                  ]}
+                />
+                {!allRoomsAllowed && (
+                  <>
+                    <Space style={{ marginBlockEnd: 12 }} wrap>
+                      <Button
+                        icon={<BankOutlined />}
+                        onClick={openRoomModal}
+                        disabled={activeRooms.length === 0}
+                      >
+                        {t("chooseRooms")}
+                      </Button>
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        {activeRooms.length === 0
+                          ? t("noRoomsForCompany")
+                          : t("roomsSelected", { count: selectedRoomIds.size })}
+                      </Text>
+                    </Space>
+                    {selectedRoomIds.size === 0 ? (
+                      <Text
+                        type="warning"
+                        style={{ display: "block", fontSize: 13, marginBlockEnd: 16 }}
+                      >
+                        {t("noRoomsSelectedWarning")}
+                      </Text>
+                    ) : (
+                      <Space size={8} wrap style={{ marginBlockEnd: 16 }}>
+                        {[...selectedRoomIds].map((id) => (
+                          <Tag
+                            key={id}
+                            bordered={false}
+                            closable
+                            onClose={() =>
+                              setSelectedRoomIds((prev) => {
+                                const next = new Set(prev);
+                                next.delete(id);
+                                return next;
+                              })
+                            }
+                          >
+                            {roomName(id)}
+                          </Tag>
+                        ))}
+                      </Space>
+                    )}
+                    <Modal
+                      title={t("chooseRooms")}
+                      open={roomModalOpen}
+                      onOk={() => {
+                        setSelectedRoomIds(new Set(tempRooms));
+                        setRoomModalOpen(false);
+                      }}
+                      onCancel={() => setRoomModalOpen(false)}
+                      okText={t("confirm")}
+                      cancelText={t("cancel")}
+                      width={520}
+                    >
+                      <Input
+                        allowClear
+                        prefix={<SearchOutlined style={{ color: "var(--fg-body-subtle)" }} />}
+                        placeholder={t("searchRoom")}
+                        value={roomSearch}
+                        onChange={(e) => setRoomSearch(e.target.value)}
+                        style={{ marginBlockEnd: 12 }}
+                      />
+                      {modalRooms.length === 0 ? (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noData")} />
+                      ) : (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4,
+                            maxBlockSize: 360,
+                            overflowY: "auto",
+                          }}
+                        >
+                          {modalRooms.map((r) => (
+                            <label
+                              key={r.id}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                borderRadius: 8,
+                                paddingBlock: 8,
+                                paddingInline: 10,
+                                cursor: "pointer",
+                                background: tempRooms.has(r.id)
+                                  ? "var(--brand-softer)"
+                                  : "transparent",
+                              }}
+                            >
+                              <Checkbox
+                                checked={tempRooms.has(r.id)}
+                                onChange={(e) => toggleRoom(r.id, e.target.checked)}
+                              />
+                              <Text style={{ fontSize: 13 }}>
+                                {bilingualName(r.nameAr, r.nameEn, isAr)}
+                              </Text>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      <Text
+                        type="secondary"
+                        style={{ display: "block", fontSize: 12, marginBlockStart: 12 }}
+                      >
+                        {t("roomsSelected", { count: tempRooms.size })}
+                      </Text>
+                    </Modal>
+                  </>
+                )}
+              </>
+            )}
 
             <Divider style={{ marginBlock: 24 }} />
             <SectionTitle>{t("quotasOptional")}</SectionTitle>
@@ -523,7 +700,7 @@ export function RoleForm({
                   key: group,
                   label: (
                     <Space>
-                      <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{group}</span>
+                      <span style={{ fontWeight: 600 }}>{permissionGroupLabel(group, t)}</span>
                       {selectedInGroup > 0 && (
                         <Text type="secondary" style={{ fontSize: 12 }}>
                           {selectedInGroup}/{perms.length}

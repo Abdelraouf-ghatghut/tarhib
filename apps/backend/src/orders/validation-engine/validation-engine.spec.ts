@@ -20,18 +20,21 @@ describe('ValidationEngineService — moteur de validation (CLAUDE.md §3.3)', (
         id: 'prod-cmd',
         type: 'COMMANDABLE',
         allowedRoles: null,
+        allowedBranches: null,
         active: true,
       },
       {
         id: 'prod-vip',
         type: 'LIBRE_SERVICE_VIP',
         allowedRoles: null,
+        allowedBranches: null,
         active: true,
       },
       {
         id: 'prod-restricted',
         type: 'COMMANDABLE',
         allowedRoles: ['DEPARTMENT_MANAGER'],
+        allowedBranches: null,
         active: true,
       },
     ],
@@ -104,6 +107,29 @@ describe('ValidationEngineService — moteur de validation (CLAUDE.md §3.3)', (
     const result = engine.validateCart(ctx, [line('prod-restricted')]);
     expect(result.lines[0].decision).toBe('REJECTED');
     expect(result.lines[0].reason).toBe('ROLE_NOT_ALLOWED');
+  });
+
+  it('should REJECT when caller branch not in allowedBranches — rule §3.3.1', () => {
+    const ctx = makeCtx({ branchId: 'br-other' });
+    ctx.products.find((p) => p.id === 'prod-cmd')!.allowedBranches = ['br-1'];
+    const result = engine.validateCart(ctx, [line('prod-cmd')]);
+    expect(result.lines[0].decision).toBe('REJECTED');
+    expect(result.lines[0].reason).toBe('BRANCH_NOT_ALLOWED');
+  });
+
+  it('should APPROVE when caller branch is in allowedBranches', () => {
+    const ctx = makeCtx();
+    ctx.products.find((p) => p.id === 'prod-cmd')!.allowedBranches = ['br-1'];
+    const result = engine.validateCart(ctx, [line('prod-cmd')]);
+    expect(result.lines[0].decision).toBe('APPROVED');
+  });
+
+  it('should stop at the branch check (not check stock) when branch not allowed', () => {
+    const ctx = makeCtx({ branchId: 'br-other' });
+    ctx.products.find((p) => p.id === 'prod-cmd')!.allowedBranches = ['br-1'];
+    ctx.stocks = []; // no stock at all — should not reach step 2
+    const result = engine.validateCart(ctx, [line('prod-cmd')]);
+    expect(result.lines[0].reason).toBe('BRANCH_NOT_ALLOWED');
   });
 
   // ── Étape 2 : stock disponible ────────────────────────────────────────────

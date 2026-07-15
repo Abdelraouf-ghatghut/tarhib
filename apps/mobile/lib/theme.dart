@@ -57,7 +57,7 @@ ThemeData buildLightTheme() {
       surfaceTintColor: Colors.transparent,
       centerTitle: false,
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       color: Colors.white,
       shape: RoundedRectangleBorder(
@@ -240,7 +240,7 @@ ThemeData buildDarkTheme() {
       surfaceTintColor: Colors.transparent,
       centerTitle: false,
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       color: const Color(0xFF141414),
       shape: RoundedRectangleBorder(

@@ -19,10 +19,20 @@ export interface Role {
   slaPriority: string;
   isSystem: boolean;
   quotasEnabled: boolean;
+  /** true = toutes les salles de la société ; false = seulement roomIds */
+  allRoomsAllowed: boolean;
+  roomIds: string[];
   permissions: string[];
   quotas: RoleQuota[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MeetingRoomLite {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  active: boolean;
 }
 
 export interface Company {
@@ -53,6 +63,36 @@ export interface SlaLevel {
   active: boolean;
   sortOrder: number;
   isDefault: boolean;
+}
+
+const PERMISSION_GROUP_KEYS: Record<string, string> = {
+  alert: "permissionGroupAlert",
+  branch: "permissionGroupBranch",
+  catalog: "permissionGroupCatalog",
+  cleaning: "permissionGroupCleaning",
+  company: "permissionGroupCompany",
+  employee: "permissionGroupEmployee",
+  favorite: "permissionGroupFavorite",
+  inventory: "permissionGroupInventory",
+  meeting: "permissionGroupMeeting",
+  notification: "permissionGroupNotification",
+  operations: "permissionGroupOperations",
+  order: "permissionGroupOrder",
+  procurement: "permissionGroupProcurement",
+  profile: "permissionGroupProfile",
+  quota: "permissionGroupQuota",
+  report: "permissionGroupReport",
+  role: "permissionGroupRole",
+  stock: "permissionGroupStock",
+  supplier: "permissionGroupSupplier",
+  suppliers: "permissionGroupSupplier",
+  vip: "permissionGroupVip",
+};
+
+export function permissionGroupLabel(group: string, t: (key: string) => string): string {
+  const key = PERMISSION_GROUP_KEYS[group] ?? `permissionGroup_${group}`;
+  const translated = t(key);
+  return translated === key ? group : translated;
 }
 
 /**
