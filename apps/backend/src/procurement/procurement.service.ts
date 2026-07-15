@@ -16,11 +16,16 @@ import {
   PurchaseOrderLineDto,
   ReceivePurchaseOrderDto,
   RejectPurchaseOrderDto,
+  UpdatePurchaseOrderDto,
 } from './dto/procurement.dto.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { Branch } from '../branches/entities/branch.entity.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import {
+  InventoryItem,
+  StockZone,
+} from '../inventory/entities/inventory-item.entity.js';
 
 @Injectable()
 export class ProcurementService {
@@ -76,6 +81,33 @@ export class ProcurementService {
       order: { createdAt: 'DESC' },
     });
     return orders.map((o) => this.toDto(o));
+  }
+
+  async updateDraft(
+    id: string,
+    dto: UpdatePurchaseOrderDto,
+  ): Promise<PurchaseOrderDto> {
+    const po = await this.poRepo.findOne({ where: { id } });
+    if (!po) throw new NotFoundException(`PurchaseOrder ${id} not found`);
+    if (po.status !== PurchaseOrderStatus.DRAFT) {
+      throw new BadRequestException('onlyDraftOrdersCanBeUpdated');
+    }
+    if (dto.supplierId !== undefined) po.supplierId = dto.supplierId;
+    if (dto.notes !== undefined) po.notes = dto.notes.trim() || null;
+    if (dto.lines !== undefined) {
+      await this.lineRepo.delete({ purchaseOrderId: po.id });
+      po.lines = dto.lines.map((line) =>
+        this.lineRepo.create({
+          purchaseOrderId: po.id,
+          productId: line.productId,
+          orderedQty: line.orderedQty,
+          receivedQty: 0,
+          unitCost: line.unitCost ?? null,
+          notes: line.notes ?? null,
+        }),
+      );
+    }
+    return this.toDto(await this.poRepo.save(po));
   }
 
   async findOne(id: string): Promise<PurchaseOrderDto> {
@@ -216,6 +248,68 @@ export class ProcurementService {
    * Pour chaque ligne réceptionnée : incrémente le stock BRANCH du produit.
    * Met à jour le statut du BdC (PARTIALLY_RECEIVED ou RECEIVED).
    */
+  async receiveAtomic(
+    id: string,
+    dto: ReceivePurchaseOrderDto,
+    receivedBy: string,
+  ): Promise<PurchaseOrderDto> {
+    return this.poRepo.manager.transaction(async (manager) => {
+      const purchaseOrders = manager.getRepository(PurchaseOrder);
+      const lines = manager.getRepository(PurchaseOrderLine);
+      const inventory = manager.getRepository(InventoryItem);
+      const po = await purchaseOrders.findOne({
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!po) throw new NotFoundException(`PurchaseOrder ${id} not found`);
+      if (po.status === PurchaseOrderStatus.RECEIVED) return this.toDto(po);
+      if (po.status === PurchaseOrderStatus.CANCELLED)
+        throw new BadRequestException('cancelledOrderCannotBeReceived');
+      for (const reception of dto.lines) {
+        const line = po.lines.find((item) => item.id === reception.lineId);
+        if (!line || reception.receivedQty <= 0) continue;
+        const quantity = Math.min(
+          reception.receivedQty,
+          line.orderedQty - line.receivedQty,
+        );
+        if (quantity <= 0) continue;
+        line.receivedQty += quantity;
+        await lines.save(line);
+        let item = await inventory.findOne({
+          where: {
+            productId: line.productId,
+            branchId: po.branchId,
+            companyId: po.companyId,
+            zone: StockZone.BRANCH,
+          },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (item) item.quantity += quantity;
+        else
+          item = inventory.create({
+            productId: line.productId,
+            branchId: po.branchId,
+            companyId: po.companyId,
+            zone: StockZone.BRANCH,
+            quantity,
+            minThreshold: 0,
+            maxThreshold: null,
+          });
+        await inventory.save(item);
+      }
+      po.status = po.lines.every((line) => line.receivedQty >= line.orderedQty)
+        ? PurchaseOrderStatus.RECEIVED
+        : po.lines.some((line) => line.receivedQty > 0)
+          ? PurchaseOrderStatus.PARTIALLY_RECEIVED
+          : po.status;
+      if (po.status === PurchaseOrderStatus.RECEIVED) {
+        po.receivedBy = receivedBy;
+        po.receivedAt = new Date();
+      }
+      return this.toDto(await purchaseOrders.save(po));
+    });
+  }
+
   async receive(
     id: string,
     dto: ReceivePurchaseOrderDto,

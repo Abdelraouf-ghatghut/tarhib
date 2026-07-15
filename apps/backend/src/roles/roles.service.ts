@@ -10,6 +10,7 @@ import { Role, RoleScope, SlaPriority } from './entities/role.entity.js';
 import { Permission } from './entities/permission.entity.js';
 import { RoleQuota, QuotaPeriodType } from './entities/role-quota.entity.js';
 import { Employee } from '../employees/entities/employee.entity.js';
+import { MeetingRoom } from '../meeting-rooms/entities/meeting-room.entity.js';
 import {
   CreateRoleDto,
   CreateRoleQuotaDto,
@@ -30,6 +31,8 @@ export class RolesService {
     private readonly roleQuotaRepo: Repository<RoleQuota>,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
+    @InjectRepository(MeetingRoom)
+    private readonly roomRepo: Repository<MeetingRoom>,
   ) {}
 
   async findAll(caller: JwtPayload): Promise<RoleDto[]> {
@@ -44,7 +47,7 @@ export class RolesService {
       where: isTarhibAdmin
         ? undefined
         : { companyId: caller.companyId, scope: RoleScope.CLIENT },
-      relations: ['permissions', 'quotas'],
+      relations: ['permissions', 'quotas', 'allowedRooms'],
     });
     return roles.map(this.toDto);
   }
@@ -52,7 +55,7 @@ export class RolesService {
   async findOne(id: string): Promise<RoleDto> {
     const role = await this.roleRepo.findOne({
       where: { id },
-      relations: ['permissions', 'quotas'],
+      relations: ['permissions', 'quotas', 'allowedRooms'],
     });
     if (!role) throw new NotFoundException(`Role ${id} not found`);
     return this.toDto(role);
@@ -83,6 +86,7 @@ export class RolesService {
 
     const quotas = dto.scope === RoleScope.CLIENT ? (dto.quotas ?? []) : [];
 
+    const allRoomsAllowed = dto.allRoomsAllowed ?? true;
     const role = this.roleRepo.create({
       companyId: dto.companyId ?? null,
       nameAr: dto.nameAr,
@@ -92,6 +96,13 @@ export class RolesService {
       isSystem: false,
       // Dérivé automatiquement : au moins 1 quota = quotas activés (pas de switch manuel)
       quotasEnabled: quotas.length > 0,
+      allRoomsAllowed,
+      allowedRooms: await this.resolveRooms(
+        dto.scope,
+        dto.companyId ?? null,
+        allRoomsAllowed,
+        dto.roomIds,
+      ),
       permissions,
     });
 
@@ -103,7 +114,7 @@ export class RolesService {
   async update(id: string, dto: UpdateRoleDto): Promise<RoleDto> {
     const role = await this.roleRepo.findOne({
       where: { id },
-      relations: ['permissions', 'quotas'],
+      relations: ['permissions', 'quotas', 'allowedRooms'],
     });
     if (!role) throw new NotFoundException(`Role ${id} not found`);
     // Les rôles système (internes seedés) restent modifiables — le superadmin
@@ -125,6 +136,19 @@ export class RolesService {
       role.quotasEnabled = dto.quotas.length > 0;
     }
 
+    if (
+      role.scope === RoleScope.CLIENT &&
+      (dto.allRoomsAllowed !== undefined || dto.roomIds !== undefined)
+    ) {
+      role.allRoomsAllowed = dto.allRoomsAllowed ?? role.allRoomsAllowed;
+      role.allowedRooms = await this.resolveRooms(
+        role.scope,
+        role.companyId,
+        role.allRoomsAllowed,
+        dto.roomIds ?? role.allowedRooms.map((r) => r.id),
+      );
+    }
+
     const saved = await this.roleRepo.save(role);
     return this.toDto(saved);
   }
@@ -137,10 +161,32 @@ export class RolesService {
     const assignedCount = await this.employeeRepo.count({
       where: { roleId: id },
     });
-    if (assignedCount > 0) {
+    const additionalAssigned = await this.employeeRepo
+      .createQueryBuilder('employee')
+      .innerJoin('employee.additionalRoles', 'role', 'role.id = :id', { id })
+      .getCount();
+    if (assignedCount + additionalAssigned > 0) {
       throw new BadRequestException('roleInUseCannotDelete');
     }
     await this.roleRepo.remove(role);
+  }
+
+  /**
+   * Salles autorisées d'un rôle CLIENT : « toutes » ⇒ pas de lignes de
+   * jointure ; sélection ⇒ seules les salles de la même société sont
+   * retenues (garde multi-tenant, jamais de confiance au front).
+   */
+  private async resolveRooms(
+    scope: RoleScope,
+    companyId: string | null,
+    allRoomsAllowed: boolean,
+    roomIds?: string[],
+  ): Promise<MeetingRoom[]> {
+    if (scope !== RoleScope.CLIENT || !companyId) return [];
+    if (allRoomsAllowed || !roomIds?.length) return [];
+    return this.roomRepo.find({
+      where: roomIds.map((id) => ({ id, companyId })),
+    });
   }
 
   /** Remplace intégralement les quotas d'un rôle CLIENT. */
@@ -234,6 +280,8 @@ export class RolesService {
     slaPriority: role.slaPriority,
     isSystem: role.isSystem,
     quotasEnabled: role.quotasEnabled,
+    allRoomsAllowed: role.allRoomsAllowed ?? true,
+    roomIds: (role.allowedRooms ?? []).map((r) => r.id),
     permissions: (role.permissions ?? []).map((p) => p.key),
     quotas: (role.quotas ?? []).map((q) => ({
       id: q.id,

@@ -30,6 +30,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   companiesApi,
+  meetingRoomsAdminApi,
   permissionsApi,
   productsAdminApi,
   rolesApi,
@@ -45,6 +46,7 @@ import {
   slaColor,
   slaLevelLabel,
   type Company,
+  type MeetingRoomLite,
   type Permission,
   type Product,
   type Role,
@@ -108,6 +110,16 @@ export function RolesPage() {
   const { data: slaLevels } = useQuery({
     queryKey: ["sla-levels", selectedCompanyId],
     queryFn: () => slaLevelsApi.list(selectedCompanyId as string).then((r) => r.data as SlaLevel[]),
+    enabled: activeTab === "client" && !!selectedCompanyId,
+  });
+
+  // Salles de la société : sélection « toutes / certaines salles » du RoleForm
+  const { data: rooms } = useQuery({
+    queryKey: ["meeting-rooms-admin", selectedCompanyId],
+    queryFn: () =>
+      meetingRoomsAdminApi
+        .list(selectedCompanyId as string)
+        .then((r) => r.data as MeetingRoomLite[]),
     enabled: activeTab === "client" && !!selectedCompanyId,
   });
 
@@ -524,6 +536,7 @@ export function RolesPage() {
       scope="CLIENT"
       editing={view.mode === "edit" ? view.role : null}
       products={products}
+      rooms={rooms}
       slaLevels={slaLevels}
       saving={saving}
       onCancel={() => setView({ mode: "list" })}

@@ -71,8 +71,18 @@ interface SlaReport {
 
 interface UserActivityReport {
   total: number;
-  topEmployees: { employeeId: string; orderCount: number }[];
-  ordersByBranch: { branchId: string; orderCount: number }[];
+  topEmployees: {
+    employeeId: string;
+    nameAr: string;
+    nameEn: string;
+    orderCount: number;
+  }[];
+  ordersByBranch: {
+    branchId: string;
+    nameAr: string;
+    nameEn: string;
+    orderCount: number;
+  }[];
 }
 
 interface MeetingRoomsReport {
@@ -591,7 +601,12 @@ export function ReportsPage() {
               size="small"
               scroll={{ x: "max-content" }}
               columns={[
-                { title: "ID", dataIndex: "employeeId", render: (v: string) => v.slice(0, 8) },
+                {
+                  title: t("employee"),
+                  dataIndex: "nameAr",
+                  render: (_: string, row: { nameAr: string; nameEn: string }) =>
+                    bilingualName(row.nameAr, row.nameEn, isAr),
+                },
                 { title: t("totalOrders"), dataIndex: "orderCount" },
               ]}
             />
@@ -606,7 +621,12 @@ export function ReportsPage() {
               size="small"
               scroll={{ x: "max-content" }}
               columns={[
-                { title: "ID", dataIndex: "branchId", render: (v: string) => v.slice(0, 8) },
+                {
+                  title: t("branch"),
+                  dataIndex: "nameAr",
+                  render: (_: string, row: { nameAr: string; nameEn: string }) =>
+                    bilingualName(row.nameAr, row.nameEn, isAr),
+                },
                 { title: t("totalOrders"), dataIndex: "orderCount" },
               ]}
             />

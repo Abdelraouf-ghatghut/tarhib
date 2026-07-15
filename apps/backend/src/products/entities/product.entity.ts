@@ -27,6 +27,13 @@ export class Product {
   @Column({ name: 'allowed_roles', type: 'simple-array', nullable: true })
   allowedRoles!: string[] | null;
 
+  /**
+   * Branches où ce produit est commandable — null/vide = aucune restriction
+   * (commandable dans toutes les branches), même convention que allowedRoles.
+   */
+  @Column({ name: 'allowed_branches', type: 'simple-array', nullable: true })
+  allowedBranches!: string[] | null;
+
   @Column({ name: 'image_url', type: 'text', nullable: true })
   imageUrl!: string | null;
 

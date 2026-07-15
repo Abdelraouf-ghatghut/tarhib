@@ -5,15 +5,23 @@ import 'package:flutter/material.dart';
 /// jamais d'un Colors.xxx ou d'un hex ad-hoc (cohérence Web ⇄ Mobile).
 abstract class SnowColors {
   // ── Surfaces ────────────────────────────────────────────────────────────
-  static const background = Color(0xFFF7F8FC);
+  static const background = Color(0xFFF7FAFC);
   static const surface = Color(0xFFFFFFFF);
   static const card = Color(0xFFFFFFFF);
-  static const surfaceMuted = Color(0xFFEEF1F8);
+  static const surfaceMuted = Color(0xFFF1F5F9);
 
   // ── Marque ──────────────────────────────────────────────────────────────
-  static const primary = Color(0xFF6C7CFF);
-  static const primarySoft = Color(0xFFEEF0FF);
-  static const primaryStrong = Color(0xFF5A6AF0);
+  static const primary = Color(0xFF55CFA8);
+  static const primarySoft = Color(0xFFEAFBF5);
+  static const primaryStrong = Color(0xFF20A77E);
+
+  // Tarhib Operations / Agent — bleu pastel.
+  static const agentPrimary = Color(0xFF5B7CFA);
+  static const agentPrimarySoft = Color(0xFFEEF2FF);
+  static const agentPrimaryStrong = Color(0xFF4161E5);
+  static const agentDarkBackground = Color(0xFF0B1020);
+  static const agentDarkSurface = Color(0xFF111827);
+  static const agentDarkMuted = Color(0xFF1F2937);
 
   // ── Statuts (pastel) ──────────────────────────────────────────────────────
   static const success = Color(0xFF4ADE80);

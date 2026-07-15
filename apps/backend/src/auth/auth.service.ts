@@ -18,7 +18,6 @@ import {
   EmployeeStatus,
 } from '../employees/entities/employee.entity';
 import { Company } from '../companies/entities/company.entity';
-import { Role } from '../roles/entities/role.entity';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { LoginDto } from './dto/login.dto';
 import type { TokenResponseDto } from './dto/token-response.dto';
@@ -28,7 +27,7 @@ import type { PasswordResetDto } from './dto/password-reset.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { InviteEmployeeDto } from './dto/invite-employee.dto';
 import type { AcceptInviteDto } from './dto/accept-invite.dto';
-import { legacyPermissions } from './legacy-permissions';
+import { AccessPolicyService } from '../access/access-policy.service';
 
 const LOGIN_ATTEMPTS_PREFIX = 'login_attempts:';
 const LOGIN_BLOCKED_PREFIX = 'login_blocked:';
@@ -51,8 +50,7 @@ export class AuthService {
     private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
-    @InjectRepository(Role)
-    private readonly roleRepo: Repository<Role>,
+    private readonly accessPolicy: AccessPolicyService,
   ) {
     this.lockDurationSeconds = config.get<number>(
       'LOGIN_LOCK_DURATION_SECONDS',
@@ -121,33 +119,26 @@ export class AuthService {
     tokens: TokenResponseDto,
     email: string,
   ): Promise<TokenResponseDto> {
-    const employee = await this.employeeRepo.findOne({ where: { email } });
+    const employee = await this.employeeRepo.findOne({
+      where: { email },
+      relations: ['additionalRoles'],
+    });
     if (!employee) return tokens;
 
-    let permissions: string[] = [];
-    let roleName: string | undefined;
-
-    if (employee.roleId) {
-      // Nouveau RBAC dynamique — le nom du rôle vient du rôle, pas du
-      // champ legacy (souvent null pour les employés créés via le portail)
-      const role = await this.roleRepo.findOne({
-        where: { id: employee.roleId },
-        relations: ['permissions'],
-      });
-      permissions = role?.permissions?.map((p) => p.key) ?? [];
-      roleName = role?.nameEn ?? role?.nameAr;
-    } else {
-      // Fallback legacy : mapping rôle string → permissions
-      permissions = legacyPermissions(employee.role);
-    }
+    const access = await this.accessPolicy.resolve(employee);
+    const primary = access.roles.find((r) => r.primary) ?? access.roles[0];
 
     return {
       ...tokens,
       email: employee.email,
-      role: roleName ?? employee.role ?? undefined,
+      role: primary?.nameEn ?? primary?.nameAr ?? employee.role ?? undefined,
       roleId: employee.roleId ?? undefined,
+      roleIds: access.roles.map((r) => r.id),
       scope: employee.scope ?? undefined,
-      permissions,
+      permissions: access.permissions,
+      capabilities: access.capabilities,
+      modules: access.modules.map((m) => m.key),
+      dataScope: access.dataScope,
       companyId: employee.companyId ?? undefined,
       branchId: employee.branchId ?? undefined,
     };

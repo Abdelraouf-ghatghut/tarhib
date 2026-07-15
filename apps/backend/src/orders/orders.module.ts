@@ -7,12 +7,14 @@ import { OrderLine } from './entities/order-line.entity.js';
 import { ValidationEngineService } from './validation-engine/validation-engine.service.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { PrioritySlaModule } from '../priority-sla/priority-sla.module.js';
+import { QuotasModule } from '../quotas/quotas.module.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { Product } from '../products/entities/product.entity.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
 import { Quota } from '../quotas/entities/quota.entity.js';
 import { RoleQuota } from '../roles/entities/role-quota.entity.js';
 import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
+import { Role } from '../roles/entities/role.entity.js';
 
 @Module({
   imports: [
@@ -25,9 +27,11 @@ import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entit
       Quota,
       RoleQuota,
       EmployeeQuotaUsage,
+      Role,
     ]),
     NotificationsModule,
     PrioritySlaModule,
+    QuotasModule,
   ],
   providers: [OrdersService, ValidationEngineService],
   controllers: [OrdersController],

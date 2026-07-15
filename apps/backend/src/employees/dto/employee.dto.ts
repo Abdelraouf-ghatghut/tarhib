@@ -4,10 +4,13 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsArray,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Min,
   MinLength,
 } from 'class-validator';
 import { EmployeeScope } from '../entities/employee.entity.js';
@@ -47,6 +50,20 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsUUID()
   departmentId?: string;
+
+  @ApiPropertyOptional({
+    example: '3',
+    description:
+      "Étage du bureau au sein du site d'affectation (employés clients)",
+  })
+  @IsOptional()
+  @IsString()
+  floor?: string;
+
+  @ApiPropertyOptional({ example: '312' })
+  @IsOptional()
+  @IsString()
+  officeNumber?: string;
 
   @ApiProperty({ example: 'محمد' })
   @IsString()
@@ -88,6 +105,15 @@ export class CreateEmployeeDto {
   @IsUUID()
   roleId?: string;
 
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Additional dynamic role UUIDs for multi-role employees',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  additionalRoleIds?: string[];
+
   @ApiPropertyOptional({ enum: EmployeeScope })
   @IsOptional()
   @IsEnum(EmployeeScope)
@@ -106,6 +132,16 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @ApiPropertyOptional({
+    example: 3500,
+    description:
+      'Salaire — personnel interne Tarhib uniquement, réservé au Super Admin (permission employee.salary.manage). Ignoré si le rôle appelant ne détient pas cette permission.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  salary?: number;
 }
 
 export class EmployeeDto {
@@ -127,6 +163,16 @@ export class EmployeeDto {
   @IsOptional()
   @IsUUID()
   departmentId!: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  @IsOptional()
+  @IsString()
+  floor!: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  @IsOptional()
+  @IsString()
+  officeNumber!: string | null;
 
   @ApiProperty()
   @IsString()
@@ -155,6 +201,12 @@ export class EmployeeDto {
   @ApiPropertyOptional({ description: 'Dynamic role UUID' })
   roleId!: string | null;
 
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Additional dynamic role UUIDs',
+  })
+  additionalRoleIds!: string[];
+
   @ApiPropertyOptional({ description: 'Legacy role string (deprecated)' })
   role!: string;
 
@@ -171,4 +223,14 @@ export class EmployeeDto {
       'Identité Keycloak (JwtPayload.sub) — permet de résoudre "qui a fait X" sur les colonnes acteur (createdBy, validatedBy, etc.) qui stockent cet identifiant plutôt que employees.id',
   })
   keycloakId!: string | null;
+}
+
+/**
+ * DTO admin uniquement — inclut le salaire. Réservé aux endpoints protégés
+ * par la permission employee.salary.manage (Super Admin). Ne jamais utiliser
+ * pour un endpoint accessible aux employés clients ou à l'app mobile.
+ */
+export class EmployeeAdminDto extends EmployeeDto {
+  @ApiProperty({ nullable: true })
+  salary!: number | null;
 }

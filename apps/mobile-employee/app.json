@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Tarhib Employee",
+    "slug": "tarhib-employee",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "tarhib-employee",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.tarhib.employee",
+      "infoPlist": {
+        "NSUserNotificationsUsageDescription": "Tarhib uses notifications to keep you informed about your orders and bookings."
+      }
+    },
+    "android": {
+      "package": "com.tarhib.employee",
+      "permissions": ["POST_NOTIFICATIONS"],
+      "adaptiveIcon": {
+        "backgroundColor": "#F7F8FC"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-asset",
+      ["expo-notifications", { "color": "#4056D6", "defaultChannel": "orders" }]
+    ]
+  }
+}

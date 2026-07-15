@@ -6,7 +6,7 @@
  * dispatché en mission sur les sites clients (le superadmin reste sans
  * affectation).
  *
- * Contenu : 2 sociétés clientes (branches, départements), niveaux de
+ * Contenu : une société cliente bancaire (branches, départements), niveaux de
  * priorité, catalogue produits (commandables + VIP libre-service), stock par
  * branche (avec alertes), fournisseurs, salles de réunion, rôles clients avec
  * quotas, utilisateurs internes + externes (comptes Keycloak complets).
@@ -65,40 +65,70 @@ const DEFAULT_PASSWORD = 'Tarhib@2026!';
 
 const COMPANIES = [
   {
-    slug: 'al-aman-bank',
-    nameAr: 'بنك الأمان الوطني',
-    nameEn: 'Al Aman National Bank',
+    slug: 'masraf-al-waha',
+    nameAr: 'مصرف الواحة',
+    nameEn: 'Al Waha Bank',
     branches: [
       {
-        nameAr: 'المقر الرئيسي — الجزائر العاصمة',
-        nameEn: 'Algiers Headquarters',
+        nameAr: 'الإدارة العامة – طرابلس',
+        nameEn: 'General Administration - Tripoli',
         departments: [
-          { nameAr: 'الموارد البشرية', nameEn: 'Human Resources' },
-          { nameAr: 'المالية', nameEn: 'Finance' },
-          { nameAr: 'تقنية المعلومات', nameEn: 'Information Technology' },
+          {
+            nameAr: 'إدارة الشؤون الإدارية والتجهيزات',
+            nameEn: 'Administrative Affairs and Facilities',
+          },
+          { nameAr: 'إدارة الموارد البشرية', nameEn: 'Human Resources' },
+          {
+            nameAr: 'إدارة تقنية المعلومات',
+            nameEn: 'Information Technology',
+          },
+          { nameAr: 'إدارة العمليات المصرفية', nameEn: 'Banking Operations' },
+          { nameAr: 'إدارة المالية', nameEn: 'Finance' },
         ],
       },
       {
-        nameAr: 'فرع وهران',
-        nameEn: 'Oran Branch',
+        nameAr: 'فرع حي الاندلس',
+        nameEn: 'Hay Al-Andalus Branch',
         departments: [
           { nameAr: 'خدمة العملاء', nameEn: 'Customer Service' },
-          { nameAr: 'العمليات', nameEn: 'Operations' },
+          { nameAr: 'الصرافة والخزينة', nameEn: 'Teller and Cash Desk' },
+          { nameAr: 'العمليات المصرفية', nameEn: 'Banking Operations' },
         ],
       },
-    ],
-  },
-  {
-    slug: 'al-nour-tech',
-    nameAr: 'مجموعة النور للتقنية',
-    nameEn: 'Al Nour Technology Group',
-    branches: [
       {
-        nameAr: 'المقر الرئيسي — حيدرة',
-        nameEn: 'Hydra Headquarters',
+        nameAr: 'فرع الزاوية',
+        nameEn: 'Zawiya Branch',
         departments: [
-          { nameAr: 'الهندسة', nameEn: 'Engineering' },
-          { nameAr: 'التسويق', nameEn: 'Marketing' },
+          { nameAr: 'خدمة العملاء', nameEn: 'Customer Service' },
+          { nameAr: 'القروض والتسهيلات', nameEn: 'Loans and Facilities' },
+          { nameAr: 'العمليات المصرفية', nameEn: 'Banking Operations' },
+        ],
+      },
+      {
+        nameAr: 'فرع سوق الجمعة',
+        nameEn: 'Souq Al-Jumaa Branch',
+        departments: [
+          { nameAr: 'خدمة العملاء', nameEn: 'Customer Service' },
+          { nameAr: 'الحسابات الجارية', nameEn: 'Current Accounts' },
+          { nameAr: 'الصرافة والخزينة', nameEn: 'Teller and Cash Desk' },
+        ],
+      },
+      {
+        nameAr: 'فرع ذات العماد',
+        nameEn: 'Dat Al-Imad Branch',
+        departments: [
+          { nameAr: 'خدمة كبار العملاء', nameEn: 'Premium Banking' },
+          { nameAr: 'الامتثال والمتابعة', nameEn: 'Compliance and Follow-up' },
+          { nameAr: 'العمليات المصرفية', nameEn: 'Banking Operations' },
+        ],
+      },
+      {
+        nameAr: 'فرع زليتن',
+        nameEn: 'Zliten Branch',
+        departments: [
+          { nameAr: 'خدمة العملاء', nameEn: 'Customer Service' },
+          { nameAr: 'الحوالات', nameEn: 'Transfers' },
+          { nameAr: 'الصرافة والخزينة', nameEn: 'Teller and Cash Desk' },
         ],
       },
     ],
@@ -122,90 +152,64 @@ const PRODUCTS: Array<{
   stock: [number, number, number];
   vipLocation?: string;
 }> = [
-  // Boissons chaudes
+  // Boissons — seul catalogue commandable de l'app Employee (écran d'accueil :
+  // قهوة سادة/معدلة، نسكافيه، كابتشينو، ماء، شاي أخضر/أحمر)
   {
-    nameAr: 'قهوة عربية',
-    nameEn: 'Arabic Coffee',
-    category: 'Hot Drinks',
+    nameAr: 'قهوة سادة',
+    nameEn: 'Black Coffee',
+    category: 'Drinks',
     type: ProductType.COMMANDABLE,
     unitCost: 80,
     stock: [45, 15, 80],
   },
   {
-    nameAr: 'إسبريسو',
-    nameEn: 'Espresso',
-    category: 'Hot Drinks',
+    nameAr: 'قهوة معدلة',
+    nameEn: 'Coffee',
+    category: 'Drinks',
     type: ProductType.COMMANDABLE,
-    unitCost: 100,
-    stock: [38, 12, 60],
+    unitCost: 80,
+    stock: [45, 15, 80],
+  },
+  {
+    nameAr: 'نسكافيه',
+    nameEn: 'Nescafé',
+    category: 'Drinks',
+    type: ProductType.COMMANDABLE,
+    unitCost: 90,
+    stock: [40, 15, 70],
   },
   {
     nameAr: 'كابتشينو',
     nameEn: 'Cappuccino',
-    category: 'Hot Drinks',
+    category: 'Drinks',
     type: ProductType.COMMANDABLE,
     unitCost: 120,
     stock: [30, 10, 50],
   },
   {
-    nameAr: 'شاي أخضر بالنعناع',
-    nameEn: 'Mint Green Tea',
-    category: 'Hot Drinks',
-    type: ProductType.COMMANDABLE,
-    unitCost: 60,
-    stock: [50, 15, 80],
-  },
-  // Boissons froides
-  {
-    nameAr: 'ماء معدني',
-    nameEn: 'Mineral Water',
-    category: 'Cold Drinks',
+    nameAr: 'ماء',
+    nameEn: 'Water',
+    category: 'Drinks',
     type: ProductType.COMMANDABLE,
     unitCost: 30,
     stock: [120, 40, 200],
   },
   {
-    nameAr: 'عصير برتقال طازج',
-    nameEn: 'Fresh Orange Juice',
-    category: 'Cold Drinks',
+    nameAr: 'شاي أخضر',
+    nameEn: 'Green Tea',
+    category: 'Drinks',
     type: ProductType.COMMANDABLE,
-    unitCost: 150,
-    stock: [6, 12, 40],
-  }, // sous le seuil → alerte
-  // Repas
-  {
-    nameAr: 'ساندويتش دجاج مشوي',
-    nameEn: 'Grilled Chicken Sandwich',
-    category: 'Meals',
-    type: ProductType.COMMANDABLE,
-    unitCost: 450,
-    stock: [18, 8, 30],
+    unitCost: 60,
+    stock: [50, 15, 80],
   },
   {
-    nameAr: 'سلطة سيزر',
-    nameEn: 'Caesar Salad',
-    category: 'Meals',
+    nameAr: 'شاي أحمر',
+    nameEn: 'Black Tea',
+    category: 'Drinks',
     type: ProductType.COMMANDABLE,
-    unitCost: 380,
-    stock: [12, 6, 25],
+    unitCost: 60,
+    stock: [50, 15, 80],
   },
-  // Snacks
-  {
-    nameAr: 'كرواسون بالزبدة',
-    nameEn: 'Butter Croissant',
-    category: 'Snacks',
-    type: ProductType.COMMANDABLE,
-    unitCost: 90,
-    stock: [25, 10, 50],
-  },
-  {
-    nameAr: 'كوكيز الشوكولاتة',
-    nameEn: 'Chocolate Cookies',
-    category: 'Snacks',
-    type: ProductType.COMMANDABLE,
-    unitCost: 70,
-    stock: [0, 10, 40],
-  }, // rupture → alerte
   // VIP libre-service (jamais commandables — suivis par emplacement dédié)
   {
     nameAr: 'تمر فاخر',
@@ -230,50 +234,50 @@ const PRODUCTS: Array<{
 // Fournisseurs Tarhib — ressource globale, non liée à une société cliente.
 const SUPPLIERS = [
   {
-    nameAr: 'مورد القهوة الذهبية',
-    nameEn: 'Golden Coffee Supplies',
-    contactName: 'Mourad Zerhouni',
-    email: 'contact@golden-coffee.dz',
-    phone: '+213661234567',
+    nameAr: 'شركة الواحة للقهوة والضيافة',
+    nameEn: 'Al Waha Coffee & Hospitality Supplies',
+    contactName: 'Salem Al-Tarhouni',
+    email: 'orders@waha-coffee.ly',
+    phone: '+218912345601',
   },
   {
-    nameAr: 'شركة النقاء للمياه والعصائر',
-    nameEn: 'Al Naqaa Water & Juices Co',
-    contactName: 'Salima Ferhat',
-    email: 'sales@alnaqaa.dz',
-    phone: '+213770987654',
+    nameAr: 'شركة طرابلس للمياه والعصائر',
+    nameEn: 'Tripoli Water & Juices Co',
+    contactName: 'Mariam Al-Misrati',
+    email: 'sales@tripoli-water.ly',
+    phone: '+218912345602',
   },
   {
-    nameAr: 'مخبزة الياسمين',
-    nameEn: 'Al Yasmine Bakery',
-    contactName: 'Hocine Belaid',
-    email: 'orders@yasmine-bakery.dz',
-    phone: '+213550456789',
+    nameAr: 'مخبزة المدينة',
+    nameEn: 'Al Madina Bakery',
+    contactName: 'Omar Al-Zliteny',
+    email: 'orders@madina-bakery.ly',
+    phone: '+218912345603',
   },
 ];
 
 const MEETING_ROOMS = [
   {
-    companySlug: 'al-aman-bank',
-    branchEn: 'Algiers Headquarters',
-    nameAr: 'قاعة الاجتماعات الكبرى',
-    nameEn: 'Grand Meeting Hall',
-    capacity: 14,
+    companySlug: 'masraf-al-waha',
+    branchEn: 'General Administration - Tripoli',
+    nameAr: 'قاعة مجلس الإدارة',
+    nameEn: 'Board Meeting Room',
+    capacity: 16,
     amenities: { projector: true, videoConference: true, whiteboard: true },
   },
   {
-    companySlug: 'al-aman-bank',
-    branchEn: 'Algiers Headquarters',
-    nameAr: 'قاعة مجلس الإدارة',
-    nameEn: 'Board Room',
-    capacity: 8,
+    companySlug: 'masraf-al-waha',
+    branchEn: 'General Administration - Tripoli',
+    nameAr: 'قاعة التدريب',
+    nameEn: 'Training Room',
+    capacity: 24,
     amenities: { videoConference: true, screen: true },
   },
   {
-    companySlug: 'al-nour-tech',
-    branchEn: 'Hydra Headquarters',
-    nameAr: 'قاعة الإبداع',
-    nameEn: 'Innovation Room',
+    companySlug: 'masraf-al-waha',
+    branchEn: 'Dat Al-Imad Branch',
+    nameAr: 'قاعة كبار العملاء',
+    nameEn: 'Premium Clients Room',
     capacity: 10,
     amenities: { projector: true, whiteboard: true },
   },
@@ -547,8 +551,12 @@ async function main(): Promise<void> {
     }>,
   ): Promise<Role> {
     const company = companyBySlug.get(companySlug)!;
+    const permissions = allPermissions.filter((p) =>
+      permissionKeys.includes(p.key),
+    );
     let role = await roleRepo.findOne({
       where: { nameEn, scope: RoleScope.CLIENT, companyId: company.id },
+      relations: ['permissions'],
     });
     if (!role) {
       role = await roleRepo.save(
@@ -560,100 +568,287 @@ async function main(): Promise<void> {
           isSystem: false,
           companyId: company.id,
           quotasEnabled: quotas.length > 0,
-          permissions: allPermissions.filter((p) =>
-            permissionKeys.includes(p.key),
-          ),
+          permissions,
         }),
       );
-      // Pas de cascade sur Role.quotas : insertion directe des lignes
-      for (const q of quotas) {
-        await roleQuotaRepo.save(
-          roleQuotaRepo.create({
-            roleId: role.id,
-            companyId: company.id,
-            productId: productByName.get(q.productEn)!.id,
-            periodType: q.periodType,
-            maxQuantity: q.maxQuantity,
-          }),
-        );
-      }
       logger.log(
         `Rôle client créé : ${nameEn} (${companySlug}, ${quotas.length} quotas)`,
+      );
+    } else {
+      const currentKeys = new Set((role.permissions ?? []).map((p) => p.key));
+      const expectedKeys = new Set(permissionKeys);
+      const permissionsChanged =
+        currentKeys.size !== expectedKeys.size ||
+        [...expectedKeys].some((key) => !currentKeys.has(key));
+      if (permissionsChanged || role.quotasEnabled !== quotas.length > 0) {
+        role.permissions = permissions;
+        role.quotasEnabled = quotas.length > 0;
+        await roleRepo.save(role);
+        logger.log(`Role client synchronized: ${nameEn} (${companySlug})`);
+      }
+    }
+    await roleQuotaRepo.delete({ roleId: role.id });
+    for (const q of quotas) {
+      const product = productByName.get(q.productEn);
+      if (!product) continue;
+      await roleQuotaRepo.save(
+        roleQuotaRepo.create({
+          roleId: role.id,
+          companyId: company.id,
+          productId: product.id,
+          periodType: q.periodType,
+          maxQuantity: q.maxQuantity,
+        }),
       );
     }
     return role;
   }
 
-  const employeePerms = [
-    'order.create',
+  const basicClientPerms = [
     'catalog.view',
+    'order.create',
+    'order.view_own',
+    'order.reorder',
+    'favorite.manage',
     'quota.view',
-    'meeting.book',
+    'notification.view',
     'profile.edit',
   ];
-  const managerPerms = [
-    ...employeePerms,
-    'order.approve',
+  const meetingPerms = [
+    ...basicClientPerms,
+    'meeting.book',
     'meeting.order_services',
-    'meeting.manage',
   ];
+  const approverPerms = [...meetingPerms, 'order.approve', 'meeting.manage'];
 
-  const rolesByCompany = new Map<string, { employee: Role; manager: Role }>();
+  const rolesByCompany = new Map<
+    string,
+    {
+      bankOfficer: Role;
+      teller: Role;
+      departmentHead: Role;
+      branchManager: Role;
+      executiveManager: Role;
+    }
+  >();
   for (const c of COMPANIES) {
-    const employee = await upsertClientRole(
+    const bankOfficer = await upsertClientRole(
       c.slug,
-      'موظف',
-      'Employee',
+      'موظف مصرفي',
+      'Bank Officer',
       'P3',
-      employeePerms,
+      basicClientPerms,
       [
         {
-          productEn: 'Arabic Coffee',
+          productEn: 'Black Coffee',
           periodType: QuotaPeriodType.DAILY,
           maxQuantity: 3,
         },
         {
-          productEn: 'Mineral Water',
+          productEn: 'Water',
           periodType: QuotaPeriodType.DAILY,
           maxQuantity: 4,
         },
         {
-          productEn: 'Grilled Chicken Sandwich',
+          productEn: 'Cappuccino',
           periodType: QuotaPeriodType.WEEKLY,
           maxQuantity: 3,
         },
       ],
     );
-    const manager = await upsertClientRole(
+    const teller = await upsertClientRole(
       c.slug,
-      'مدير قسم',
-      'Department Manager',
-      'P2',
-      managerPerms,
+      'صراف',
+      'Teller',
+      'P3',
+      basicClientPerms,
       [
         {
-          productEn: 'Arabic Coffee',
+          productEn: 'Black Coffee',
+          periodType: QuotaPeriodType.DAILY,
+          maxQuantity: 3,
+        },
+        {
+          productEn: 'Water',
           periodType: QuotaPeriodType.DAILY,
           maxQuantity: 5,
         },
         {
-          productEn: 'Fresh Orange Juice',
-          periodType: QuotaPeriodType.DAILY,
-          maxQuantity: 2,
-        },
-        {
-          productEn: 'Caesar Salad',
+          productEn: 'Coffee',
           periodType: QuotaPeriodType.WEEKLY,
           maxQuantity: 4,
         },
       ],
     );
-    rolesByCompany.set(c.slug, { employee, manager });
+    const departmentHead = await upsertClientRole(
+      c.slug,
+      'رئيس قسم',
+      'Department Head',
+      'P2',
+      meetingPerms,
+      [
+        {
+          productEn: 'Black Coffee',
+          periodType: QuotaPeriodType.DAILY,
+          maxQuantity: 5,
+        },
+        {
+          productEn: 'Nescafé',
+          periodType: QuotaPeriodType.DAILY,
+          maxQuantity: 2,
+        },
+        {
+          productEn: 'Green Tea',
+          periodType: QuotaPeriodType.WEEKLY,
+          maxQuantity: 4,
+        },
+      ],
+    );
+    const branchManager = await upsertClientRole(
+      c.slug,
+      'مدير فرع',
+      'Branch Manager',
+      'P2',
+      approverPerms,
+      [
+        {
+          productEn: 'Black Coffee',
+          periodType: QuotaPeriodType.DAILY,
+          maxQuantity: 6,
+        },
+        {
+          productEn: 'Nescafé',
+          periodType: QuotaPeriodType.DAILY,
+          maxQuantity: 3,
+        },
+        {
+          productEn: 'Cappuccino',
+          periodType: QuotaPeriodType.WEEKLY,
+          maxQuantity: 5,
+        },
+      ],
+    );
+    const executiveManager = await upsertClientRole(
+      c.slug,
+      'مدير إدارة',
+      'Executive Manager',
+      'P1',
+      approverPerms,
+      [
+        {
+          productEn: 'Black Coffee',
+          periodType: QuotaPeriodType.DAILY,
+          maxQuantity: 8,
+        },
+        {
+          productEn: 'Nescafé',
+          periodType: QuotaPeriodType.DAILY,
+          maxQuantity: 4,
+        },
+        {
+          productEn: 'Green Tea',
+          periodType: QuotaPeriodType.WEEKLY,
+          maxQuantity: 6,
+        },
+      ],
+    );
+    rolesByCompany.set(c.slug, {
+      bankOfficer,
+      teller,
+      departmentHead,
+      branchManager,
+      executiveManager,
+    });
   }
 
   async function findTarhibRole(nameEn: string): Promise<Role | null> {
     return roleRepo.findOne({ where: { nameEn, scope: RoleScope.TARHIB } });
   }
+
+  async function upsertTarhibRole(
+    nameAr: string,
+    nameEn: string,
+    slaPriority: string,
+    permissionKeys: string[],
+  ): Promise<Role> {
+    const permissions = allPermissions.filter((p) =>
+      permissionKeys.includes(p.key),
+    );
+    let role = await roleRepo.findOne({
+      where: { nameEn, scope: RoleScope.TARHIB },
+      relations: ['permissions'],
+    });
+    if (!role) {
+      role = await roleRepo.save(
+        roleRepo.create({
+          nameAr,
+          nameEn,
+          scope: RoleScope.TARHIB,
+          slaPriority,
+          isSystem: true,
+          companyId: null,
+          permissions,
+        }),
+      );
+      logger.log(`Rôle interne créé : ${nameEn}`);
+      return role;
+    }
+
+    const currentKeys = new Set((role.permissions ?? []).map((p) => p.key));
+    const expectedKeys = new Set(permissionKeys);
+    const permissionsChanged =
+      currentKeys.size !== expectedKeys.size ||
+      [...expectedKeys].some((key) => !currentKeys.has(key));
+    if (permissionsChanged) {
+      role.permissions = permissions;
+      role.slaPriority = slaPriority;
+      await roleRepo.save(role);
+    }
+    return role;
+  }
+
+  const hospitalityManagerRole = await upsertTarhibRole(
+    'مدير الضيافة',
+    'Hospitality Manager',
+    'P2',
+    [
+      'order.queue.manage',
+      'operations.dashboard.view',
+      'operations.branch.supervise',
+      'stock.view',
+      'report.view',
+      'alert.view',
+      'profile.edit',
+    ],
+  );
+  const stockManagerRole = await upsertTarhibRole(
+    'مسؤول المخزون',
+    'Stock Manager',
+    'P2',
+    [
+      'stock.view',
+      'stock.manage',
+      'stock.transfer',
+      'inventory.manage',
+      'procurement.view',
+      'alert.view',
+      'profile.edit',
+    ],
+  );
+  const procurementManagerRole = await upsertTarhibRole(
+    'مسؤول المشتريات',
+    'Procurement Manager',
+    'P2',
+    [
+      'procurement.view',
+      'procurement.manage',
+      'procurement.validate',
+      'procurement.reject',
+      'stock.view',
+      'alert.view',
+      'profile.edit',
+    ],
+  );
 
   // ── Utilisateurs ──────────────────────────────────────────────────────────
   interface SeedUser {
@@ -727,21 +922,25 @@ async function main(): Promise<void> {
     );
   }
 
-  const amanHq = branchByKey.get('al-aman-bank|Algiers Headquarters')!;
-  const amanOran = branchByKey.get('al-aman-bank|Oran Branch')!;
-  const nourHq = branchByKey.get('al-nour-tech|Hydra Headquarters')!;
-  const aman = companyBySlug.get('al-aman-bank')!;
-  const nour = companyBySlug.get('al-nour-tech')!;
+  const oasis = companyBySlug.get('masraf-al-waha')!;
+  const oasisHq = branchByKey.get(
+    'masraf-al-waha|General Administration - Tripoli',
+  )!;
+  const hayAndalus = branchByKey.get('masraf-al-waha|Hay Al-Andalus Branch')!;
+  const zawiya = branchByKey.get('masraf-al-waha|Zawiya Branch')!;
+  const souqJumaa = branchByKey.get('masraf-al-waha|Souq Al-Jumaa Branch')!;
+  const datAlImad = branchByKey.get('masraf-al-waha|Dat Al-Imad Branch')!;
+  const zliten = branchByKey.get('masraf-al-waha|Zliten Branch')!;
   const dep = (k: string) => departmentByKey.get(k)!;
 
   // Internes : dispatchés en mission sur les sites clients (فرع, pas de قسم)
   await upsertUser({
     email: 'superadmin@tarhib.app',
-    phone: '+213550100001',
-    firstNameAr: 'سفيان',
-    lastNameAr: 'بن عمر',
-    firstNameEn: 'Sofiane',
-    lastNameEn: 'Benamar',
+    phone: '+218910100001',
+    firstNameAr: 'سامي',
+    lastNameAr: 'الورفلي',
+    firstNameEn: 'Sami',
+    lastNameEn: 'Al-Werfalli',
     scope: EmployeeScope.TARHIB,
     role: superadminRole,
     companyId: null,
@@ -749,110 +948,194 @@ async function main(): Promise<void> {
     departmentId: null,
   });
   await upsertUser({
-    email: 'manager@tarhib.app',
-    phone: '+213550100002',
-    firstNameAr: 'رياض',
-    lastNameAr: 'حداد',
-    firstNameEn: 'Riad',
-    lastNameEn: 'Haddad',
+    email: 'admin@tarhib.app',
+    phone: '+218910100002',
+    firstNameAr: 'نادية',
+    lastNameAr: 'الطرابلسي',
+    firstNameEn: 'Nadia',
+    lastNameEn: 'Al-Trabulsi',
     scope: EmployeeScope.TARHIB,
-    role: await findTarhibRole('Directeur de branche'),
-    companyId: aman.id,
-    branchId: amanHq.id,
+    role: await findTarhibRole('Branch Manager'),
+    companyId: oasis.id,
+    branchId: oasisHq.id,
+    departmentId: null,
+  });
+  await upsertUser({
+    email: 'manager@tarhib.app',
+    phone: '+218910100003',
+    firstNameAr: 'محمود',
+    lastNameAr: 'السنوسي',
+    firstNameEn: 'Mahmoud',
+    lastNameEn: 'Al-Senussi',
+    scope: EmployeeScope.TARHIB,
+    role: hospitalityManagerRole,
+    companyId: oasis.id,
+    branchId: oasisHq.id,
     departmentId: null,
   });
   await upsertUser({
     email: 'chef@tarhib.app',
-    phone: '+213550100003',
-    firstNameAr: 'كمال',
-    lastNameAr: 'بوعزيز',
-    firstNameEn: 'Kamel',
-    lastNameEn: 'Bouaziz',
+    phone: '+218910100004',
+    firstNameAr: 'خالد',
+    lastNameAr: 'الغرياني',
+    firstNameEn: 'Khaled',
+    lastNameEn: 'Al-Gharyani',
     scope: EmployeeScope.TARHIB,
-    role: await findTarhibRole('Cuisinier'),
-    companyId: aman.id,
-    branchId: amanHq.id,
+    role: await findTarhibRole('Cook'),
+    companyId: oasis.id,
+    branchId: oasisHq.id,
     departmentId: null,
   });
   await upsertUser({
     email: 'livreur@tarhib.app',
-    phone: '+213550100004',
-    firstNameAr: 'نبيل',
-    lastNameAr: 'مرابط',
-    firstNameEn: 'Nabil',
-    lastNameEn: 'Merabet',
+    phone: '+218910100005',
+    firstNameAr: 'أيمن',
+    lastNameAr: 'المصراتي',
+    firstNameEn: 'Ayman',
+    lastNameEn: 'Al-Misrati',
     scope: EmployeeScope.TARHIB,
-    role: await findTarhibRole('Livreur'),
-    companyId: aman.id,
-    branchId: amanHq.id,
+    role: await findTarhibRole('Delivery Agent'),
+    companyId: oasis.id,
+    branchId: hayAndalus.id,
+    departmentId: null,
+  });
+  await upsertUser({
+    email: 'stock@tarhib.app',
+    phone: '+218910100006',
+    firstNameAr: 'فتحي',
+    lastNameAr: 'بن عمران',
+    firstNameEn: 'Fathi',
+    lastNameEn: 'Ben Omran',
+    scope: EmployeeScope.TARHIB,
+    role: stockManagerRole,
+    companyId: oasis.id,
+    branchId: oasisHq.id,
+    departmentId: null,
+  });
+  await upsertUser({
+    email: 'achats@tarhib.app',
+    phone: '+218910100007',
+    firstNameAr: 'ريم',
+    lastNameAr: 'الدرسي',
+    firstNameEn: 'Reem',
+    lastNameEn: 'Al-Dersi',
+    scope: EmployeeScope.TARHIB,
+    role: procurementManagerRole,
+    companyId: oasis.id,
+    branchId: oasisHq.id,
     departmentId: null,
   });
   await upsertUser({
     email: 'superviseur@tarhib.app',
-    phone: '+213550100005',
+    phone: '+218910100008',
     firstNameAr: 'ليلى',
-    lastNameAr: 'شريف',
+    lastNameAr: 'الشريف',
     firstNameEn: 'Leila',
-    lastNameEn: 'Cherif',
+    lastNameEn: 'Al-Sharif',
     scope: EmployeeScope.TARHIB,
-    role: await findTarhibRole('Superviseur'),
-    companyId: nour.id,
-    branchId: nourHq.id,
+    role: await findTarhibRole('Supervisor'),
+    companyId: oasis.id,
+    branchId: datAlImad.id,
     departmentId: null,
   });
 
   // Externes : employés des sociétés clientes (app mobile uniquement)
   await upsertUser({
-    email: 'amina.benali@al-aman-bank.dz',
-    phone: '+213550200001',
-    firstNameAr: 'أمينة',
-    lastNameAr: 'بن علي',
-    firstNameEn: 'Amina',
-    lastNameEn: 'Benali',
+    email: 'salma.alfaitouri@alwaha-bank.ly',
+    phone: '+218920200001',
+    firstNameAr: 'سلمى',
+    lastNameAr: 'الفيتوري',
+    firstNameEn: 'Salma',
+    lastNameEn: 'Al-Faitouri',
     scope: EmployeeScope.CLIENT,
-    role: rolesByCompany.get('al-aman-bank')!.employee,
-    companyId: aman.id,
-    branchId: amanHq.id,
-    departmentId: dep('al-aman-bank|Algiers Headquarters|Human Resources').id,
+    role: rolesByCompany.get('masraf-al-waha')!.executiveManager,
+    companyId: oasis.id,
+    branchId: oasisHq.id,
+    departmentId: dep(
+      'masraf-al-waha|General Administration - Tripoli|Administrative Affairs and Facilities',
+    ).id,
   });
   await upsertUser({
-    email: 'khaled.mansouri@al-aman-bank.dz',
-    phone: '+213550200002',
-    firstNameAr: 'خالد',
-    lastNameAr: 'منصوري',
-    firstNameEn: 'Khaled',
-    lastNameEn: 'Mansouri',
+    email: 'omar.alhouni@alwaha-bank.ly',
+    phone: '+218920200002',
+    firstNameAr: 'عمر',
+    lastNameAr: 'الهوني',
+    firstNameEn: 'Omar',
+    lastNameEn: 'Al-Houni',
     scope: EmployeeScope.CLIENT,
-    role: rolesByCompany.get('al-aman-bank')!.manager,
-    companyId: aman.id,
-    branchId: amanHq.id,
-    departmentId: dep('al-aman-bank|Algiers Headquarters|Finance').id,
+    role: rolesByCompany.get('masraf-al-waha')!.departmentHead,
+    companyId: oasis.id,
+    branchId: oasisHq.id,
+    departmentId: dep(
+      'masraf-al-waha|General Administration - Tripoli|Information Technology',
+    ).id,
   });
   await upsertUser({
-    email: 'said.belkacem@al-aman-bank.dz',
-    phone: '+213550200003',
-    firstNameAr: 'سعيد',
-    lastNameAr: 'بلقاسم',
-    firstNameEn: 'Said',
-    lastNameEn: 'Belkacem',
-    scope: EmployeeScope.CLIENT,
-    role: rolesByCompany.get('al-aman-bank')!.employee,
-    companyId: aman.id,
-    branchId: amanOran.id,
-    departmentId: dep('al-aman-bank|Oran Branch|Customer Service').id,
-  });
-  await upsertUser({
-    email: 'yousef.taleb@al-nour-tech.dz',
-    phone: '+213550200004',
+    email: 'youssef.aburas@alwaha-bank.ly',
+    phone: '+218920200003',
     firstNameAr: 'يوسف',
-    lastNameAr: 'طالب',
-    firstNameEn: 'Yousef',
-    lastNameEn: 'Taleb',
+    lastNameAr: 'أبوراس',
+    firstNameEn: 'Youssef',
+    lastNameEn: 'Aburas',
     scope: EmployeeScope.CLIENT,
-    role: rolesByCompany.get('al-nour-tech')!.employee,
-    companyId: nour.id,
-    branchId: nourHq.id,
-    departmentId: dep('al-nour-tech|Hydra Headquarters|Engineering').id,
+    role: rolesByCompany.get('masraf-al-waha')!.branchManager,
+    companyId: oasis.id,
+    branchId: hayAndalus.id,
+    departmentId: dep('masraf-al-waha|Hay Al-Andalus Branch|Banking Operations')
+      .id,
+  });
+  await upsertUser({
+    email: 'fatima.alzawi@alwaha-bank.ly',
+    phone: '+218920200004',
+    firstNameAr: 'فاطمة',
+    lastNameAr: 'الزاوي',
+    firstNameEn: 'Fatima',
+    lastNameEn: 'Al-Zawi',
+    scope: EmployeeScope.CLIENT,
+    role: rolesByCompany.get('masraf-al-waha')!.teller,
+    companyId: oasis.id,
+    branchId: zawiya.id,
+    departmentId: dep('masraf-al-waha|Zawiya Branch|Customer Service').id,
+  });
+  await upsertUser({
+    email: 'mohamed.bensalem@alwaha-bank.ly',
+    phone: '+218920200005',
+    firstNameAr: 'محمد',
+    lastNameAr: 'بن سالم',
+    firstNameEn: 'Mohamed',
+    lastNameEn: 'Ben Salem',
+    scope: EmployeeScope.CLIENT,
+    role: rolesByCompany.get('masraf-al-waha')!.bankOfficer,
+    companyId: oasis.id,
+    branchId: souqJumaa.id,
+    departmentId: dep('masraf-al-waha|Souq Al-Jumaa Branch|Current Accounts')
+      .id,
+  });
+  await upsertUser({
+    email: 'hanan.alobeidi@alwaha-bank.ly',
+    phone: '+218920200006',
+    firstNameAr: 'حنان',
+    lastNameAr: 'العبيدي',
+    firstNameEn: 'Hanan',
+    lastNameEn: 'Al-Obeidi',
+    scope: EmployeeScope.CLIENT,
+    role: rolesByCompany.get('masraf-al-waha')!.departmentHead,
+    companyId: oasis.id,
+    branchId: datAlImad.id,
+    departmentId: dep('masraf-al-waha|Dat Al-Imad Branch|Premium Banking').id,
+  });
+  await upsertUser({
+    email: 'abdullah.alzliteny@alwaha-bank.ly',
+    phone: '+218920200007',
+    firstNameAr: 'عبدالله',
+    lastNameAr: 'الزليتني',
+    firstNameEn: 'Abdullah',
+    lastNameEn: 'Al-Zliteny',
+    scope: EmployeeScope.CLIENT,
+    role: rolesByCompany.get('masraf-al-waha')!.bankOfficer,
+    companyId: oasis.id,
+    branchId: zliten.id,
+    departmentId: dep('masraf-al-waha|Zliten Branch|Transfers').id,
   });
 
   // ── Commandes de démonstration (pour visualiser le rendu des rapports) ────
@@ -863,10 +1146,13 @@ async function main(): Promise<void> {
     const ordersService = app.get(OrdersService);
 
     const demoEmployees = [
-      { email: 'amina.benali@al-aman-bank.dz', slaPriority: 'P3' },
-      { email: 'khaled.mansouri@al-aman-bank.dz', slaPriority: 'P2' },
-      { email: 'said.belkacem@al-aman-bank.dz', slaPriority: 'P3' },
-      { email: 'yousef.taleb@al-nour-tech.dz', slaPriority: 'P3' },
+      { email: 'salma.alfaitouri@alwaha-bank.ly' },
+      { email: 'omar.alhouni@alwaha-bank.ly' },
+      { email: 'youssef.aburas@alwaha-bank.ly' },
+      { email: 'fatima.alzawi@alwaha-bank.ly' },
+      { email: 'mohamed.bensalem@alwaha-bank.ly' },
+      { email: 'hanan.alobeidi@alwaha-bank.ly' },
+      { email: 'abdullah.alzliteny@alwaha-bank.ly' },
     ];
     const employeeRecords = new Map<string, Employee>();
     for (const e of demoEmployees) {
@@ -882,17 +1168,12 @@ async function main(): Promise<void> {
 
     // Produits sans quota configuré (jamais de rejet de ligne) pour le gros
     // du volume ; quelques produits à quota pour varier le "top produits".
-    const safeProducts = [
-      'Espresso',
-      'Cappuccino',
-      'Mint Green Tea',
-      'Butter Croissant',
-    ];
+    const safeProducts = ['Black Tea', 'Cappuccino', 'Green Tea', 'Coffee'];
     const varietyProducts = [
-      'Arabic Coffee',
-      'Fresh Orange Juice',
-      'Caesar Salad',
-      'Grilled Chicken Sandwich',
+      'Black Coffee',
+      'Nescafé',
+      'Green Tea',
+      'Cappuccino',
     ];
 
     type FinalState =
@@ -943,8 +1224,6 @@ async function main(): Promise<void> {
         permissions: [],
         companyId: emp.companyId!,
         branchId: emp.branchId!,
-        slaPriority: demoEmployees.find((d) => d.email === item.email)!
-          .slaPriority,
       };
 
       let orderId: string | null = null;
@@ -1032,7 +1311,7 @@ async function main(): Promise<void> {
     const procurementService = app.get(ProcurementService);
     const supplierRecords = await supplierRepo.find();
     const managerRec = await employeeRepo.findOne({
-      where: { email: 'khaled.mansouri@al-aman-bank.dz' },
+      where: { email: 'achats@tarhib.app' },
     });
 
     if (supplierRecords.length && managerRec?.keycloakId) {
@@ -1047,7 +1326,7 @@ async function main(): Promise<void> {
         {
           daysAgo: 14,
           supplierIdx: 0,
-          productEn: 'Arabic Coffee',
+          productEn: 'Black Coffee',
           qty: 20,
           unitCost: 75,
           status: PurchaseOrderStatus.RECEIVED,
@@ -1055,7 +1334,7 @@ async function main(): Promise<void> {
         {
           daysAgo: 12,
           supplierIdx: 1,
-          productEn: 'Mineral Water',
+          productEn: 'Water',
           qty: 100,
           unitCost: 28,
           status: PurchaseOrderStatus.RECEIVED,
@@ -1063,7 +1342,7 @@ async function main(): Promise<void> {
         {
           daysAgo: 9,
           supplierIdx: 2,
-          productEn: 'Butter Croissant',
+          productEn: 'Coffee',
           qty: 40,
           unitCost: 85,
           status: PurchaseOrderStatus.RECEIVED,
@@ -1071,7 +1350,7 @@ async function main(): Promise<void> {
         {
           daysAgo: 6,
           supplierIdx: 0,
-          productEn: 'Espresso',
+          productEn: 'Black Tea',
           qty: 30,
           unitCost: 95,
           status: PurchaseOrderStatus.SENT,
@@ -1079,7 +1358,7 @@ async function main(): Promise<void> {
         {
           daysAgo: 4,
           supplierIdx: 1,
-          productEn: 'Fresh Orange Juice',
+          productEn: 'Nescafé',
           qty: 25,
           unitCost: 140,
           status: PurchaseOrderStatus.SENT,
@@ -1103,8 +1382,8 @@ async function main(): Promise<void> {
 
         const dto = await procurementService.create(
           {
-            companyId: aman.id,
-            branchId: amanHq.id,
+            companyId: oasis.id,
+            branchId: oasisHq.id,
             supplierId: supplier.id,
             lines: [
               {

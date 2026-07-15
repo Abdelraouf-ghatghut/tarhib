@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { EmployeeRole } from '../employees/dto/employee.dto';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { TokenResponseDto } from './dto/token-response.dto';
+import { OtpAppMode, OtpChannel } from './dto/otp-request.dto';
 
 const MOCK_PAYLOAD: JwtPayload = {
   sub: 'uuid-agent',
@@ -94,8 +95,16 @@ describe('AuthController', () => {
   });
 
   it('requestOtp delegates to OtpService', async () => {
-    await controller.requestOtp({ phoneNumber: '+213555000000' });
-    expect(mockOtpService.requestOtp).toHaveBeenCalledWith('+213555000000');
+    await controller.requestOtp({
+      phoneNumber: '+213555000000',
+      channel: OtpChannel.SMS,
+      appMode: OtpAppMode.EMPLOYEE,
+    });
+    expect(mockOtpService.requestOtp).toHaveBeenCalledWith(
+      '+213555000000',
+      OtpChannel.SMS,
+      OtpAppMode.EMPLOYEE,
+    );
   });
 
   it('refresh accepts the token from the body (mobile) and rotates the cookie', async () => {

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -83,6 +84,24 @@ export class CreateRoleDto {
   @ValidateNested({ each: true })
   @Type(() => RoleQuotaInputDto)
   quotas?: RoleQuotaInputDto[];
+
+  @ApiPropertyOptional({
+    default: true,
+    description:
+      'CLIENT uniquement : true = toutes les salles de la société, false = seulement roomIds.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allRoomsAllowed?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Salles autorisées quand allRoomsAllowed = false.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  roomIds?: string[];
 }
 
 export class UpdateRoleDto {
@@ -121,6 +140,24 @@ export class UpdateRoleDto {
   @ValidateNested({ each: true })
   @Type(() => RoleQuotaInputDto)
   quotas?: RoleQuotaInputDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'CLIENT uniquement : true = toutes les salles de la société, false = seulement roomIds.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allRoomsAllowed?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Remplace intégralement les salles autorisées (allRoomsAllowed = false).',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  roomIds?: string[];
 }
 
 export class RoleQuotaDto {
@@ -161,6 +198,14 @@ export class RoleDto {
 
   @ApiProperty()
   quotasEnabled!: boolean;
+
+  @ApiProperty({
+    description: 'true = toutes les salles ; false = seulement roomIds',
+  })
+  allRoomsAllowed!: boolean;
+
+  @ApiProperty({ type: [String] })
+  roomIds!: string[];
 
   @ApiProperty({ type: [String] })
   permissions!: string[];

@@ -41,7 +41,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return DateFormat.yMd().add_Hm().format(dt.toLocal());
   }
 
-  Future<void> _quickReorder(BuildContext context, dynamic order) async {
+  Future<void> _quickReorder(dynamic order) async {
     final l = AppLocalizations.of(context)!;
     final cache = ref.read(productNameCacheProvider).value ?? {};
 
@@ -257,7 +257,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                   icon: const Icon(Icons.replay_rounded, size: 18),
                                   color: Theme.of(context).colorScheme.primary,
                                   tooltip: l.quickReorder,
-                                  onPressed: () => _quickReorder(context, o),
+                                  onPressed: () => _quickReorder(o),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 )

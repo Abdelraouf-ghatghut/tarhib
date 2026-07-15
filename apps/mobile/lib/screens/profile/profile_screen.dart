@@ -26,7 +26,8 @@ class ProfileScreen extends ConsumerWidget {
     final auth = ref.watch(authProvider);
 
     final ordersCount = ref.watch(ordersProvider).value?.length;
-    final bookingsCount = ref.watch(myBookingsCountProvider).value;
+    final bookingsCount =
+        auth.canBookMeeting ? ref.watch(myBookingsCountProvider).value : null;
     final quotasCount = ref.watch(quotasProvider).value?.length;
 
     final initials = (auth.email ?? 'U')
@@ -68,7 +69,7 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    auth.email ?? '—',
+                    auth.email ?? '-',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 16,
@@ -93,27 +94,29 @@ class ProfileScreen extends ConsumerWidget {
                 Expanded(
                   child: KpiCard(
                     icon: Icons.receipt_long_rounded,
-                    value: '${ordersCount ?? '—'}',
+                    value: '${ordersCount ?? '-'}',
                     label: l.myOrders,
                     accent: SnowColors.primary,
                     accentSoft: SnowColors.primarySoft,
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: KpiCard(
-                    icon: Icons.meeting_room_rounded,
-                    value: '${bookingsCount ?? '—'}',
-                    label: l.myBookings,
-                    accent: SnowColors.info,
-                    accentSoft: SnowColors.infoSoft,
+                if (auth.canBookMeeting) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: KpiCard(
+                      icon: Icons.meeting_room_rounded,
+                      value: '${bookingsCount ?? '-'}',
+                      label: l.myBookings,
+                      accent: SnowColors.info,
+                      accentSoft: SnowColors.infoSoft,
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(width: 10),
                 Expanded(
                   child: KpiCard(
                     icon: Icons.pie_chart_rounded,
-                    value: '${quotasCount ?? '—'}',
+                    value: '${quotasCount ?? '-'}',
                     label: l.quotasTracked,
                     accent: SnowColors.successStrong,
                     accentSoft: SnowColors.successSoft,
@@ -181,7 +184,7 @@ class ProfileScreen extends ConsumerWidget {
             Text(l.personalInfo,
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
             const SizedBox(height: 16),
-            _InfoLine(icon: Icons.email_outlined, label: l.email, value: email ?? '—'),
+            _InfoLine(icon: Icons.email_outlined, label: l.email, value: email ?? '-'),
             const SizedBox(height: 12),
             _InfoLine(
                 icon: Icons.badge_outlined,

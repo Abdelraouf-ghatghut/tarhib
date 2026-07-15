@@ -18,7 +18,6 @@ class ErrorCard extends StatelessWidget {
   final EdgeInsetsGeometry? margin;
 
   String _message(BuildContext context) {
-    final l = AppLocalizations.of(context)!;
     if (error is DioException) {
       final dioErr = error as DioException;
       switch (dioErr.type) {

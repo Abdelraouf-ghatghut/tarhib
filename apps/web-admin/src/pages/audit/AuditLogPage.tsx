@@ -41,6 +41,7 @@ const ENTITIES = [
   "suppliers",
   "vip-self-service",
   "meeting-rooms",
+  "meeting-service-packages",
   "quotas",
   "sla-levels",
   "roles",

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity.js';
+import { ProductFavorite } from './entities/product-favorite.entity.js';
 import {
   CreateProductDto,
   ProductAdminDto,
@@ -19,6 +20,8 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly repo: Repository<Product>,
+    @InjectRepository(ProductFavorite)
+    private readonly favoritesRepo: Repository<ProductFavorite>,
     @InjectRepository(InventoryItem)
     private readonly inventoryRepo: Repository<InventoryItem>,
   ) {}
@@ -31,6 +34,7 @@ export class ProductsService {
       category: dto.category,
       type: dto.type,
       allowedRoles: dto.allowedRoles ?? null,
+      allowedBranches: dto.allowedBranches ?? null,
       imageUrl: dto.imageUrl ?? null,
       unitCost: dto.unitCost ?? null,
     });
@@ -46,6 +50,7 @@ export class ProductsService {
   async findAll(
     callerRole?: string,
     callerRoleId?: string,
+    callerBranchId?: string,
   ): Promise<ProductDto[]> {
     const isAdmin = callerRole === 'ADMIN';
     const qb = this.repo
@@ -59,27 +64,82 @@ export class ProductsService {
 
     const entities = await qb.getMany();
 
+    if (isAdmin) return entities.map((e) => this.toDto(e));
+
     // Filter by allowedRoles if the product has role restrictions.
     // allowedRoles contient désormais des roleId (UUID) — le nom de rôle
     // legacy reste accepté pour la compatibilité des anciens produits.
-    if (!isAdmin && (callerRole || callerRoleId)) {
-      return entities
+    return (
+      entities
         .filter(
           (e) =>
             !e.allowedRoles ||
             (callerRole && e.allowedRoles.includes(callerRole)) ||
             (callerRoleId && e.allowedRoles.includes(callerRoleId)),
         )
-        .map((e) => this.toDto(e));
-    }
-
-    return entities.map((e) => this.toDto(e));
+        // Filter by allowedBranches si le produit est restreint à certaines
+        // branches — null/vide = commandable partout (même convention).
+        .filter(
+          (e) =>
+            !e.allowedBranches ||
+            e.allowedBranches.length === 0 ||
+            (callerBranchId && e.allowedBranches.includes(callerBranchId)),
+        )
+        .map((e) => this.toDto(e))
+    );
   }
 
   async findOne(id: string): Promise<ProductDto> {
     const entity = await this.repo.findOne({ where: { id } });
     if (!entity) throw new NotFoundException(`Product ${id} not found`);
     return this.toDto(entity);
+  }
+
+  async findFavoriteIds(employeeId: string): Promise<string[]> {
+    const favorites = await this.favoritesRepo.find({
+      select: { productId: true },
+      where: { employeeId },
+      order: { createdAt: 'DESC' },
+    });
+    return favorites.map((favorite) => favorite.productId);
+  }
+
+  async findFavorites(
+    employeeId: string,
+    callerRole?: string,
+    callerRoleId?: string,
+    callerBranchId?: string,
+  ): Promise<ProductDto[]> {
+    const favoriteIds = await this.findFavoriteIds(employeeId);
+    if (favoriteIds.length === 0) return [];
+    const products = await this.findAll(
+      callerRole,
+      callerRoleId,
+      callerBranchId,
+    );
+    const favoriteSet = new Set(favoriteIds);
+    return products.filter((product) => favoriteSet.has(product.id));
+  }
+
+  async addFavorite(employeeId: string, productId: string): Promise<string[]> {
+    const product = await this.repo.findOne({
+      where: { id: productId, active: true },
+    });
+    if (!product) throw new NotFoundException(`Product ${productId} not found`);
+
+    await this.favoritesRepo.upsert({ employeeId, productId }, [
+      'employeeId',
+      'productId',
+    ]);
+    return this.findFavoriteIds(employeeId);
+  }
+
+  async removeFavorite(
+    employeeId: string,
+    productId: string,
+  ): Promise<string[]> {
+    await this.favoritesRepo.delete({ employeeId, productId });
+    return this.findFavoriteIds(employeeId);
   }
 
   async update(
@@ -95,6 +155,8 @@ export class ProductsService {
     if (dto.type !== undefined) entity.type = dto.type;
     if (dto.allowedRoles !== undefined)
       entity.allowedRoles = dto.allowedRoles ?? null;
+    if (dto.allowedBranches !== undefined)
+      entity.allowedBranches = dto.allowedBranches ?? null;
     if (dto.imageUrl !== undefined) entity.imageUrl = dto.imageUrl ?? null;
     if (dto.unitCost !== undefined) entity.unitCost = dto.unitCost ?? null;
     const saved = await this.repo.save(entity);
@@ -161,6 +223,7 @@ export class ProductsService {
     dto.category = e.category;
     dto.type = e.type;
     dto.allowedRoles = e.allowedRoles ?? undefined;
+    dto.allowedBranches = e.allowedBranches ?? undefined;
     dto.active = e.active;
     // unitCost délibérément omis — jamais exposé dans le catalogue employé
     return dto;
@@ -174,6 +237,7 @@ export class ProductsService {
     dto.category = e.category;
     dto.type = e.type;
     dto.allowedRoles = e.allowedRoles ?? undefined;
+    dto.allowedBranches = e.allowedBranches ?? undefined;
     dto.active = e.active;
     dto.unitCost = e.unitCost ? Number(e.unitCost) : null;
     return dto;

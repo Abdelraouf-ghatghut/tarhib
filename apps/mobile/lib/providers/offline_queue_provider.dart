@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart' hide JsonKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_client.dart';
@@ -46,23 +45,17 @@ final offlineAgentQueueProvider =
       // Mettre à jour le cache Drift (upsert)
       await db.upsertOrders(
         orders.map((o) {
-          return CachedOrdersCompanion(
-            id: Value(o['id']?.toString() ?? ''),
-            status: Value(o['status']?.toString() ?? ''),
-            priority: Value(o['priority']?.toString() ?? ''),
-            branchId: Value(
-              (o['employee'] as Map?)?['branchId']?.toString() ??
-                  o['branchId']?.toString(),
-            ),
-            companyId: Value(
-              (o['employee'] as Map?)?['companyId']?.toString() ??
-                  o['companyId']?.toString(),
-            ),
-            rawJson: Value(jsonEncode(o)),
-            createdAt: Value(
-              DateTime.tryParse(o['createdAt']?.toString() ?? '') ??
-                  DateTime.now(),
-            ),
+          return CachedOrder(
+            id: o['id']?.toString() ?? '',
+            status: o['status']?.toString() ?? '',
+            priority: o['priority']?.toString() ?? '',
+            branchId: (o['employee'] as Map?)?['branchId']?.toString() ??
+                o['branchId']?.toString(),
+            companyId: (o['employee'] as Map?)?['companyId']?.toString() ??
+                o['companyId']?.toString(),
+            rawJson: jsonEncode(o),
+            createdAt: DateTime.tryParse(o['createdAt']?.toString() ?? '') ??
+                DateTime.now(),
           );
         }).toList(),
       );

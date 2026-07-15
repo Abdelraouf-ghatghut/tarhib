@@ -13,13 +13,15 @@ import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { KeycloakService } from './keycloak/keycloak.service';
 import { OtpService } from './otp/otp.service';
-import { SmsService } from './sms/sms.service';
+import { OtpDeliveryService } from './sms/sms.service';
 import { EmailService } from './email/email.service';
+import { AccessModule } from '../access/access.module';
 
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     HttpModule,
+    AccessModule,
     TypeOrmModule.forFeature([Employee, Company, Role]),
   ],
   providers: [
@@ -30,7 +32,7 @@ import { EmailService } from './email/email.service';
     PermissionsGuard,
     KeycloakService,
     OtpService,
-    SmsService,
+    OtpDeliveryService,
     EmailService,
   ],
   controllers: [AuthController],

@@ -52,6 +52,17 @@ export class ProductDto {
   @IsOptional()
   allowedRoles?: string[];
 
+  @ApiProperty({
+    type: [String],
+    required: false,
+    description:
+      'UUID des branches où ce produit est commandable — vide/absent = aucune restriction (commandable partout)',
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  allowedBranches?: string[];
+
   @ApiProperty({ example: true })
   @IsBoolean()
   active!: boolean;
@@ -88,6 +99,17 @@ export class CreateProductDto {
   @IsString({ each: true })
   @IsOptional()
   allowedRoles?: string[];
+
+  @ApiProperty({
+    type: [String],
+    required: false,
+    description:
+      'UUID des branches où ce produit est commandable — vide/absent = aucune restriction (commandable partout)',
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  allowedBranches?: string[];
 
   @ApiProperty({
     required: false,

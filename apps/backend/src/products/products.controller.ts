@@ -55,7 +55,7 @@ export class ProductsController {
   })
   @ApiResponse({ status: 200, type: [ProductDto] })
   findAll(@CurrentUser() user: JwtPayload): Promise<ProductDto[]> {
-    return this.productsService.findAll(user.role, user.roleId);
+    return this.productsService.findAll(user.role, user.roleId, user.branchId);
   }
 
   @Get('availability')
@@ -68,6 +68,32 @@ export class ProductsController {
     @CurrentUser() user: JwtPayload,
   ): Promise<ProductAvailabilityDto[]> {
     return this.productsService.findAvailability(user.companyId, user.branchId);
+  }
+
+  @Get('favorites/ids')
+  @ApiOperation({
+    summary: 'Lister les IDs produits favoris de l employe connecte',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { type: 'array', items: { type: 'string' } },
+  })
+  findFavoriteIds(@CurrentUser() user: JwtPayload): Promise<string[]> {
+    return this.productsService.findFavoriteIds(user.employeeId ?? user.sub);
+  }
+
+  @Get('favorites')
+  @ApiOperation({
+    summary: 'Lister les produits favoris de l employe connecte',
+  })
+  @ApiResponse({ status: 200, type: [ProductDto] })
+  findFavorites(@CurrentUser() user: JwtPayload): Promise<ProductDto[]> {
+    return this.productsService.findFavorites(
+      user.employeeId ?? user.sub,
+      user.role,
+      user.roleId,
+      user.branchId,
+    );
   }
 
   @Get(':id')
@@ -92,5 +118,33 @@ export class ProductsController {
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string): Promise<void> {
     return this.productsService.remove(id);
+  }
+
+  @Post(':id/favorite')
+  @ApiOperation({ summary: 'Ajouter un produit aux favoris employe' })
+  @ApiResponse({
+    status: 200,
+    schema: { type: 'array', items: { type: 'string' } },
+  })
+  addFavorite(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<string[]> {
+    // employeeId (résolu par JwtStrategy) — sub est l'ID Keycloak, la FK
+    // product_favorites.employee_id pointe sur employees.id.
+    return this.productsService.addFavorite(user.employeeId ?? user.sub, id);
+  }
+
+  @Delete(':id/favorite')
+  @ApiOperation({ summary: 'Retirer un produit des favoris employe' })
+  @ApiResponse({
+    status: 200,
+    schema: { type: 'array', items: { type: 'string' } },
+  })
+  removeFavorite(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<string[]> {
+    return this.productsService.removeFavorite(user.employeeId ?? user.sub, id);
   }
 }

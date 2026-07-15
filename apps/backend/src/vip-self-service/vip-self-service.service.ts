@@ -46,6 +46,38 @@ export class VipSelfServiceService {
     }
   }
 
+  async getLocationScope(
+    vipLocationId: string,
+  ): Promise<{ companyId: string; branchId: string }> {
+    const location = await this.locationRepo.findOne({
+      where: { id: vipLocationId },
+    });
+    if (!location)
+      throw new NotFoundException(`Lieu ${vipLocationId} introuvable`);
+    return { companyId: location.companyId, branchId: location.branchId };
+  }
+
+  async getLocationProductScope(
+    vipLocationProductId: string,
+  ): Promise<{ companyId: string; branchId: string }> {
+    const item = await this.locationProductRepo.findOne({
+      where: { id: vipLocationProductId },
+    });
+    if (!item)
+      throw new NotFoundException(
+        `Produit ${vipLocationProductId} introuvable`,
+      );
+    return this.getLocationScope(item.vipLocationId);
+  }
+
+  async getTaskScope(
+    taskId: string,
+  ): Promise<{ companyId: string; branchId: string }> {
+    const task = await this.taskRepo.findOne({ where: { id: taskId } });
+    if (!task) throw new NotFoundException(`Tâche ${taskId} introuvable`);
+    return { companyId: task.companyId, branchId: task.branchId };
+  }
+
   /**
    * Crée un lieu VIP (société + branche, optionnellement département et/ou
    * employé) avec au moins un produit initial. Plusieurs produits peuvent

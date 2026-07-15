@@ -3,6 +3,8 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
+  JoinTable,
+  ManyToMany,
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
@@ -62,6 +64,22 @@ export class Employee {
   @JoinColumn({ name: 'department_id' })
   department!: Department | null;
 
+  /**
+   * Emplacement physique dans le site d'affectation (étage + numéro de
+   * bureau) — renseigné pour les employés clients, pas de sens pour le
+   * personnel interne Tarhib en mission.
+   */
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  floor!: string | null;
+
+  @Column({
+    name: 'office_number',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  officeNumber!: string | null;
+
   @Column({ name: 'first_name_ar' })
   firstNameAr!: string;
 
@@ -92,6 +110,18 @@ export class Employee {
   @JoinColumn({ name: 'role_id' })
   dynamicRole!: Role | null;
 
+  /**
+   * Rôles additionnels pour le personnel multi-casquette. Le rôle principal
+   * reste `role_id`; ces rôles s'additionnent pour les permissions/modules.
+   */
+  @ManyToMany(() => Role, { eager: false })
+  @JoinTable({
+    name: 'employee_roles',
+    joinColumn: { name: 'employee_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'role_id', referencedColumnName: 'id' },
+  })
+  additionalRoles!: Role[];
+
   @Column({
     type: 'varchar',
     length: 20,
@@ -112,6 +142,14 @@ export class Employee {
 
   @Column({ name: 'fcm_token', type: 'text', nullable: true })
   fcmToken!: string | null;
+
+  /**
+   * Salaire — donnée sensible, personnel interne Tarhib uniquement. Jamais
+   * exposé via EmployeeDto/toDto() : seul EmployeeAdminDto/toAdminDto()
+   * (réservés au Super Admin, permission employee.salary.manage) l'incluent.
+   */
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  salary!: number | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

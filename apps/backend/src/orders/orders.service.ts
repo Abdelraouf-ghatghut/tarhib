@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { Between, FindOptionsWhere, In, Repository } from 'typeorm';
 import { Order } from './entities/order.entity.js';
 import {
   OrderLine,
@@ -16,6 +16,7 @@ import {
 import {
   CreateOrderDto,
   OrderDto,
+  OrderLineDto,
   OrderPriority,
   OrderStatus,
 } from './dto/order.dto.js';
@@ -34,26 +35,10 @@ import {
   StockZone,
 } from '../inventory/entities/inventory-item.entity.js';
 import { Quota } from '../quotas/entities/quota.entity.js';
-import { RoleQuota } from '../roles/entities/role-quota.entity.js';
+import { QuotasService } from '../quotas/quotas.service.js';
 import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
 import { PrioritySlaService } from '../priority-sla/priority-sla.service.js';
-
-function resolveOrderPriority(caller: JwtPayload): string {
-  // Use the role's sla_priority if carried in JWT (set via EnrichUserInterceptor from role.slaPriority)
-  // Any company SLA level code is accepted (defaults P1..P5 or custom codes)
-  // Fallback to legacy role string for backward compat
-  const slaPriority = caller.slaPriority;
-  if (slaPriority?.trim()) return slaPriority;
-
-  const legacyMap: Record<string, OrderPriority> = {
-    ADMIN: OrderPriority.P1,
-    DEPARTMENT_MANAGER: OrderPriority.P2,
-    INVENTORY_MANAGER: OrderPriority.P3,
-    HOSPITALITY_AGENT: OrderPriority.P3,
-    EMPLOYEE: OrderPriority.P5,
-  };
-  return legacyMap[caller.role] ?? OrderPriority.P5;
-}
+import { Role } from '../roles/entities/role.entity.js';
 
 @Injectable()
 export class OrdersService {
@@ -72,15 +57,28 @@ export class OrdersService {
     private readonly inventoryRepo: Repository<InventoryItem>,
     @InjectRepository(Quota)
     private readonly quotaRepo: Repository<Quota>,
-    @InjectRepository(RoleQuota)
-    private readonly roleQuotaRepo: Repository<RoleQuota>,
     @InjectRepository(EmployeeQuotaUsage)
     private readonly quotaUsageRepo: Repository<EmployeeQuotaUsage>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
+    private readonly quotasService: QuotasService,
     private readonly validationEngine: ValidationEngineService,
     private readonly notificationsService: NotificationsService,
     private readonly notificationsGateway: NotificationsGateway,
     private readonly prioritySla: PrioritySlaService,
   ) {}
+
+  /**
+   * Priorité SLA de la commande = niveau SLA du rôle de l'employé
+   * (roles.sla_priority, cf. §"مستويات الأولوية موجودة لكل دور" — chaque
+   * rôle porte son propre niveau P1..P5). Défaut P5 si le rôle n'a pas ce
+   * champ renseigné ou n'a pas pu être résolu.
+   */
+  private async resolveOrderPriority(caller: JwtPayload): Promise<string> {
+    if (!caller.roleId) return OrderPriority.P5;
+    const role = await this.roleRepo.findOne({ where: { id: caller.roleId } });
+    return role?.slaPriority || OrderPriority.P5;
+  }
 
   async create(dto: CreateOrderDto, caller: JwtPayload): Promise<OrderDto> {
     const productIds = dto.lines.map((l) => l.productId);
@@ -99,7 +97,10 @@ export class OrdersService {
     ]);
 
     // Quota system: prefer new role-based quotas, fallback to legacy per-employee quotas
-    const quotaSnapshots = await this.buildQuotaSnapshots(caller, productIds);
+    const quotaSnapshots = await this.quotasService.snapshotsFor(
+      caller,
+      productIds,
+    );
 
     const ctx: ValidationContext = {
       employeeId: caller.sub,
@@ -114,6 +115,7 @@ export class OrdersService {
             ? 'LIBRE_SERVICE_VIP'
             : 'COMMANDABLE',
         allowedRoles: p.allowedRoles,
+        allowedBranches: p.allowedBranches,
         active: p.active,
       })),
       stocks: stocks.map((s) => ({
@@ -126,19 +128,17 @@ export class OrdersService {
 
     const validation = this.validationEngine.validateCart(ctx, dto.lines);
 
-    if (validation.overallDecision === 'PARTIALLY_REJECTED') {
-      const rejected = validation.lines.filter(
-        (l) => l.decision === 'REJECTED',
-      );
-      if (rejected.length === dto.lines.length) {
-        throw new UnprocessableEntityException({
-          message: 'All order lines were rejected by the validation engine',
-          rejectedLines: rejected,
-        });
-      }
+    const rejectedLines = validation.lines.filter(
+      (l) => l.decision === 'REJECTED',
+    );
+    if (rejectedLines.length === dto.lines.length) {
+      throw new UnprocessableEntityException({
+        message: 'orderValidationFailed',
+        rejectedLines,
+      });
     }
 
-    const priority = resolveOrderPriority(caller);
+    const priority = await this.resolveOrderPriority(caller);
     // SLA personnalisé par entreprise (company_sla_levels), sinon défauts globaux
     const slaMinutes = await this.prioritySla.getSlaMinutes(
       caller.companyId,
@@ -146,13 +146,26 @@ export class OrdersService {
     );
     const slaDeadline = new Date(Date.now() + slaMinutes * 60_000);
 
+    // Moteur de validation (CLAUDE.md §3.3) : rejet automatique de la ligne
+    // fautive (rôle non autorisé, stock insuffisant, quota dépassé — quota
+    // vérifié uniquement s'il existe pour l'employé), jamais de blocage du
+    // panier entier pour une seule ligne en faute. La décision est
+    // entièrement automatique — aucune ligne rejetée n'attend l'arbitrage
+    // d'un Department Manager : la commande est validée immédiatement dès
+    // qu'il reste au moins une ligne valide, les lignes rejetées restent
+    // visibles avec leur motif (l'employé les retire de ses prochains
+    // paniers, cf. affichage mobile order_line_tile.dart).
+    const now = new Date();
+
     const order = this.orderRepo.create({
       employeeId: caller.sub,
       companyId: caller.companyId,
       branchId: caller.branchId,
       priority,
       slaDeadline,
-      status: OrderStatus.PENDING,
+      note: dto.note?.trim() || null,
+      status: OrderStatus.APPROVED,
+      approvedAt: now,
       lines: dto.lines.map((l) => {
         const validationLine = validation.lines.find(
           (v) => v.productId === l.productId,
@@ -194,6 +207,14 @@ export class OrdersService {
     return this.toDto(saved);
   }
 
+  /**
+   * Commandes de l'appelant uniquement — le filtre employeeId est imposé
+   * côté serveur (jamais de confiance au query param, règle §3.4 CLAUDE.md).
+   */
+  findMine(caller: JwtPayload, status?: string): Promise<OrderDto[]> {
+    return this.findAll(undefined, caller.sub, status);
+  }
+
   async findAll(
     companyId?: string,
     employeeId?: string,
@@ -211,10 +232,94 @@ export class OrdersService {
     return orders.map((o) => this.toDto(o));
   }
 
+  async dashboardStats(caller: JwtPayload): Promise<{
+    todayOrders: number;
+    pendingCount: number;
+    deliveredToday: number;
+    avgSlaMinutes: number;
+    mostOrdered: Array<{ productId: string; name: string; count: number }>;
+  }> {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
+    const where: FindOptionsWhere<Order> = {
+      createdAt: Between(start, end),
+    };
+    if (!this.isPlatformAdmin(caller)) {
+      if (caller.companyId) where.companyId = caller.companyId;
+      if (caller.branchId) where.branchId = caller.branchId;
+    }
+
+    const orders = await this.orderRepo.find({
+      where,
+      order: { createdAt: 'DESC' },
+      relations: ['lines'],
+    });
+
+    const delivered = orders.filter(
+      (order) => order.status === OrderStatus.DELIVERED,
+    );
+    const pending = orders.filter((order) =>
+      [OrderStatus.PENDING, OrderStatus.APPROVED].includes(order.status),
+    );
+
+    const deliveryDurations = delivered
+      .map((order) =>
+        order.prepStartedAt && order.deliveredAt
+          ? (order.deliveredAt.getTime() - order.prepStartedAt.getTime()) /
+            60_000
+          : null,
+      )
+      .filter(
+        (duration): duration is number =>
+          typeof duration === 'number' && Number.isFinite(duration),
+      );
+
+    const productCounts = new Map<string, number>();
+    for (const order of orders) {
+      for (const line of order.lines ?? []) {
+        productCounts.set(
+          line.productId,
+          (productCounts.get(line.productId) ?? 0) + Number(line.quantity ?? 0),
+        );
+      }
+    }
+
+    const topProductIds = [...productCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([productId]) => productId);
+
+    const products = topProductIds.length
+      ? await this.productRepo.find({ where: { id: In(topProductIds) } })
+      : [];
+    const namesById = new Map(
+      products.map((product) => [product.id, product.nameEn || product.nameAr]),
+    );
+
+    return {
+      todayOrders: orders.length,
+      pendingCount: pending.length,
+      deliveredToday: delivered.length,
+      avgSlaMinutes: deliveryDurations.length
+        ? deliveryDurations.reduce((sum, value) => sum + value, 0) /
+          deliveryDurations.length
+        : 0,
+      mostOrdered: topProductIds.map((productId) => ({
+        productId,
+        name: namesById.get(productId) ?? productId,
+        count: productCounts.get(productId) ?? 0,
+      })),
+    };
+  }
+
   async updateStatus(
     id: string,
     status: OrderStatus,
     caller: JwtPayload,
+    reason?: string,
   ): Promise<OrderDto> {
     const order = await this.orderRepo.findOne({
       where: { id },
@@ -228,11 +333,16 @@ export class OrdersService {
         `Role ${caller.role} cannot transition ${order.status} → ${status}`,
       );
     }
-    if (order.companyId !== caller.companyId) {
+    // Un admin plateforme (superadmin) n'a aucune société assignée
+    // (caller.companyId est null) : il gère toutes les sociétés et ne doit
+    // donc jamais être bloqué par la vérification multi-tenant — même règle
+    // que RolesService.findAll (cf. isTarhibAdmin).
+    if (!this.isPlatformAdmin(caller) && order.companyId !== caller.companyId) {
       throw new ForbiddenException('crossTenantAccessDenied');
     }
 
     order.status = status;
+    if (reason?.trim()) order.note = reason.trim();
     const now = new Date();
     if (status === OrderStatus.APPROVED) {
       order.approvedAt = now;
@@ -252,15 +362,28 @@ export class OrdersService {
     }
     const saved = await this.orderRepo.save(order);
 
-    // Notify employee via SMS (TARHIB-9) — fire-and-forget, don't block the response
+    // Notify employee via SMS + push FCM (TARHIB-9) — fire-and-forget,
+    // don't block the response. orders.employee_id porte l'identité Keycloak
+    // de l'appelant (cf. create), d'où la recherche keycloakId OU id.
     this.employeeRepo
-      .findOne({ where: { id: order.employeeId } })
-      .then((employee) => {
-        if (employee?.phoneNumber) {
-          return this.notificationsService.notifyOrderStatusChanged(
+      .findOne({
+        where: [{ keycloakId: order.employeeId }, { id: order.employeeId }],
+      })
+      .then(async (employee) => {
+        if (!employee) return;
+        if (employee.phoneNumber) {
+          await this.notificationsService.notifyOrderStatusChanged(
             order.id,
             status,
             employee.phoneNumber,
+          );
+        }
+        if (employee.fcmToken) {
+          await this.notificationsService.sendPush(
+            employee.fcmToken,
+            'Tarhib',
+            `Commande #${order.id.slice(0, 8)} — nouveau statut : ${status}`,
+            { orderId: order.id, type: 'order-status' },
           );
         }
       })
@@ -279,26 +402,35 @@ export class OrdersService {
     return this.toDto(saved);
   }
 
+  /**
+   * Admin plateforme Tarhib (superadmin inclus) : n'a aucune société
+   * assignée et ne doit être cantonné ni par le moteur de transitions ni
+   * par la vérification multi-tenant (même détection que allowedTransitions).
+   */
+  private isPlatformAdmin(caller: JwtPayload): boolean {
+    const perms = caller.permissions ?? [];
+    return (
+      perms.includes('company.manage') ||
+      perms.includes('employee.manage') ||
+      caller.role === 'ADMIN'
+    );
+  }
+
   private allowedTransitions(
     caller: JwtPayload,
     current: OrderStatus,
   ): OrderStatus[] {
     const perms = caller.permissions ?? [];
 
-    const canPrepare =
-      perms.includes('order.prepare') || perms.includes('order.queue.manage');
-    const canDeliver =
-      perms.includes('order.deliver') || perms.includes('order.queue.manage');
+    const canPrepare = perms.includes('order.prepare');
+    const canDeliver = perms.includes('order.deliver');
     const canApprove = perms.includes('order.approve');
-    const isAdmin =
-      perms.includes('company.manage') || perms.includes('employee.manage');
 
     // Backward compat: legacy role strings
     const legacyAgent = caller.role === 'HOSPITALITY_AGENT';
     const legacyManager = caller.role === 'DEPARTMENT_MANAGER';
-    const legacyAdmin = caller.role === 'ADMIN';
 
-    if (isAdmin || legacyAdmin) {
+    if (this.isPlatformAdmin(caller)) {
       const full: Record<OrderStatus, OrderStatus[]> = {
         [OrderStatus.PENDING]: [
           OrderStatus.APPROVED,
@@ -352,67 +484,6 @@ export class OrdersService {
     });
     if (!order) throw new NotFoundException(`Order ${id} not found`);
     return this.toDto(order);
-  }
-
-  private async buildQuotaSnapshots(
-    caller: JwtPayload,
-    productIds: string[],
-  ): Promise<
-    Array<{
-      employeeId: string;
-      productId: string;
-      maxQuantity: number;
-      usedQuantity: number;
-    }>
-  > {
-    const today = new Date().toISOString().slice(0, 10);
-
-    // New role-based quota system
-    if (caller.roleId) {
-      const [roleQuotas, usages] = await Promise.all([
-        this.roleQuotaRepo
-          .createQueryBuilder('rq')
-          .where('rq.role_id = :roleId', { roleId: caller.roleId })
-          .andWhere('rq.product_id IN (:...productIds)', { productIds })
-          .andWhere('rq.company_id = :companyId', {
-            companyId: caller.companyId,
-          })
-          .getMany(),
-        this.quotaUsageRepo
-          .createQueryBuilder('u')
-          .where('u.employee_id = :empId', { empId: caller.sub })
-          .andWhere('u.product_id IN (:...productIds)', { productIds })
-          .andWhere('u.period_start <= :today', { today })
-          .andWhere('u.period_end >= :today', { today })
-          .getMany(),
-      ]);
-
-      return roleQuotas.map((rq) => {
-        const usage = usages.find((u) => u.productId === rq.productId);
-        return {
-          employeeId: caller.sub,
-          productId: rq.productId,
-          maxQuantity: rq.maxQuantity,
-          usedQuantity: usage?.usedQuantity ?? 0,
-        };
-      });
-    }
-
-    // Legacy per-employee quotas fallback
-    const legacy = await this.quotaRepo
-      .createQueryBuilder('q')
-      .where('q.employee_id = :employeeId', { employeeId: caller.sub })
-      .andWhere('q.product_id IN (:...productIds)', { productIds })
-      .andWhere('q.period_start <= :today', { today })
-      .andWhere('q.period_end >= :today', { today })
-      .getMany();
-
-    return legacy.map((q) => ({
-      employeeId: q.employeeId,
-      productId: q.productId,
-      maxQuantity: q.maxQuantity,
-      usedQuantity: q.usedQuantity,
-    }));
   }
 
   private async incrementQuotaUsage(
@@ -498,7 +569,15 @@ export class OrdersService {
     dto.readyBy = o.readyBy;
     dto.deliveredAt = o.deliveredAt;
     dto.deliveredBy = o.deliveredBy;
-    dto.lines = o.lines ?? [];
+    dto.note = o.note ?? null;
+    dto.lines = (o.lines ?? []).map((l) => {
+      const line = new OrderLineDto();
+      line.productId = l.productId;
+      line.quantity = l.quantity;
+      line.validationStatus = l.validationStatus;
+      line.rejectionReason = l.rejectionReason ?? null;
+      return line;
+    });
     return dto;
   }
 }

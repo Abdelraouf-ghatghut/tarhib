@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException } from '@nestjs/common';
 import { ProductsService } from './products.service.js';
 import { Product } from './entities/product.entity.js';
+import { ProductFavorite } from './entities/product-favorite.entity.js';
 import { ProductSupplierPrice } from './entities/product-supplier-price.entity.js';
 import { ProductType } from './dto/product.dto.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
@@ -13,6 +14,8 @@ const mockRepo = () => ({
   save: jest.fn(),
   find: jest.fn(),
   findOne: jest.fn(),
+  upsert: jest.fn(),
+  delete: jest.fn(),
   createQueryBuilder: jest.fn(),
 });
 
@@ -39,6 +42,7 @@ const makeQb = (results: Product[]) => ({
 describe('ProductsService', () => {
   let service: ProductsService;
   let repo: ReturnType<typeof mockRepo>;
+  let favoritesRepo: ReturnType<typeof mockRepo>;
   let inventoryRepo: ReturnType<typeof mockRepo>;
 
   beforeEach(async () => {
@@ -46,6 +50,7 @@ describe('ProductsService', () => {
       providers: [
         ProductsService,
         { provide: getRepositoryToken(Product), useFactory: mockRepo },
+        { provide: getRepositoryToken(ProductFavorite), useFactory: mockRepo },
         { provide: getRepositoryToken(InventoryItem), useFactory: mockRepo },
         {
           provide: getRepositoryToken(ProductSupplierPrice),
@@ -57,6 +62,7 @@ describe('ProductsService', () => {
 
     service = module.get<ProductsService>(ProductsService);
     repo = module.get(getRepositoryToken(Product));
+    favoritesRepo = module.get(getRepositoryToken(ProductFavorite));
     inventoryRepo = module.get(getRepositoryToken(InventoryItem));
   });
 
@@ -155,6 +161,59 @@ describe('ProductsService', () => {
       await expect(service.findOne('unknown')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('favorites', () => {
+    it('returns favorite product ids newest first', async () => {
+      favoritesRepo.find.mockResolvedValue([
+        { productId: 'prod-2' },
+        { productId: 'prod-1' },
+      ]);
+
+      await expect(service.findFavoriteIds('emp-1')).resolves.toEqual([
+        'prod-2',
+        'prod-1',
+      ]);
+      expect(favoritesRepo.find).toHaveBeenCalledWith({
+        select: { productId: true },
+        where: { employeeId: 'emp-1' },
+        order: { createdAt: 'DESC' },
+      });
+    });
+
+    it('adds a favorite for an active product', async () => {
+      repo.findOne.mockResolvedValue(makeProduct({ id: 'prod-1' }));
+      favoritesRepo.upsert.mockResolvedValue(undefined);
+      favoritesRepo.find.mockResolvedValue([{ productId: 'prod-1' }]);
+
+      await expect(service.addFavorite('emp-1', 'prod-1')).resolves.toEqual([
+        'prod-1',
+      ]);
+      expect(favoritesRepo.upsert).toHaveBeenCalledWith(
+        { employeeId: 'emp-1', productId: 'prod-1' },
+        ['employeeId', 'productId'],
+      );
+    });
+
+    it('rejects favorite creation for an unknown product', async () => {
+      repo.findOne.mockResolvedValue(null);
+      await expect(service.addFavorite('emp-1', 'missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('removes a favorite and returns the remaining ids', async () => {
+      favoritesRepo.delete.mockResolvedValue(undefined);
+      favoritesRepo.find.mockResolvedValue([{ productId: 'prod-2' }]);
+
+      await expect(service.removeFavorite('emp-1', 'prod-1')).resolves.toEqual([
+        'prod-2',
+      ]);
+      expect(favoritesRepo.delete).toHaveBeenCalledWith({
+        employeeId: 'emp-1',
+        productId: 'prod-1',
+      });
     });
   });
 

@@ -20,22 +20,25 @@ class GlassNavBar extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      margin: const EdgeInsets.fromLTRB(14, 0, 14, 10),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: isDark ? 0.45 : 0.8),
+        ),
         boxShadow: [
           BoxShadow(
             color: isDark
-                ? Colors.black.withValues(alpha: 0.4)
-                : const Color(0xFF0F172A).withValues(alpha: 0.10),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+                ? Colors.black.withValues(alpha: 0.35)
+                : scheme.primary.withValues(alpha: 0.12),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
         child: NavigationBar(
           selectedIndex: selectedIndex,
           onDestinationSelected: onDestinationSelected,

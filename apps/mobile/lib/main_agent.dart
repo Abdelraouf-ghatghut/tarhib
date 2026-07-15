@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
+import 'theme/app_theme.dart';
 import 'agent/router_agent.dart';
 
 void main() {
@@ -19,6 +20,7 @@ class TarhibAgentApp extends ConsumerWidget {
     final router = ref.watch(agentRouterProvider);
     final locale = ref.watch(localeProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final isAr = locale.languageCode == 'ar';
 
     return MaterialApp.router(
       title: 'Tarhib Agent',
@@ -31,20 +33,8 @@ class TarhibAgentApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0D47A1),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0D47A1),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.agentLight(isAr: isAr),
+      darkTheme: AppTheme.agentDark(isAr: isAr),
       themeMode: themeMode,
       routerConfig: router,
     );

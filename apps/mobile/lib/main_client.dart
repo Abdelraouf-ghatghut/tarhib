@@ -34,7 +34,7 @@ class TarhibClientApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: AppTheme.light(isAr: isAr),
+      theme: AppTheme.clientLight(isAr: isAr),
       routerConfig: router,
     );
   }

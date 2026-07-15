@@ -28,6 +28,21 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://tarhib:test@localhost:5432/tarhib_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-secret
+      TYPEORM_MIGRATIONS_RUN: "false"
 
     steps:
       - uses: actions/checkout@v4
@@ -40,22 +55,33 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
+      - name: Apply database migrations
+        run: npm run migration:run -w apps/backend
 
-      - name: Type check
-        run: npm run type-check
+      - name: Backend tests
+        run: npm test -w apps/backend -- --runInBand
 
-      - name: Test
-        run: npm run test
+      - name: Backend build
+        run: npm run build -w apps/backend
 
-      - name: Build
-        run: npm run build
+      - name: Web Admin build
+        run: npm run build -w apps/web-admin
+
+      - name: Mobile type checks
+        run: |
+          npm run typecheck -w apps/mobile-employee
+          npm run typecheck -w apps/mobile-operations
+
+      - name: Validate Expo configurations
+        run: |
+          cd apps/mobile-employee && npx expo config --type public >/dev/null
+          cd ../mobile-operations && npx expo config --type public >/dev/null
+
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Export OpenAPI spec
         run: npm run export:openapi -w apps/backend
-        env:
-          DATABASE_URL: postgresql://tarhib:test@localhost:5432/tarhib_test
 
       - name: Upload OpenAPI spec
         uses: actions/upload-artifact@v4

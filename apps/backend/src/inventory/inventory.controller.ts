@@ -17,6 +17,13 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { RequireAnyPermission } from '../auth/decorators/require-permission.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
+import {
+  assertResourceScope,
+  constrainRequestedScope,
+} from '../common/access/request-scope.js';
 import {
   CreateInventoryItemDto,
   InventoryItemDto,
@@ -33,15 +40,26 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Post()
+  @RequireAnyPermission('inventory.create', 'stock.manage', 'inventory.manage')
   @ApiOperation({
     summary: 'Créer un article de stock pour un produit/branche',
   })
   @ApiResponse({ status: 201, type: InventoryItemDto })
-  create(@Body() dto: CreateInventoryItemDto): Promise<InventoryItemDto> {
+  create(
+    @Body() dto: CreateInventoryItemDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<InventoryItemDto> {
+    assertResourceScope(user, dto);
     return this.inventoryService.create(dto);
   }
 
   @Get()
+  @RequireAnyPermission(
+    'stock.view',
+    'stock.kitchen.view',
+    'inventory.view',
+    'inventory.manage',
+  )
   @ApiOperation({
     summary: 'Lister le stock (filtrable par companyId / branchId / zone)',
   })
@@ -50,14 +68,33 @@ export class InventoryController {
   @ApiQuery({ name: 'zone', required: false, enum: StockZone })
   @ApiResponse({ status: 200, type: [InventoryItemDto] })
   findAll(
+    @CurrentUser() user: JwtPayload,
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
     @Query('zone') zone?: StockZone,
   ): Promise<InventoryItemDto[]> {
-    return this.inventoryService.findAll(companyId, branchId, zone);
+    const scope = constrainRequestedScope(user, { companyId, branchId });
+    const permittedZone =
+      user.permissions.includes('stock.kitchen.view') &&
+      !user.permissions.some((permission) =>
+        ['stock.view', 'stock.manage', 'inventory.manage'].includes(permission),
+      )
+        ? StockZone.KITCHEN
+        : zone;
+    return this.inventoryService.findAll(
+      scope.companyId,
+      scope.branchId,
+      permittedZone,
+    );
   }
 
   @Get('alerts/below-threshold')
+  @RequireAnyPermission(
+    'alert.view',
+    'inventory.view',
+    'stock.view',
+    'inventory.manage',
+  )
   @ApiOperation({
     summary: 'Produits sous le seuil minimum (filtrable par zone)',
   })
@@ -66,39 +103,62 @@ export class InventoryController {
   @ApiQuery({ name: 'zone', required: false, enum: StockZone })
   @ApiResponse({ status: 200, type: [InventoryItemDto] })
   findBelowThreshold(
+    @CurrentUser() user: JwtPayload,
     @Query('companyId') companyId: string,
     @Query('branchId') branchId?: string,
     @Query('zone') zone?: StockZone,
   ): Promise<InventoryItemDto[]> {
-    return this.inventoryService.findBelowThreshold(companyId, branchId, zone);
+    const scope = constrainRequestedScope(user, { companyId, branchId });
+    return this.inventoryService.findBelowThreshold(
+      scope.companyId!,
+      scope.branchId,
+      zone,
+    );
   }
 
   @Get(':id')
+  @RequireAnyPermission(
+    'stock.view',
+    'stock.kitchen.view',
+    'inventory.view',
+    'inventory.manage',
+  )
   @ApiOperation({ summary: 'Récupérer un article de stock par ID' })
   @ApiResponse({ status: 200, type: InventoryItemDto })
-  findOne(@Param('id') id: string): Promise<InventoryItemDto> {
-    return this.inventoryService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<InventoryItemDto> {
+    const item = await this.inventoryService.findOne(id);
+    assertResourceScope(user, item);
+    return item;
   }
 
   @Patch(':id')
+  @RequireAnyPermission('inventory.update', 'stock.manage', 'inventory.manage')
   @ApiOperation({ summary: 'Mettre à jour la quantité ou les seuils' })
   @ApiResponse({ status: 200, type: InventoryItemDto })
-  update(
+  async update(
     @Param('id') id: string,
     @Body() dto: UpdateInventoryItemDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<InventoryItemDto> {
+    assertResourceScope(user, await this.inventoryService.findOne(id));
     return this.inventoryService.update(id, dto);
   }
 
   @Post(':id/adjust')
+  @RequireAnyPermission('inventory.adjust', 'stock.manage', 'inventory.manage')
   @ApiOperation({
     summary: 'Ajustement de stock : sortie ou correction absolue (TARHIB-41)',
   })
   @ApiResponse({ status: 201, type: InventoryItemDto })
-  adjust(
+  async adjust(
     @Param('id') id: string,
     @Body() dto: InventoryAdjustmentDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<InventoryItemDto> {
-    return this.inventoryService.adjust(id, dto);
+    assertResourceScope(user, await this.inventoryService.findOne(id));
+    return this.inventoryService.adjustAtomic(id, dto);
   }
 }

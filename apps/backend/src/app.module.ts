@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import * as path from 'path';
 import { EnrichUserInterceptor } from './auth/interceptors/enrich-user.interceptor.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from './auth/guards/permissions.guard.js';
@@ -32,8 +33,16 @@ import { VipSelfServiceModule } from './vip-self-service/vip-self-service.module
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { ProcurementModule } from './procurement/procurement.module';
 import { KitchenModule } from './kitchen/kitchen.module';
+import { DeliveryModule } from './delivery/delivery.module.js';
+import { CleaningTasksModule } from './cleaning-tasks/cleaning-tasks.module.js';
+import { InventoryReplenishmentsModule } from './inventory-replenishments/inventory-replenishments.module.js';
+import { MeetingPreparationsModule } from './meeting-preparations/meeting-preparations.module.js';
+import { CleaningStockModule } from './cleaning-stock/cleaning-stock.module.js';
 import { AuditModule } from './audit/audit.module';
 import { PrioritySlaModule } from './priority-sla/priority-sla.module.js';
+import { AccessModule } from './access/access.module.js';
+import { MobileModule } from './mobile/mobile.module.js';
+import { OperationsModule } from './operations/operations.module.js';
 
 @Module({
   imports: [
@@ -48,10 +57,14 @@ import { PrioritySlaModule } from './priority-sla/priority-sla.module.js';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const databaseUrl = config.get<string>('DATABASE_URL');
+        const migrationsRun =
+          config.get<string>('TYPEORM_MIGRATIONS_RUN', 'false') === 'true';
         return {
           type: 'postgres',
           url: databaseUrl,
           autoLoadEntities: true,
+          migrations: [path.join(__dirname, 'migrations', '*.{ts,js}')],
+          migrationsRun,
           // Schéma piloté exclusivement par les migrations versionnées (CLAUDE.md §5).
           // synchronize:true réécrivait des colonnes au boot (ex. orders.priority)
           // et crashait l'app — interdit.
@@ -64,6 +77,9 @@ import { PrioritySlaModule } from './priority-sla/priority-sla.module.js';
     // Registered here so EnrichUserInterceptor can access Employee + Role repos at the app level
     TypeOrmModule.forFeature([Employee, Role]),
     RedisModule,
+    AccessModule,
+    MobileModule,
+    OperationsModule,
     AuthModule,
     CompaniesModule,
     BranchesModule,
@@ -84,6 +100,11 @@ import { PrioritySlaModule } from './priority-sla/priority-sla.module.js';
     SuppliersModule,
     ProcurementModule,
     KitchenModule,
+    DeliveryModule,
+    CleaningTasksModule,
+    InventoryReplenishmentsModule,
+    MeetingPreparationsModule,
+    CleaningStockModule,
     AuditModule,
     PrioritySlaModule,
   ],

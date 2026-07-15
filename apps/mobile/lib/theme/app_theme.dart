@@ -4,98 +4,153 @@ import 'package:google_fonts/google_fonts.dart';
 import 'snow_colors.dart';
 import 'snow_radii.dart';
 
-/// Design system SnowUI Light — version mobile officielle du thème Web Admin.
-/// Thmanyah (police produit du Web) n'existe pas en .ttf redistribuable ; on
-/// reproduit la même pile de fallback (Cairo pour l'arabe, Inter pour le
-/// latin) via google_fonts pour préserver l'identité visuelle.
 abstract class AppTheme {
-  static TextTheme _textTheme(bool isAr) {
+  static TextTheme _textTheme(bool isAr, Color text) {
     final base = isAr
         ? GoogleFonts.cairoTextTheme()
         : GoogleFonts.interTextTheme();
-    return base.apply(
-      bodyColor: SnowColors.textPrimary,
-      displayColor: SnowColors.textPrimary,
-    );
+    return base.apply(bodyColor: text, displayColor: text);
   }
 
-  static ThemeData light({required bool isAr}) {
-    final colorScheme = const ColorScheme.light(
-      brightness: Brightness.light,
-      primary: SnowColors.primary,
+  static ThemeData light({required bool isAr}) => clientLight(isAr: isAr);
+
+  static ThemeData clientLight({required bool isAr}) => _build(
+        isAr: isAr,
+        brightness: Brightness.light,
+        primary: SnowColors.primary,
+        primarySoft: SnowColors.primarySoft,
+        primaryStrong: SnowColors.primaryStrong,
+        background: SnowColors.background,
+        surface: SnowColors.surface,
+        surfaceMuted: SnowColors.surfaceMuted,
+        text: SnowColors.textPrimary,
+      );
+
+  static ThemeData clientDark({required bool isAr}) => _build(
+        isAr: isAr,
+        brightness: Brightness.dark,
+        primary: SnowColors.primary,
+        primarySoft: SnowColors.agentDarkMuted,
+        primaryStrong: const Color(0xFF7DE3C1),
+        background: SnowColors.agentDarkBackground,
+        surface: SnowColors.agentDarkSurface,
+        surfaceMuted: SnowColors.agentDarkMuted,
+        text: const Color(0xFFF8FAFC),
+      );
+
+  static ThemeData agentLight({required bool isAr}) => _build(
+        isAr: isAr,
+        brightness: Brightness.light,
+        primary: SnowColors.agentPrimary,
+        primarySoft: SnowColors.agentPrimarySoft,
+        primaryStrong: SnowColors.agentPrimaryStrong,
+        background: SnowColors.background,
+        surface: SnowColors.surface,
+        surfaceMuted: SnowColors.surfaceMuted,
+        text: SnowColors.textPrimary,
+      );
+
+  static ThemeData agentDark({required bool isAr}) => _build(
+        isAr: isAr,
+        brightness: Brightness.dark,
+        primary: SnowColors.agentPrimary,
+        primarySoft: SnowColors.agentDarkMuted,
+        primaryStrong: const Color(0xFF9AAEFF),
+        background: SnowColors.agentDarkBackground,
+        surface: SnowColors.agentDarkSurface,
+        surfaceMuted: SnowColors.agentDarkMuted,
+        text: const Color(0xFFF8FAFC),
+      );
+
+  static ThemeData _build({
+    required bool isAr,
+    required Brightness brightness,
+    required Color primary,
+    required Color primarySoft,
+    required Color primaryStrong,
+    required Color background,
+    required Color surface,
+    required Color surfaceMuted,
+    required Color text,
+  }) {
+    final isDark = brightness == Brightness.dark;
+    final textTheme = _textTheme(isAr, text);
+    final outline = isDark ? const Color(0xFF334155) : SnowColors.borderMedium;
+    final outlineVariant =
+        isDark ? const Color(0xFF1E293B) : SnowColors.border;
+
+    final scheme = ColorScheme(
+      brightness: brightness,
+      primary: primary,
       onPrimary: Colors.white,
-      secondary: SnowColors.primaryStrong,
+      secondary: primaryStrong,
       onSecondary: Colors.white,
       error: SnowColors.dangerStrong,
       onError: Colors.white,
-      surface: SnowColors.surface,
-      onSurface: SnowColors.textPrimary,
-      surfaceContainerHighest: SnowColors.surfaceMuted,
-      outline: SnowColors.borderMedium,
-      outlineVariant: SnowColors.border,
+      surface: surface,
+      onSurface: text,
+      surfaceContainerHighest: surfaceMuted,
+      outline: outline,
+      outlineVariant: outlineVariant,
     );
-
-    final textTheme = _textTheme(isAr);
 
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.light,
-      colorScheme: colorScheme,
-      scaffoldBackgroundColor: SnowColors.background,
+      brightness: brightness,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: background,
       textTheme: textTheme,
       fontFamily: textTheme.bodyMedium?.fontFamily,
       splashFactory: InkSparkle.splashFactory,
-
       appBarTheme: AppBarTheme(
-        backgroundColor: SnowColors.background,
-        foregroundColor: SnowColors.textPrimary,
+        backgroundColor: background,
+        foregroundColor: text,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        centerTitle: false,
+        centerTitle: true,
         titleTextStyle: textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: SnowColors.textPrimary,
+          color: text,
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
         ),
       ),
-
       cardTheme: CardThemeData(
-        color: SnowColors.card,
+        color: surface,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(SnowRadii.lg),
         ),
       ),
-
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: SnowColors.surface,
+        backgroundColor: surface,
         elevation: 0,
         height: 68,
-        indicatorColor: SnowColors.primarySoft,
+        indicatorColor: primarySoft,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
+            color: selected ? primaryStrong : SnowColors.textMuted,
             fontSize: 11,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? SnowColors.primaryStrong : SnowColors.textMuted,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
           );
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
-            color: selected ? SnowColors.primaryStrong : SnowColors.textMuted,
+            color: selected ? primaryStrong : SnowColors.textMuted,
           );
         }),
       ),
-
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: SnowColors.primary,
+          backgroundColor: primaryStrong,
           foregroundColor: Colors.white,
-          minimumSize: const Size.fromHeight(48),
+          minimumSize: const Size.fromHeight(52),
           elevation: 0,
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(SnowRadii.md),
           ),
@@ -103,10 +158,10 @@ abstract class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: SnowColors.textPrimary,
-          minimumSize: const Size.fromHeight(48),
-          side: const BorderSide(color: SnowColors.borderMedium),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          foregroundColor: text,
+          minimumSize: const Size.fromHeight(52),
+          side: BorderSide(color: outline),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(SnowRadii.md),
           ),
@@ -114,14 +169,13 @@ abstract class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: SnowColors.primaryStrong,
-          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+          foregroundColor: primaryStrong,
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
-
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: SnowColors.surfaceMuted,
+        fillColor: surfaceMuted,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
@@ -134,62 +188,51 @@ abstract class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(SnowRadii.md),
-          borderSide: const BorderSide(color: SnowColors.primary, width: 1.6),
+          borderSide: BorderSide(color: primary, width: 1.6),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(SnowRadii.md),
           borderSide: const BorderSide(color: SnowColors.dangerStrong),
         ),
         hintStyle: const TextStyle(color: SnowColors.textMuted, fontSize: 14),
-        labelStyle: const TextStyle(color: SnowColors.textSecondary, fontSize: 14),
+        labelStyle:
+            const TextStyle(color: SnowColors.textSecondary, fontSize: 14),
       ),
-
       chipTheme: ChipThemeData(
-        backgroundColor: SnowColors.surfaceMuted,
-        selectedColor: SnowColors.primary,
-        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        backgroundColor: surfaceMuted,
+        selectedColor: primary,
+        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(SnowRadii.pill),
         ),
       ),
-
-      dividerTheme: const DividerThemeData(
-        color: SnowColors.border,
-        thickness: 1,
-        space: 1,
-      ),
-
-      bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: SnowColors.surface,
+      dividerTheme:
+          DividerThemeData(color: outlineVariant, thickness: 1, space: 1),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
       ),
-
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: SnowColors.textPrimary,
-        contentTextStyle: const TextStyle(color: Colors.white),
+        backgroundColor:
+            isDark ? const Color(0xFFF8FAFC) : SnowColors.textPrimary,
+        contentTextStyle:
+            TextStyle(color: isDark ? SnowColors.textPrimary : Colors.white),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(SnowRadii.md),
         ),
       ),
-
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: SnowColors.primary,
-      ),
-
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: primary),
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((s) =>
-            s.contains(WidgetState.selected) ? Colors.white : Colors.white),
-        trackColor: WidgetStateProperty.resolveWith((s) =>
-            s.contains(WidgetState.selected)
-                ? SnowColors.primary
-                : SnowColors.borderMedium),
-        trackOutlineColor:
-            const WidgetStatePropertyAll(Colors.transparent),
+        thumbColor: const WidgetStatePropertyAll(Colors.white),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          return states.contains(WidgetState.selected) ? primary : outline;
+        }),
+        trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
     );
   }

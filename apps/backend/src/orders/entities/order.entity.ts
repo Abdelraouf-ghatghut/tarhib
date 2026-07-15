@@ -32,6 +32,10 @@ export class Order {
   @Column({ name: 'sla_deadline', type: 'timestamptz' })
   slaDeadline!: Date;
 
+  // Commentaire libre de l'employé au moment de la commande (CDC §7 — panier)
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  note!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

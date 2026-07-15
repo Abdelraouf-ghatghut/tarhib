@@ -7,8 +7,15 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Employee, EmployeeScope } from './entities/employee.entity.js';
-import { CreateEmployeeDto, EmployeeDto } from './dto/employee.dto.js';
+import {
+  CreateEmployeeDto,
+  EmployeeAdminDto,
+  EmployeeDto,
+} from './dto/employee.dto.js';
+
+const SALARY_PERMISSION = 'employee.salary.manage';
 import { KeycloakService } from '../auth/keycloak/keycloak.service.js';
+import { Role } from '../roles/entities/role.entity.js';
 
 @Injectable()
 export class EmployeesService {
@@ -17,10 +24,15 @@ export class EmployeesService {
   constructor(
     @InjectRepository(Employee)
     private readonly repo: Repository<Employee>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
     private readonly keycloakService: KeycloakService,
   ) {}
 
-  async create(dto: CreateEmployeeDto): Promise<EmployeeDto> {
+  async create(
+    dto: CreateEmployeeDto,
+    callerPermissions: string[] = [],
+  ): Promise<EmployeeDto> {
     // Unicité vérifiée en amont : 409 explicite au lieu d'un 500 Postgres
     const duplicate = await this.repo.findOne({
       where: [{ email: dto.email }, { phoneNumber: dto.phoneNumber }],
@@ -60,6 +72,8 @@ export class EmployeesService {
       companyId: dto.companyId ?? null,
       branchId: dto.branchId ?? null,
       departmentId: dto.departmentId ?? null,
+      floor: dto.floor ?? null,
+      officeNumber: dto.officeNumber ?? null,
       firstNameAr: dto.firstNameAr,
       firstNameEn,
       lastNameAr: dto.lastNameAr,
@@ -70,7 +84,16 @@ export class EmployeesService {
       scope: dto.scope ?? EmployeeScope.CLIENT,
       active: dto.active ?? true,
       keycloakId,
+      // Salaire : ignoré si l'appelant ne détient pas employee.salary.manage,
+      // même si le payload en contient un (jamais fiable côté UI seule).
+      salary: callerPermissions.includes(SALARY_PERMISSION)
+        ? (dto.salary ?? null)
+        : null,
     });
+    entity.additionalRoles = await this.loadAdditionalRoles(
+      dto.additionalRoleIds,
+      dto.roleId,
+    );
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
   }
@@ -88,17 +111,26 @@ export class EmployeesService {
     if (branchId) where.branchId = branchId;
     if (departmentId) where.departmentId = departmentId;
     if (role) where.role = role;
-    if (roleId) where.roleId = roleId;
     if (active !== undefined && active !== '') where.active = active === 'true';
+    const resolvedWhere = roleId
+      ? [
+          { ...where, roleId },
+          { ...where, additionalRoles: { id: roleId } },
+        ]
+      : where;
     const entities = await this.repo.find({
-      where,
+      where: resolvedWhere,
       order: { lastNameEn: 'ASC' },
+      relations: ['additionalRoles'],
     });
     return entities.map((e) => this.toDto(e));
   }
 
   async findOne(id: string): Promise<EmployeeDto> {
-    const entity = await this.repo.findOne({ where: { id } });
+    const entity = await this.repo.findOne({
+      where: { id },
+      relations: ['additionalRoles'],
+    });
     if (!entity) throw new NotFoundException(`Employee ${id} not found`);
     return this.toDto(entity);
   }
@@ -106,8 +138,12 @@ export class EmployeesService {
   async update(
     id: string,
     dto: Partial<CreateEmployeeDto>,
+    callerPermissions: string[] = [],
   ): Promise<EmployeeDto> {
-    const entity = await this.repo.findOne({ where: { id } });
+    const entity = await this.repo.findOne({
+      where: { id },
+      relations: ['additionalRoles'],
+    });
     if (!entity) throw new NotFoundException(`Employee ${id} not found`);
 
     // Unicité vérifiée en amont : 409 explicite au lieu d'un 500 Postgres
@@ -136,9 +172,24 @@ export class EmployeesService {
     if (dto.companyId !== undefined) entity.companyId = dto.companyId;
     if (dto.departmentId !== undefined) entity.departmentId = dto.departmentId;
     if (dto.branchId !== undefined) entity.branchId = dto.branchId;
+    if (dto.floor !== undefined) entity.floor = dto.floor ?? null;
+    if (dto.officeNumber !== undefined)
+      entity.officeNumber = dto.officeNumber ?? null;
     if (dto.roleId !== undefined) entity.roleId = dto.roleId;
+    if (dto.additionalRoleIds !== undefined) {
+      entity.additionalRoles = await this.loadAdditionalRoles(
+        dto.additionalRoleIds,
+        dto.roleId ?? entity.roleId,
+      );
+    }
     if (dto.scope !== undefined) entity.scope = dto.scope;
     if (dto.active !== undefined) entity.active = dto.active;
+    if (
+      dto.salary !== undefined &&
+      callerPermissions.includes(SALARY_PERMISSION)
+    ) {
+      entity.salary = dto.salary ?? null;
+    }
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
   }
@@ -168,12 +219,59 @@ export class EmployeesService {
     return this.toDto(saved);
   }
 
+  private async loadAdditionalRoles(
+    roleIds?: string[],
+    primaryRoleId?: string | null,
+  ): Promise<Role[]> {
+    const uniqueRoleIds = [...new Set(roleIds ?? [])].filter(
+      (roleId) => roleId !== primaryRoleId,
+    );
+    if (uniqueRoleIds.length === 0) return [];
+    return this.roleRepo.find({
+      where: uniqueRoleIds.map((roleId) => ({ id: roleId })),
+    });
+  }
+
+  /**
+   * Vue admin — inclut le salaire. Réservée aux appelants détenant
+   * employee.salary.manage (voir EmployeesController.findAllAdmin).
+   */
+  async findAllAdmin(
+    companyId?: string,
+    branchId?: string,
+    departmentId?: string,
+    role?: string,
+    active?: string,
+    roleId?: string,
+  ): Promise<EmployeeAdminDto[]> {
+    const where: FindOptionsWhere<Employee> = {};
+    if (companyId) where.companyId = companyId;
+    if (branchId) where.branchId = branchId;
+    if (departmentId) where.departmentId = departmentId;
+    if (role) where.role = role;
+    if (active !== undefined && active !== '') where.active = active === 'true';
+    const resolvedWhere = roleId
+      ? [
+          { ...where, roleId },
+          { ...where, additionalRoles: { id: roleId } },
+        ]
+      : where;
+    const entities = await this.repo.find({
+      where: resolvedWhere,
+      order: { lastNameEn: 'ASC' },
+      relations: ['additionalRoles'],
+    });
+    return entities.map((e) => this.toAdminDto(e));
+  }
+
   private toDto(e: Employee): EmployeeDto {
     const dto = new EmployeeDto();
     dto.id = e.id;
     dto.companyId = e.companyId;
     dto.branchId = e.branchId;
     dto.departmentId = e.departmentId;
+    dto.floor = e.floor;
+    dto.officeNumber = e.officeNumber;
     dto.firstNameAr = e.firstNameAr;
     dto.firstNameEn = e.firstNameEn;
     dto.lastNameAr = e.lastNameAr;
@@ -182,9 +280,18 @@ export class EmployeesService {
     dto.phoneNumber = e.phoneNumber;
     dto.role = e.role;
     dto.roleId = e.roleId;
+    dto.additionalRoleIds = (e.additionalRoles ?? []).map((r) => r.id);
     dto.scope = e.scope;
     dto.active = e.active;
     dto.keycloakId = e.keycloakId;
+    // salary délibérément omis — jamais exposé hors vue admin
+    return dto;
+  }
+
+  private toAdminDto(e: Employee): EmployeeAdminDto {
+    const dto = new EmployeeAdminDto();
+    Object.assign(dto, this.toDto(e));
+    dto.salary = e.salary ? Number(e.salary) : null;
     return dto;
   }
 }

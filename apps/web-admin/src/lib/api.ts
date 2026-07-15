@@ -45,6 +45,11 @@ export const employeesApi = {
   deactivate: (id: string) => api.patch(`/employees/${id}/deactivate`),
 };
 
+/** /employees/admin renvoie salary — réservé à employee.salary.manage */
+export const employeesAdminApi = {
+  list: (params?: Record<string, string>) => api.get("/employees/admin", { params }),
+};
+
 export const productsApi = {
   list: () => api.get("/products"),
   create: (d: unknown) => api.post("/products", d),

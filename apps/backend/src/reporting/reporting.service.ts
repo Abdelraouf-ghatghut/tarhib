@@ -43,8 +43,18 @@ export interface SlaReport {
 }
 
 export interface UserActivityReport {
-  topEmployees: { employeeId: string; orderCount: number }[];
-  ordersByBranch: { branchId: string; orderCount: number }[];
+  topEmployees: {
+    employeeId: string;
+    nameAr: string;
+    nameEn: string;
+    orderCount: number;
+  }[];
+  ordersByBranch: {
+    branchId: string;
+    nameAr: string;
+    nameEn: string;
+    orderCount: number;
+  }[];
   total: number;
 }
 
@@ -272,10 +282,34 @@ export class ReportingService {
       .limit(limit)
       .getRawMany<{ employeeId: string; orderCount: string }>();
 
-    const topEmployees = topEmployeeRows.map((r) => ({
-      employeeId: r.employeeId,
-      orderCount: parseInt(r.orderCount, 10),
-    }));
+    // orders.employee_id stocke le sub Keycloak (voir OrdersService.create),
+    // pas employees.id — résolution par keycloakId avec repli sur id pour les
+    // données de seed/tests plus anciennes (même convention que ailleurs).
+    const employeeIds = topEmployeeRows.map((r) => r.employeeId);
+    const employees = employeeIds.length
+      ? await this.employeeRepo.find({
+          where: [{ keycloakId: In(employeeIds) }, { id: In(employeeIds) }],
+        })
+      : [];
+    const employeeById = new Map<string, Employee>();
+    for (const e of employees) {
+      if (e.keycloakId) employeeById.set(e.keycloakId, e);
+      employeeById.set(e.id, e);
+    }
+
+    const topEmployees = topEmployeeRows.map((r) => {
+      const employee = employeeById.get(r.employeeId);
+      return {
+        employeeId: r.employeeId,
+        nameAr: employee
+          ? `${employee.firstNameAr} ${employee.lastNameAr}`
+          : r.employeeId.slice(0, 8),
+        nameEn: employee
+          ? `${employee.firstNameEn} ${employee.lastNameEn}`
+          : r.employeeId.slice(0, 8),
+        orderCount: parseInt(r.orderCount, 10),
+      };
+    });
 
     const branchRows = await baseQb
       .clone()
@@ -285,10 +319,21 @@ export class ReportingService {
       .orderBy('COUNT(*)', 'DESC')
       .getRawMany<{ branchId: string; orderCount: string }>();
 
-    const ordersByBranch = branchRows.map((r) => ({
-      branchId: r.branchId,
-      orderCount: parseInt(r.orderCount, 10),
-    }));
+    const branchIds = branchRows.map((r) => r.branchId);
+    const branchesList = branchIds.length
+      ? await this.branchRepo.find({ where: { id: In(branchIds) } })
+      : [];
+    const branchById = new Map(branchesList.map((b) => [b.id, b]));
+
+    const ordersByBranch = branchRows.map((r) => {
+      const branch = branchById.get(r.branchId);
+      return {
+        branchId: r.branchId,
+        nameAr: branch ? branch.nameAr : r.branchId.slice(0, 8),
+        nameEn: branch ? branch.nameEn : r.branchId.slice(0, 8),
+        orderCount: parseInt(r.orderCount, 10),
+      };
+    });
 
     return { topEmployees, ordersByBranch, total };
   }

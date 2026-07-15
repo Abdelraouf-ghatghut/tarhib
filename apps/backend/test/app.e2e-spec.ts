@@ -23,6 +23,31 @@ describe('AppController (e2e)', () => {
       .expect('Hello World!');
   });
 
+  it('/health/live (GET)', () =>
+    request(app.getHttpServer())
+      .get('/health/live')
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toEqual(expect.objectContaining({ status: 'ok' })),
+      ));
+
+  it('/health/ready (GET)', () =>
+    request(app.getHttpServer())
+      .get('/health/ready')
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toEqual(
+          expect.objectContaining({
+            status: 'ready',
+            database: 'ok',
+            redis: 'ok',
+          }),
+        ),
+      ));
+
+  it('rejects access to a protected Operations endpoint without a JWT', () =>
+    request(app.getHttpServer()).get('/operations/me').expect(401));
+
   afterEach(async () => {
     await app.close();
   });

@@ -13,6 +13,7 @@ import { Role } from '../roles/entities/role.entity';
 import { EmployeeRole } from '../employees/dto/employee.dto';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { TokenResponseDto } from './dto/token-response.dto';
+import { AccessPolicyService } from '../access/access-policy.service';
 
 const TOKEN: TokenResponseDto = {
   accessToken: 'access-token',
@@ -69,6 +70,20 @@ async function buildService(
       { provide: getRepositoryToken(Employee), useValue: repoMock() },
       { provide: getRepositoryToken(Company), useValue: repoMock() },
       { provide: getRepositoryToken(Role), useValue: repoMock() },
+      {
+        provide: AccessPolicyService,
+        useValue: {
+          resolve: jest.fn().mockResolvedValue({
+            employee: {},
+            primaryRoleId: null,
+            roles: [],
+            permissions: [],
+            capabilities: {},
+            modules: [],
+            dataScope: 'OWN',
+          }),
+        },
+      },
       {
         provide: ConfigService,
         useValue: { get: (_key: string, def: unknown) => def },

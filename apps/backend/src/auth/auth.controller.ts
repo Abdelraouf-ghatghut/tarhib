@@ -102,7 +102,7 @@ export class AuthController {
     description: 'SMS sent (or phone not found — same response)',
   })
   async requestOtp(@Body() dto: OtpRequestDto): Promise<void> {
-    await this.otpService.requestOtp(dto.phoneNumber);
+    await this.otpService.requestOtp(dto.phoneNumber, dto.channel, dto.appMode);
   }
 
   @Public()
@@ -112,7 +112,7 @@ export class AuthController {
   @ApiOkResponse({ type: TokenResponseDto })
   @ApiUnauthorizedResponse({ description: 'Invalid or expired OTP' })
   verifyOtp(@Body() dto: OtpVerifyDto): Promise<TokenResponseDto> {
-    return this.otpService.verifyOtp(dto.phoneNumber, dto.code);
+    return this.otpService.verifyOtp(dto.phoneNumber, dto.code, dto.appMode);
   }
 
   // ── TARHIB-23 ────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import {
   IsString,
   IsUUID,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -59,6 +60,25 @@ export class CreatePurchaseOrderDto {
   lines!: CreatePurchaseOrderLineDto[];
 }
 
+export class UpdatePurchaseOrderDto {
+  @ApiProperty({ required: false })
+  @IsUUID()
+  @IsOptional()
+  supplierId?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @ApiProperty({ type: [CreatePurchaseOrderLineDto], required: false })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePurchaseOrderLineDto)
+  @IsOptional()
+  lines?: CreatePurchaseOrderLineDto[];
+}
+
 export class ReceiveLineDto {
   @ApiProperty()
   @IsUUID()
@@ -81,6 +101,7 @@ export class ReceivePurchaseOrderDto {
 export class RejectPurchaseOrderDto {
   @ApiProperty({ example: 'Prix trop élevé, demander un autre devis' })
   @IsString()
+  @MinLength(3)
   reason!: string;
 }
 

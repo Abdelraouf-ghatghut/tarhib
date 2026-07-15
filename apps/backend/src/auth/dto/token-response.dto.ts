@@ -20,11 +20,23 @@ export class TokenResponseDto {
   @ApiPropertyOptional()
   roleId?: string;
 
+  @ApiPropertyOptional({ type: [String] })
+  roleIds?: string[];
+
   @ApiPropertyOptional({ enum: ['TARHIB', 'CLIENT'] })
   scope?: string;
 
   @ApiPropertyOptional({ type: [String] })
   permissions?: string[];
+
+  @ApiPropertyOptional({ type: Object })
+  capabilities?: Record<string, boolean>;
+
+  @ApiPropertyOptional({ type: [String] })
+  modules?: string[];
+
+  @ApiPropertyOptional({ enum: ['GLOBAL', 'COMPANY', 'BRANCH', 'OWN'] })
+  dataScope?: string;
 
   @ApiPropertyOptional()
   companyId?: string;

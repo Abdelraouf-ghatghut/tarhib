@@ -30,7 +30,10 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
       leading: leading,
       centerTitle: centerTitle,
       bottom: bottom,
-      scrolledUnderElevation: 1,
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
     );
   }
 }

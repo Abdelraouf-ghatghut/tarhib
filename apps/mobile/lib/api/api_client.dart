@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show VoidCallback, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show VoidCallback, debugPrint, kDebugMode, kIsWeb;
 import 'package:tarhib_api_client/tarhib_api_client.dart';
 
 /// Le token d'accès est de courte durée (quelques minutes, comme côté Web
@@ -41,6 +42,17 @@ class ApiClient {
         handler.next(options);
       },
       onError: (error, handler) async {
+        if (kDebugMode) {
+          final status = error.response?.statusCode;
+          final method = error.requestOptions.method;
+          final uri = error.requestOptions.uri;
+          debugPrint('[API] $method $uri -> $status ${error.type}');
+          final data = error.response?.data;
+          if (data != null) {
+            debugPrint('[API] response: $data');
+          }
+        }
+
         final path = error.requestOptions.path;
         final isAuthCall = path.contains('/auth/login') ||
             path.contains('/auth/refresh') ||
