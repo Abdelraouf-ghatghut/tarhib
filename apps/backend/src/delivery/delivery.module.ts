@@ -8,12 +8,13 @@ import { Employee } from '../employees/entities/employee.entity.js';
 import { Company } from '../companies/entities/company.entity.js';
 import { Branch } from '../branches/entities/branch.entity.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
+import { Order } from '../orders/entities/order.entity.js';
 
 @Module({
   imports: [
     OrdersModule,
     NotificationsModule,
-    TypeOrmModule.forFeature([DeliveryTask, Employee, Company, Branch]),
+    TypeOrmModule.forFeature([DeliveryTask, Employee, Company, Branch, Order]),
   ],
   controllers: [DeliveryController],
   providers: [DeliveryService],

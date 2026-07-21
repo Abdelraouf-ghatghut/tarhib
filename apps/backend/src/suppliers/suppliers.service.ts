@@ -25,7 +25,7 @@ export class SuppliersService {
   async create(dto: CreateSupplierDto): Promise<SupplierDto> {
     const entity = this.repo.create({
       nameAr: dto.nameAr,
-      nameEn: dto.nameEn?.trim() || dto.nameAr,
+      nameEn: dto.nameEn?.trim() || null,
       contactName: dto.contactName ?? null,
       email: dto.email ?? null,
       phone: dto.phone ?? null,
@@ -55,8 +55,7 @@ export class SuppliersService {
     const entity = await this.repo.findOne({ where: { id } });
     if (!entity) throw new NotFoundException(`Supplier ${id} not found`);
     if (dto.nameAr !== undefined) entity.nameAr = dto.nameAr;
-    if (dto.nameEn !== undefined)
-      entity.nameEn = dto.nameEn?.trim() || entity.nameAr;
+    if (dto.nameEn !== undefined) entity.nameEn = dto.nameEn?.trim() || null;
     if (dto.contactName !== undefined)
       entity.contactName = dto.contactName ?? null;
     if (dto.email !== undefined) entity.email = dto.email ?? null;

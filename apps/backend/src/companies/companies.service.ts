@@ -16,10 +16,11 @@ export class CompaniesService {
   ) {}
 
   async create(dto: CreateCompanyDto): Promise<CompanyDto> {
-    // Anglais optionnel : repli sur l'arabe (nom canonique + name_en non-null)
-    const nameEn = dto.nameEn?.trim() || dto.nameAr;
+    const nameEn = dto.nameEn?.trim() || null;
     const entity = this.repo.create({
-      name: nameEn, // nom canonique interne dérivé du nom anglais
+      // Nom canonique interne (unique, non-null) : dérivé de l'anglais si
+      // fourni, sinon de l'arabe — jamais exposé tel quel côté UI.
+      name: nameEn || dto.nameAr,
       nameAr: dto.nameAr,
       nameEn,
       slug: dto.slug,
@@ -44,8 +45,10 @@ export class CompaniesService {
     const entity = await this.repo.findOne({ where: { id } });
     if (!entity) throw new NotFoundException(`Company ${id} not found`);
     Object.assign(entity, dto);
-    // Garder le nom canonique interne synchronisé avec le nom anglais
-    if (dto.nameEn) entity.name = dto.nameEn;
+    if (dto.nameEn !== undefined) entity.nameEn = dto.nameEn?.trim() || null;
+    // Garder le nom canonique interne (unique, non-null) synchronisé
+    if (dto.nameEn !== undefined || dto.nameAr !== undefined)
+      entity.name = entity.nameEn || entity.nameAr;
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
   }

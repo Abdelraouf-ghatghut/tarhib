@@ -141,12 +141,9 @@ export function RoleForm({
   const [productSearch, setProductSearch] = useState("");
   const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
 
-  // Seuls les produits commandables peuvent recevoir un quota ;
-  // les VIP libre-service sont exclus (§3 CLAUDE.md)
-  const commandableProducts = useMemo(
-    () => (products ?? []).filter((p) => p.type === "COMMANDABLE" || p.type === "commandable"),
-    [products],
-  );
+  // Seuls les produits vendus peuvent recevoir un quota ; les VIP
+  // libre-service et les ingrédients de recette sont exclus (§3 CLAUDE.md)
+  const commandableProducts = useMemo(() => (products ?? []).filter((p) => p.isSold), [products]);
 
   const activeRooms = useMemo(() => (rooms ?? []).filter((r) => r.active), [rooms]);
 
@@ -683,14 +680,33 @@ export function RoleForm({
                 ({selectedPerms.size})
               </Text>
             </SectionTitle>
-            <Input
-              allowClear
-              prefix={<SearchOutlined style={{ color: "var(--fg-body-subtle)" }} />}
-              placeholder={t("searchPermission")}
-              value={permSearch}
-              onChange={(e) => setPermSearch(e.target.value)}
-              style={{ maxInlineSize: 320, marginBlockEnd: 16 }}
-            />
+            <div style={{ marginBlockEnd: 12 }}>
+              <Input
+                allowClear
+                prefix={<SearchOutlined style={{ color: "var(--fg-body-subtle)" }} />}
+                placeholder={t("searchPermission")}
+                value={permSearch}
+                onChange={(e) => setPermSearch(e.target.value)}
+                style={{ maxInlineSize: 320 }}
+              />
+            </div>
+            {(permissions ?? []).length > 1 && (
+              <div style={{ marginBlockEnd: 16 }}>
+                <Checkbox
+                  indeterminate={
+                    selectedPerms.size > 0 && selectedPerms.size < (permissions ?? []).length
+                  }
+                  checked={
+                    (permissions ?? []).length > 0 &&
+                    selectedPerms.size === (permissions ?? []).length
+                  }
+                  onChange={(e) => toggleGroup(permissions ?? [], e.target.checked)}
+                  style={{ fontWeight: 600 }}
+                >
+                  {t("selectAllPermissions")}
+                </Checkbox>
+              </div>
+            )}
             <Collapse
               size="small"
               ghost
@@ -710,14 +726,16 @@ export function RoleForm({
                   ),
                   children: (
                     <>
-                      <Checkbox
-                        indeterminate={selectedInGroup > 0 && selectedInGroup < perms.length}
-                        checked={selectedInGroup === perms.length}
-                        onChange={(e) => toggleGroup(perms, e.target.checked)}
-                        style={{ marginBlockEnd: 8, fontWeight: 600 }}
-                      >
-                        {t("selectAll")}
-                      </Checkbox>
+                      {perms.length > 1 && (
+                        <Checkbox
+                          indeterminate={selectedInGroup > 0 && selectedInGroup < perms.length}
+                          checked={selectedInGroup === perms.length}
+                          onChange={(e) => toggleGroup(perms, e.target.checked)}
+                          style={{ marginBlockEnd: 8, fontWeight: 600 }}
+                        >
+                          {t("selectAll")}
+                        </Checkbox>
+                      )}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                         {perms.map((p) => (
                           <Checkbox

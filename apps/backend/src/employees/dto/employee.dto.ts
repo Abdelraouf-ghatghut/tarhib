@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsDateString,
   IsEmail,
   IsEnum,
   IsArray,
@@ -15,9 +16,14 @@ import {
 } from 'class-validator';
 import { EmployeeScope } from '../entities/employee.entity.js';
 
-/** Un Select vidé côté formulaire peut envoyer "" — traité comme absent. */
+/** Un champ texte vidé côté formulaire peut envoyer "" — traité comme absent
+ * (ignoré). `null` reste distinct : c'est le signal explicite d'un Select
+ * vidé (allowClear) qui doit effacer la valeur existante côté serveur — ne
+ * pas le confondre avec "" ni le convertir en undefined ici, sinon un
+ * update() ne peut plus jamais vider ce champ (voir EmployeesService.update,
+ * qui applique `dto.x !== undefined` pour décider si le champ est modifié). */
 const emptyToUndefined = ({ value }: { value: unknown }) =>
-  value === '' || value === null ? undefined : value;
+  value === '' ? undefined : value;
 
 /** @deprecated Use dynamic roles via roleId. Kept for Keycloak fallback and seed compatibility. */
 export enum EmployeeRole {
@@ -37,19 +43,19 @@ export class CreateEmployeeDto {
   @Transform(emptyToUndefined)
   @IsOptional()
   @IsUUID()
-  companyId?: string;
+  companyId?: string | null;
 
   @ApiPropertyOptional({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0853' })
   @Transform(emptyToUndefined)
   @IsOptional()
   @IsUUID()
-  branchId?: string;
+  branchId?: string | null;
 
   @ApiPropertyOptional({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0852' })
   @Transform(emptyToUndefined)
   @IsOptional()
   @IsUUID()
-  departmentId?: string;
+  departmentId?: string | null;
 
   @ApiPropertyOptional({
     example: '3',
@@ -142,6 +148,15 @@ export class CreateEmployeeDto {
   @IsNumber()
   @Min(0)
   salary?: number;
+
+  @ApiPropertyOptional({
+    example: '2026-03-01',
+    description:
+      'Date de prise de fonction — sert de point de départ à la génération de paie mensuelle (proratisation du mois d’embauche).',
+  })
+  @IsOptional()
+  @IsDateString()
+  hireDate?: string | null;
 }
 
 export class EmployeeDto {
@@ -233,4 +248,7 @@ export class EmployeeDto {
 export class EmployeeAdminDto extends EmployeeDto {
   @ApiProperty({ nullable: true })
   salary!: number | null;
+
+  @ApiProperty({ nullable: true })
+  hireDate!: string | null;
 }

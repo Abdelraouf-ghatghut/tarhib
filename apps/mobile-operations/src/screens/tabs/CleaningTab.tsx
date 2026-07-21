@@ -18,11 +18,13 @@ import {
   spacing,
   startCleaningTask,
   useAuthStore,
+  type CleaningTask,
   type Lang,
   type SnowTheme,
 } from "@tarhib/mobile-shared";
 import { CenteredTitle, EmptyText, LoadingCard, ui } from "../../components/ui";
 import { arOrEn, operationsStatusLabel } from "../../lib/format";
+import { RecordDetailModal } from "../../modals/RecordDetailModal";
 
 export const CleaningTab = ({
   theme,
@@ -43,6 +45,7 @@ export const CleaningTab = ({
   const companyId = useAuthStore((state) => state.companyId);
   const branchId = useAuthStore((state) => state.branchId);
   const [creating, setCreating] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<CleaningTask | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
@@ -201,70 +204,110 @@ export const CleaningTab = ({
       ) : null}
       {query.isLoading ? <LoadingCard theme={theme} /> : null}
       {(query.data ?? []).map((task) => (
-        <Card
-          key={task.id}
-          theme={theme}
-          style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
-        >
-          <Text style={[ui.orderId, { color: theme.text }]}>{task.title}</Text>
-          {task.description ? (
-            <Text style={[ui.small, { color: theme.muted }]}>{task.description}</Text>
-          ) : null}
-          <Text style={[ui.badgeText, { color: theme.primaryStrong }]}>
-            {operationsStatusLabel(task.status, lang)}
-            {task.dueDate ? ` · ${task.dueDate}` : ""}
-          </Text>
-          {canComplete && task.status === "ASSIGNED" ? (
-            <PrimaryButton
-              theme={theme}
-              label={arOrEn(lang, "بدء المهمة", "Start task")}
-              disabled={mutation.isPending}
-              onPress={() => mutation.mutate({ id: task.id, action: "start" })}
-            />
-          ) : null}
-          {canComplete && task.status === "IN_PROGRESS" ? (
-            <PrimaryButton
-              theme={theme}
-              label={arOrEn(lang, "تحديد كمكتملة", "Mark completed")}
-              disabled={mutation.isPending}
-              onPress={() => mutation.mutate({ id: task.id, action: "complete" })}
-            />
-          ) : null}
-          {canManage && !["DONE", "VERIFIED", "CANCELLED"].includes(task.status) ? (
-            <View style={styles.team}>
-              {(team.data ?? []).map((employee) => (
-                <Pressable
-                  key={employee.id}
-                  disabled={managementMutation.isPending}
-                  onPress={() =>
-                    managementMutation.mutate({
-                      action: "assign",
-                      taskId: task.id,
-                      employeeId: employee.id,
-                    })
-                  }
-                  style={[
-                    styles.person,
-                    {
-                      borderColor:
-                        task.assignedEmployeeId === employee.id
-                          ? theme.primaryStrong
-                          : theme.border,
-                    },
-                  ]}
-                >
-                  <Text style={[ui.small, { color: theme.text }]}>{employeeName(employee)}</Text>
-                  <Text style={[ui.badgeText, { color: theme.muted }]}>
-                    {employee.activeTaskCount}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-        </Card>
+        <Pressable key={task.id} onPress={() => setSelectedTask(task)}>
+          <Card
+            theme={theme}
+            style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
+          >
+            <Text style={[ui.orderId, { color: theme.text }]}>{task.title}</Text>
+            {task.description ? (
+              <Text style={[ui.small, { color: theme.muted }]}>{task.description}</Text>
+            ) : null}
+            <Text style={[ui.badgeText, { color: theme.primaryStrong }]}>
+              {operationsStatusLabel(task.status, lang)}
+              {task.dueDate ? ` · ${task.dueDate}` : ""}
+            </Text>
+            {canComplete && task.status === "ASSIGNED" ? (
+              <PrimaryButton
+                theme={theme}
+                label={arOrEn(lang, "بدء المهمة", "Start task")}
+                disabled={mutation.isPending}
+                onPress={() => mutation.mutate({ id: task.id, action: "start" })}
+              />
+            ) : null}
+            {canComplete && task.status === "IN_PROGRESS" ? (
+              <PrimaryButton
+                theme={theme}
+                label={arOrEn(lang, "تحديد كمكتملة", "Mark completed")}
+                disabled={mutation.isPending}
+                onPress={() => mutation.mutate({ id: task.id, action: "complete" })}
+              />
+            ) : null}
+            {canManage && !["DONE", "VERIFIED", "CANCELLED"].includes(task.status) ? (
+              <View style={styles.team}>
+                {(team.data ?? []).map((employee) => (
+                  <Pressable
+                    key={employee.id}
+                    disabled={managementMutation.isPending}
+                    onPress={() =>
+                      managementMutation.mutate({
+                        action: "assign",
+                        taskId: task.id,
+                        employeeId: employee.id,
+                      })
+                    }
+                    style={[
+                      styles.person,
+                      {
+                        borderColor:
+                          task.assignedEmployeeId === employee.id
+                            ? theme.primaryStrong
+                            : theme.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[ui.small, { color: theme.text }]}>{employeeName(employee)}</Text>
+                    <Text style={[ui.badgeText, { color: theme.muted }]}>
+                      {employee.activeTaskCount}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+          </Card>
+        </Pressable>
       ))}
       {!query.isLoading && !query.data?.length ? (
         <EmptyText theme={theme} text={arOrEn(lang, "لا توجد مهام مسندة.", "No assigned tasks.")} />
+      ) : null}
+      {selectedTask ? (
+        <RecordDetailModal
+          visible
+          theme={theme}
+          lang={lang}
+          title={arOrEn(lang, "تفاصيل مهمة التنظيف", "Cleaning task details")}
+          reference={selectedTask.title}
+          status={operationsStatusLabel(selectedTask.status, lang)}
+          fields={[
+            {
+              label: arOrEn(lang, "الوصف", "Description"),
+              value: selectedTask.description || arOrEn(lang, "لا يوجد وصف", "No description"),
+              icon: "document-text-outline",
+            },
+            {
+              label: arOrEn(lang, "الموعد", "Due date"),
+              value: selectedTask.dueDate
+                ? new Date(selectedTask.dueDate).toLocaleString(lang === "ar" ? "ar" : "en")
+                : arOrEn(lang, "غير محدد", "Not specified"),
+              icon: "calendar-outline",
+            },
+            {
+              label: arOrEn(lang, "الموظف المسند إليه", "Assigned employee"),
+              value: selectedTask.assignedEmployeeId
+                ? (() => {
+                    const employee = (team.data ?? []).find(
+                      (entry) => entry.id === selectedTask.assignedEmployeeId,
+                    );
+                    return employee
+                      ? employeeName(employee)
+                      : arOrEn(lang, "موظف غير معروف", "Unknown employee");
+                  })()
+                : arOrEn(lang, "غير مسندة", "Unassigned"),
+              icon: "person-outline",
+            },
+          ]}
+          onClose={() => setSelectedTask(null)}
+        />
       ) : null}
       {canViewProducts ? (
         <>
@@ -292,7 +335,7 @@ export const CleaningTab = ({
                     ? lang === "ar"
                       ? product.nameAr
                       : product.nameEn
-                    : item.cleaningProductId}
+                    : arOrEn(lang, "منتج غير معروف", "Unknown product")}
                 </Text>
                 <Text style={[ui.small, { color: theme.muted }]}>
                   {arOrEn(lang, "الكمية", "Quantity")}: {item.quantity} · {item.locationName ?? "—"}
@@ -330,7 +373,7 @@ export const CleaningTab = ({
                     ? lang === "ar"
                       ? product.nameAr
                       : product.nameEn
-                    : request.cleaningProductId}
+                    : arOrEn(lang, "منتج غير معروف", "Unknown product")}
                 </Text>
                 <Text style={[ui.small, { color: theme.muted }]}>
                   {request.requestedQty} · {operationsStatusLabel(request.status, lang)}
@@ -365,14 +408,14 @@ export const CleaningTab = ({
 };
 
 const styles = createSnowStyles({
-  card: { borderWidth: 1, borderRadius: 16, gap: spacing.md },
-  input: { minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: spacing.md },
+  card: { borderWidth: 1, borderRadius: 13, gap: spacing.md, marginBottom: spacing.md },
+  input: { minHeight: 48, borderWidth: 1, borderRadius: 9, paddingHorizontal: spacing.md },
   multiline: { minHeight: 88, textAlignVertical: "top", paddingTop: spacing.md },
   team: { gap: spacing.sm },
   person: {
     minHeight: 52,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 9,
     paddingHorizontal: spacing.md,
     justifyContent: "center",
   },

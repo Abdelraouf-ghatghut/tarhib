@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -61,6 +62,7 @@ export class MeetingServicePackagesController {
   @Delete(':id')
   @UseGuards(PermissionsGuard)
   @RequirePermission('branch.manage')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Delete a service package' })
   remove(@Param('id') id: string) {
     return this.svc.remove(id);

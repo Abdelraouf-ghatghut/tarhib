@@ -12,7 +12,7 @@ import {
 } from "react-native";
 
 import { Card, PrimaryButton } from "./components";
-import type { OtpChannel } from "./api/auth";
+import type { AcceptInvitePayload, OtpChannel } from "./api/auth";
 import { t } from "./legacy-i18n";
 import {
   appShadow,
@@ -35,12 +35,14 @@ export const LoginScreen = ({
   onLogin,
   onRequestOtp,
   onOtpLogin,
+  onHaveInviteCode,
 }: {
   lang: Lang;
   theme: SnowTheme;
   onLogin: (email: string, password: string) => Promise<void>;
   onRequestOtp: (phoneNumber: string, channel: OtpChannel) => Promise<void>;
   onOtpLogin: (phoneNumber: string, code: string) => Promise<void>;
+  onHaveInviteCode: () => void;
 }) => {
   const copy = t(lang);
   const isArabic = lang === "ar";
@@ -49,6 +51,7 @@ export const LoginScreen = ({
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
+  const [rememberMe, setRememberMe] = React.useState(true);
   const [phoneNumber, setPhoneNumber] = React.useState("");
   const [otpChannel, setOtpChannel] = React.useState<OtpChannel>("whatsapp");
   const [otpCode, setOtpCode] = React.useState("");
@@ -275,26 +278,88 @@ export const LoginScreen = ({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={[styles.authRoot, { borderColor: theme.border }]}
       >
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.loginScroll}>
-          <View style={styles.loginHeader}>
-            <View style={[styles.logoMark, { backgroundColor: theme.primary }, appShadow(theme)]}>
-              <Ionicons name="bag-handle" size={30} color="#FFFFFF" />
-            </View>
-            <View style={styles.brandRow}>
-              <Text style={[styles.brandAr, { color: theme.text }]}>{copy.appName}</Text>
-              <Text style={[styles.brandEn, { color: theme.muted }]}>Tarhib</Text>
-            </View>
-            <Text style={[styles.heroTitle, { color: theme.text }]}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[
+            styles.loginScroll,
+            theme.app === "operations" && styles.operationsLoginScroll,
+          ]}
+        >
+          <View
+            style={[styles.loginHeader, theme.app === "operations" && styles.operationsLoginHeader]}
+          >
+            {theme.app === "operations" ? (
+              <View style={styles.operationsBrand}>
+                <View style={styles.operationsBrandTop}>
+                  <View style={[styles.operationsMark, { backgroundColor: theme.primaryStrong }]}>
+                    <View style={styles.operationsMarkLine} />
+                  </View>
+                  <View style={styles.operationsBrandNames}>
+                    <Text style={[styles.operationsBrandAr, { color: theme.primaryStrong }]}>
+                      ترحيب
+                    </Text>
+                    <Text style={[styles.operationsBrandEn, { color: theme.primaryStrong }]}>
+                      Tarhib
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[styles.operationsWordmark, { color: theme.primaryStrong }]}>
+                  OPERATIONS
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View
+                  style={[styles.logoMark, { backgroundColor: theme.primary }, appShadow(theme)]}
+                >
+                  <Ionicons name="bag-handle" size={30} color="#FFFFFF" />
+                </View>
+                <View style={styles.brandRow}>
+                  <Text style={[styles.brandAr, { color: theme.text }]}>{copy.appName}</Text>
+                  <Text style={[styles.brandEn, { color: theme.muted }]}>Tarhib</Text>
+                </View>
+              </>
+            )}
+            {theme.app === "operations" ? (
+              <>
+                <Text style={[styles.heroTitle, { color: theme.text }]}>
+                  {isArabic ? "مرحباً بعودتك" : "Welcome back"}
+                </Text>
+                <Text style={[styles.heroText, { color: theme.muted }]}>
+                  {isArabic ? "سجّل الدخول للمتابعة" : "Sign in to continue"}
+                </Text>
+              </>
+            ) : null}
+            <Text
+              style={[
+                styles.heroTitle,
+                theme.app === "operations" && styles.hidden,
+                { color: theme.text },
+              ]}
+            >
               {isArabic ? "مرحباً بك في ترحيب 👋" : "Welcome to Tarhib 👋"}
             </Text>
-            <Text style={[styles.heroText, { color: theme.muted }]}>
+            <Text
+              style={[
+                styles.heroText,
+                theme.app === "operations" && styles.hidden,
+                { color: theme.muted },
+              ]}
+            >
               {isArabic
                 ? "تجربة ضيافة راقية تبدأ من هنا"
                 : "A refined hospitality experience starts here"}
             </Text>
           </View>
 
-          <View style={[styles.authTabs, { backgroundColor: theme.surfaceAlt }]}>
+          <View
+            style={[
+              styles.authTabs,
+              theme.app === "operations" && styles.operationsAuthTabs,
+              { backgroundColor: theme.surfaceAlt },
+            ]}
+          >
             {orderedSegments.map((segment) => (
               <AuthModeTab
                 key={segment.key}
@@ -351,20 +416,43 @@ export const LoginScreen = ({
                   </Pressable>
                 }
               />
-              <Pressable
-                onPress={() =>
-                  setNotice(
-                    isArabic
-                      ? "تواصل مع مسؤول الشركة لإعادة تعيين كلمة المرور"
-                      : "Contact your company admin to reset your password",
-                  )
-                }
-                style={styles.forgotLinkWrap}
-              >
-                <Text style={[styles.forgotLink, { color: theme.primaryStrong }]}>
-                  {isArabic ? "نسيت كلمة المرور؟" : "Forgot your password?"}
-                </Text>
-              </Pressable>
+              <View style={styles.loginOptions}>
+                <Pressable
+                  onPress={() =>
+                    setNotice(
+                      isArabic
+                        ? "تواصل مع مسؤول الشركة لإعادة تعيين كلمة المرور"
+                        : "Contact your company admin to reset your password",
+                    )
+                  }
+                  style={styles.forgotLinkWrap}
+                >
+                  <Text style={[styles.forgotLink, { color: theme.primaryStrong }]}>
+                    {isArabic ? "هل نسيت كلمة المرور؟" : "Forgot your password?"}
+                  </Text>
+                </Pressable>
+                {theme.app === "operations" ? (
+                  <Pressable
+                    onPress={() => setRememberMe((value) => !value)}
+                    style={styles.rememberRow}
+                  >
+                    <Text style={[styles.rememberText, { color: theme.text }]}>
+                      {isArabic ? "تذكرني" : "Remember me"}
+                    </Text>
+                    <View
+                      style={[
+                        styles.checkbox,
+                        {
+                          backgroundColor: rememberMe ? theme.primaryStrong : theme.surface,
+                          borderColor: rememberMe ? theme.primaryStrong : theme.border,
+                        },
+                      ]}
+                    >
+                      {rememberMe ? <Ionicons name="checkmark" size={17} color="#FFFFFF" /> : null}
+                    </View>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           ) : (
             <View style={styles.fieldGroup}>
@@ -422,23 +510,46 @@ export const LoginScreen = ({
           ) : null}
           {error ? <Text style={[styles.feedback, { color: theme.danger }]}>{error}</Text> : null}
 
-          <PrimaryButton
-            label={
-              mode === "email"
-                ? submitting
-                  ? "..."
-                  : copy.signIn
-                : requestingOtp
-                  ? "..."
-                  : isArabic
-                    ? "إرسال رمز التحقق"
-                    : otpChannel === "whatsapp"
-                      ? "Send code via WhatsApp"
-                      : "Send code via SMS"
-            }
-            theme={theme}
-            onPress={() => void (mode === "email" ? handleEmailLogin() : handleSendCode())}
-          />
+          {theme.app === "operations" ? (
+            <Pressable
+              disabled={mode === "email" ? submitting : requestingOtp}
+              onPress={() => void (mode === "email" ? handleEmailLogin() : handleSendCode())}
+              style={({ pressed }) => [
+                styles.operationsSignIn,
+                { backgroundColor: theme.primaryStrong, opacity: pressed ? 0.84 : 1 },
+              ]}
+            >
+              <Text style={styles.operationsSignInText}>
+                {mode === "email"
+                  ? submitting
+                    ? "..."
+                    : copy.signIn
+                  : requestingOtp
+                    ? "..."
+                    : isArabic
+                      ? "إرسال رمز التحقق"
+                      : "Send verification code"}
+              </Text>
+            </Pressable>
+          ) : (
+            <PrimaryButton
+              label={
+                mode === "email"
+                  ? submitting
+                    ? "..."
+                    : copy.signIn
+                  : requestingOtp
+                    ? "..."
+                    : isArabic
+                      ? "إرسال رمز التحقق"
+                      : otpChannel === "whatsapp"
+                        ? "Send code via WhatsApp"
+                        : "Send code via SMS"
+              }
+              theme={theme}
+              onPress={() => void (mode === "email" ? handleEmailLogin() : handleSendCode())}
+            />
+          )}
 
           <View style={styles.divider}>
             <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
@@ -471,12 +582,260 @@ export const LoginScreen = ({
             </Text>
           </Pressable>
 
-          <Text style={[styles.footerHint, { color: theme.muted }]}>
+          {theme.app === "operations" ? (
+            <Text style={[styles.phoneHint, { color: theme.muted }]}>
+              {isArabic
+                ? "رمز تحقق عبر الرسائل القصيرة أو واتساب"
+                : "Verification code via SMS or WhatsApp"}
+            </Text>
+          ) : null}
+
+          <Text
+            style={[
+              styles.footerHint,
+              theme.app === "operations" && styles.hidden,
+              { color: theme.muted },
+            ]}
+          >
             {isArabic ? "ليس لديك حساب؟ " : "Don't have an account? "}
             <Text style={{ color: theme.primaryStrong, fontWeight: "600" }}>
               {isArabic ? "تواصل مع مسؤول الشركة" : "Contact your company admin"}
             </Text>
           </Text>
+
+          <Pressable onPress={onHaveInviteCode}>
+            <Text style={[styles.footerHint, { color: theme.primaryStrong, fontWeight: "600" }]}>
+              {isArabic ? "لديك رمز دعوة؟" : "Have an invite code?"}
+            </Text>
+          </Pressable>
+
+          {theme.app === "operations" ? (
+            <Pressable
+              onPress={() =>
+                setNotice(isArabic ? "تواصل مع دعم تقنية المعلومات" : "Contact IT support")
+              }
+              style={[
+                styles.supportCard,
+                { borderColor: theme.border, backgroundColor: theme.surface },
+              ]}
+            >
+              <Ionicons name={directionalIcon("chevron-forward")} size={20} color={theme.text} />
+              <View style={styles.supportCopy}>
+                <Text style={[styles.supportTitle, { color: theme.text }]}>
+                  {isArabic ? "هل تحتاج إلى مساعدة؟" : "Need help?"}
+                </Text>
+                <Text style={[styles.supportText, { color: theme.muted }]}>
+                  {isArabic ? "تواصل مع دعم تقنية المعلومات" : "Contact IT support"}
+                </Text>
+              </View>
+              <View style={[styles.supportIcon, { backgroundColor: theme.primarySoft }]}>
+                <Ionicons name="headset-outline" size={27} color={theme.primaryStrong} />
+              </View>
+            </Pressable>
+          ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
+  );
+};
+
+/**
+ * Acceptation d'une invitation admin : l'employé saisit manuellement le code
+ * reçu par email (pas de lien cliquable — compte mobile uniquement, cf.
+ * EmailService.sendInviteEmail côté backend) puis complète son identité.
+ */
+export const AcceptInviteScreen = ({
+  lang,
+  theme,
+  onSubmit,
+  onBack,
+}: {
+  lang: Lang;
+  theme: SnowTheme;
+  onSubmit: (payload: AcceptInvitePayload) => Promise<void>;
+  onBack: () => void;
+}) => {
+  const isArabic = lang === "ar";
+  const [code, setCode] = React.useState("");
+  const [firstNameAr, setFirstNameAr] = React.useState("");
+  const [lastNameAr, setLastNameAr] = React.useState("");
+  const [firstNameEn, setFirstNameEn] = React.useState("");
+  const [lastNameEn, setLastNameEn] = React.useState("");
+  const [phoneNumber, setPhoneNumber] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const canSubmit =
+    code.trim().length > 0 &&
+    firstNameAr.trim().length > 0 &&
+    lastNameAr.trim().length > 0 &&
+    firstNameEn.trim().length > 0 &&
+    lastNameEn.trim().length > 0 &&
+    phoneNumber.trim().length > 0 &&
+    password.length >= 8;
+
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit({
+        code: code.trim(),
+        firstNameAr: firstNameAr.trim(),
+        lastNameAr: lastNameAr.trim(),
+        firstNameEn: firstNameEn.trim(),
+        lastNameEn: lastNameEn.trim(),
+        phoneNumber: phoneNumber.trim(),
+        password,
+      });
+    } catch (err) {
+      setError(authErrorMessage(err, isArabic));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const label = (ar: string, en: string) => (isArabic ? ar : en);
+
+  return (
+    <View style={[styles.viewport, { backgroundColor: theme.background }]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={[styles.authRoot, { borderColor: theme.border }]}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.loginScroll}
+        >
+          <View style={styles.loginHeader}>
+            <Text style={[styles.heroTitle, { color: theme.text }]}>
+              {label("لديك رمز دعوة؟", "Have an invite code?")}
+            </Text>
+            <Text style={[styles.heroText, { color: theme.muted }]}>
+              {label(
+                "أدخل الرمز المرسل إلى بريدك الإلكتروني وأكمل بياناتك",
+                "Enter the code sent to your email and complete your details",
+              )}
+            </Text>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text
+              style={[styles.label, { color: theme.text, textAlign: isArabic ? "right" : "left" }]}
+            >
+              {label("رمز الدعوة", "Invite code")}
+            </Text>
+            <Field
+              theme={theme}
+              isArabic={isArabic}
+              icon="key-outline"
+              value={code}
+              onChangeText={(v) => setCode(v.toUpperCase())}
+              placeholder="XXXXXXXX"
+              autoCapitalize="characters"
+            />
+
+            <Text
+              style={[styles.label, { color: theme.text, textAlign: isArabic ? "right" : "left" }]}
+            >
+              {label("الاسم بالعربية", "Name (Arabic)")}
+            </Text>
+            <Field
+              theme={theme}
+              isArabic={isArabic}
+              icon="person-outline"
+              value={firstNameAr}
+              onChangeText={setFirstNameAr}
+              placeholder={label("الاسم الأول", "First name")}
+            />
+            <Field
+              theme={theme}
+              isArabic={isArabic}
+              icon="person-outline"
+              value={lastNameAr}
+              onChangeText={setLastNameAr}
+              placeholder={label("اسم العائلة", "Last name")}
+            />
+
+            <Text
+              style={[styles.label, { color: theme.text, textAlign: isArabic ? "right" : "left" }]}
+            >
+              {label("الاسم بالإنجليزية", "Name (English)")}
+            </Text>
+            <Field
+              theme={theme}
+              isArabic={isArabic}
+              icon="person-outline"
+              value={firstNameEn}
+              onChangeText={setFirstNameEn}
+              placeholder="First name"
+            />
+            <Field
+              theme={theme}
+              isArabic={isArabic}
+              icon="person-outline"
+              value={lastNameEn}
+              onChangeText={setLastNameEn}
+              placeholder="Last name"
+            />
+
+            <Text
+              style={[styles.label, { color: theme.text, textAlign: isArabic ? "right" : "left" }]}
+            >
+              {label("رقم الجوال", "Phone number")}
+            </Text>
+            <Field
+              theme={theme}
+              isArabic={isArabic}
+              icon="call-outline"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              placeholder="+218912345678"
+              keyboardType="phone-pad"
+            />
+
+            <Text
+              style={[styles.label, { color: theme.text, textAlign: isArabic ? "right" : "left" }]}
+            >
+              {label("كلمة المرور", "Password")}
+            </Text>
+            <Field
+              theme={theme}
+              isArabic={isArabic}
+              icon="lock-closed-outline"
+              value={password}
+              onChangeText={setPassword}
+              placeholder={label("8 أحرف على الأقل", "At least 8 characters")}
+              secureTextEntry={!showPassword}
+              trailing={
+                <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={8}>
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={19}
+                    color={theme.muted}
+                  />
+                </Pressable>
+              }
+            />
+          </View>
+
+          {error ? <Text style={[styles.feedback, { color: theme.danger }]}>{error}</Text> : null}
+
+          <PrimaryButton
+            label={submitting ? "..." : label("إنشاء الحساب", "Create account")}
+            theme={theme}
+            disabled={!canSubmit || submitting}
+            onPress={() => void handleSubmit()}
+          />
+
+          <Pressable onPress={onBack}>
+            <Text style={[styles.otpResendLink, { color: theme.primaryStrong }]}>
+              {label("العودة لتسجيل الدخول", "Back to sign in")}
+            </Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -616,6 +975,12 @@ const styles = createSnowStyles({
     gap: spacing.lg,
     paddingVertical: spacing.xl,
   },
+  operationsLoginScroll: {
+    justifyContent: "flex-start",
+    gap: 22,
+    paddingTop: 70,
+    paddingBottom: 28,
+  },
   logoMark: {
     width: 68,
     height: 68,
@@ -657,6 +1022,22 @@ const styles = createSnowStyles({
     gap: spacing.sm,
     alignItems: "center",
   },
+  operationsLoginHeader: { gap: 8, marginBottom: 8 },
+  operationsBrand: { alignItems: "center", marginBottom: 28 },
+  operationsBrandTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  operationsMark: {
+    width: 48,
+    height: 56,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  operationsMarkLine: { width: 2, height: 42, backgroundColor: "rgba(255,255,255,0.8)" },
+  operationsBrandNames: { alignItems: "flex-start", marginTop: -4 },
+  operationsBrandAr: { fontSize: 31, lineHeight: 36, fontWeight: "700" },
+  operationsBrandEn: { fontSize: 27, lineHeight: 30, fontWeight: "700" },
+  operationsWordmark: { fontSize: 13, fontWeight: "700", letterSpacing: 3.5, marginTop: 10 },
   authTabs: {
     minHeight: 48,
     borderRadius: 12,
@@ -664,6 +1045,8 @@ const styles = createSnowStyles({
     flexDirection: "row",
     gap: spacing.xs,
   },
+  operationsAuthTabs: { display: "none" },
+  hidden: { display: "none" },
   authTab: {
     flex: 1,
     minHeight: 40,
@@ -676,15 +1059,15 @@ const styles = createSnowStyles({
     fontWeight: "600",
   },
   fieldGroup: {
-    gap: spacing.sm,
+    gap: 10,
   },
   label: {
     fontSize: 13,
     fontWeight: "600",
   },
   field: {
-    minHeight: 52,
-    borderRadius: 10,
+    minHeight: 54,
+    borderRadius: 9,
     borderWidth: 1,
     paddingHorizontal: spacing.md,
     flexDirection: "row",
@@ -699,13 +1082,45 @@ const styles = createSnowStyles({
   },
   // alignSelf flex-start = côté de départ : gauche en LTR, droite en RTL.
   forgotLinkWrap: {
-    alignSelf: "flex-start",
+    minHeight: 42,
+    justifyContent: "center",
   },
   forgotLink: {
     fontSize: 13,
-    fontWeight: "600",
-    paddingVertical: spacing.xs,
+    lineHeight: 19,
+    fontWeight: "500",
   },
+  loginOptions: {
+    minHeight: 46,
+    flexDirection: "row-reverse",
+    direction: "ltr",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    paddingHorizontal: 2,
+  },
+  rememberRow: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  rememberText: { fontSize: 13, lineHeight: 19, fontWeight: "500" },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  operationsSignIn: {
+    minHeight: 54,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  operationsSignInText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
   feedback: {
     fontSize: 12,
     fontWeight: "400",
@@ -725,8 +1140,8 @@ const styles = createSnowStyles({
     fontWeight: "500",
   },
   altButton: {
-    minHeight: 50,
-    borderRadius: 10,
+    minHeight: 56,
+    borderRadius: 9,
     borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
@@ -741,6 +1156,26 @@ const styles = createSnowStyles({
     fontSize: 13,
     fontWeight: "400",
     textAlign: "center",
+  },
+  phoneHint: { fontSize: 12, lineHeight: 18, textAlign: "center", marginTop: -12 },
+  supportCard: {
+    minHeight: 76,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  supportCopy: { flex: 1, alignItems: "flex-end", gap: 3 },
+  supportTitle: { fontSize: 14, fontWeight: "700" },
+  supportText: { fontSize: 12, fontWeight: "400" },
+  supportIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
   },
   otpBadge: {
     width: 84,

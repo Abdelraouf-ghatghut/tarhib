@@ -144,6 +144,43 @@ export class KeycloakService {
     }
   }
 
+  /**
+   * Impersonation (TARHIB-XX) : un employé habilité "se connecte en tant
+   * qu'un autre employé" pour tester ses permissions. Même mécanisme de
+   * token-exchange que loginWithPhoneOtp() — le compte de service échange
+   * son propre jeton contre un jeton pour l'utilisateur cible.
+   */
+  async impersonate(targetKeycloakId: string): Promise<TokenResponseDto> {
+    const serviceToken = await this.getServiceAccountToken();
+    const params = new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+      client_id: this.clientId,
+      client_secret: this.clientSecret,
+      subject_token: serviceToken,
+      requested_subject: targetKeycloakId,
+      audience: this.clientId,
+      requested_token_type: 'urn:ietf:params:oauth:token-type:refresh_token',
+    });
+
+    try {
+      const { data } = await firstValueFrom(
+        this.http.post<KeycloakTokenResponse>(
+          this.tokenUrl,
+          params.toString(),
+          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+        ),
+      );
+      return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token!,
+        expiresIn: data.expires_in,
+      };
+    } catch (err) {
+      this.logger.error('Keycloak impersonation token exchange failed', err);
+      throw new UnauthorizedException('impersonationFailed');
+    }
+  }
+
   private async getServiceAccountToken(): Promise<string> {
     const params = new URLSearchParams({
       grant_type: 'client_credentials',

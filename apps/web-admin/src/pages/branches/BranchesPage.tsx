@@ -1,7 +1,10 @@
-import { Divider, Form, Input, Select, Switch, Tag, Typography } from "antd";
+import { useRef } from "react";
+import { Button, Col, Divider, Form, Input, Row, Select, Switch, Tag, Typography } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CrudTable } from "../../components/CrudTable";
+import type { CrudTableHandle } from "../../components/CrudTable";
 import { ScopeFilterBar } from "../../components/ScopeFilterBar";
 import { useScope } from "../../contexts/ScopeContext";
 import { branchesApi, companiesApi, employeesApi } from "../../lib/api";
@@ -12,7 +15,7 @@ const { Title, Text } = Typography;
 interface Branch {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
   companyId: string;
   active: boolean;
   stockResponsibleId: string | null;
@@ -22,7 +25,7 @@ interface Branch {
 interface Company {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
 }
 interface Employee {
   id: string;
@@ -38,6 +41,7 @@ export function BranchesPage() {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const isAr = i18n.language === "ar";
+  const crudRef = useRef<CrudTableHandle>(null);
 
   const { companyId: scopeCompanyId } = useScope();
 
@@ -83,16 +87,37 @@ export function BranchesPage() {
 
   return (
     <>
-      <Title level={4}>{t("branches")}</Title>
+      <Row justify="space-between" align="middle" style={{ marginBlockEnd: 16 }}>
+        <Col>
+          <Title level={4} style={{ margin: 0 }}>
+            {t("branches")}
+          </Title>
+        </Col>
+        <Col>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => crudRef.current?.openCreate()}
+          >
+            {t("add")}
+          </Button>
+        </Col>
+      </Row>
       <ScopeFilterBar showBranch={false} />
       <CrudTable<Branch>
+        ref={crudRef}
+        hideAddButton
         data={data}
         isPending={isPending}
         onSave={onSave}
         onDelete={onDelete}
         columns={[
           { title: t("nameAr"), dataIndex: "nameAr" },
-          { title: t("nameEn"), dataIndex: "nameEn" },
+          {
+            title: t("nameEn"),
+            dataIndex: "nameEn",
+            render: (v: string | null) => v?.trim() || "—",
+          },
           {
             title: t("company"),
             dataIndex: "companyId",

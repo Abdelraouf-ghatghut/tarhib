@@ -10,6 +10,7 @@ import {
 import { Employee } from '../employees/entities/employee.entity.js';
 import { Company } from '../companies/entities/company.entity.js';
 import { Branch } from '../branches/entities/branch.entity.js';
+import { Order } from '../orders/entities/order.entity.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 describe('DeliveryService', () => {
@@ -19,8 +20,15 @@ describe('DeliveryService', () => {
     create: jest.fn((v: DeliveryTask) => v),
     save: jest.fn((v: DeliveryTask) => Promise.resolve(v)),
   };
-  const orders = { findAll: jest.fn(), updateStatus: jest.fn() };
-  const lookupRepo = { findBy: jest.fn().mockResolvedValue([]) };
+  const orders = {
+    findAll: jest.fn(),
+    updateStatus: jest.fn(),
+    findByIds: jest.fn().mockResolvedValue([]),
+  };
+  const lookupRepo = {
+    find: jest.fn().mockResolvedValue([]),
+    findBy: jest.fn().mockResolvedValue([]),
+  };
   const notifications = { notifyByPermission: jest.fn() };
   let service: DeliveryService;
   beforeEach(async () => {
@@ -32,6 +40,7 @@ describe('DeliveryService', () => {
         { provide: getRepositoryToken(Employee), useValue: lookupRepo },
         { provide: getRepositoryToken(Company), useValue: lookupRepo },
         { provide: getRepositoryToken(Branch), useValue: lookupRepo },
+        { provide: getRepositoryToken(Order), useValue: lookupRepo },
         { provide: NotificationsService, useValue: notifications },
         { provide: OrdersService, useValue: orders },
       ],
@@ -43,13 +52,16 @@ describe('DeliveryService', () => {
     orders.findAll.mockResolvedValue([
       {
         id: 'order-1',
+        employeeId: 'kc-client-1',
         companyId: 'co-1',
         branchId: 'br-1',
         slaDeadline: new Date().toISOString(),
       },
     ]);
     repo.findOne.mockResolvedValue(null);
-    repo.find.mockResolvedValue([
+    // 1er appel : lookup batch des tâches existantes (aucune) — 2e appel :
+    // liste des tâches visibles (celle qui vient d'être créée).
+    repo.find.mockResolvedValueOnce([]).mockResolvedValueOnce([
       {
         id: 'task-1',
         orderId: 'order-1',
@@ -57,12 +69,12 @@ describe('DeliveryService', () => {
       },
     ]);
     const result = await service.queue('co-1', 'br-1');
-    expect(repo.save).toHaveBeenCalledWith(
+    expect(repo.save).toHaveBeenCalledWith([
       expect.objectContaining({
         orderId: 'order-1',
         status: DeliveryTaskStatus.AVAILABLE,
       }),
-    );
+    ]);
     expect(result).toHaveLength(1);
   });
 

@@ -22,8 +22,8 @@ export class MeetingRoom {
   @Column({ name: 'name_ar', type: 'varchar', length: 200 })
   nameAr!: string;
 
-  @Column({ name: 'name_en', type: 'varchar', length: 200 })
-  nameEn!: string;
+  @Column({ name: 'name_en', type: 'varchar', length: 200, nullable: true })
+  nameEn!: string | null;
 
   @Column({ type: 'int', default: 10 })
   capacity!: number;

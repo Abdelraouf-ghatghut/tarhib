@@ -26,18 +26,16 @@ export class ProductDto {
   @MinLength(1)
   nameAr!: string;
 
-  @ApiPropertyOptional({
-    example: 'Coffee',
-    description: "Nom anglais optionnel — l'arabe sert de repli",
-  })
+  @ApiPropertyOptional({ example: 'Coffee', nullable: true })
   @IsString()
   @IsOptional()
-  nameEn?: string;
+  nameEn?: string | null;
 
   @ApiProperty({ example: 'beverages' })
   @IsString()
   category!: string;
 
+  /** @deprecated remplacé par isSold/isPurchased/isVipSelfService */
   @ApiProperty({ enum: ProductType })
   @IsEnum(ProductType)
   type!: ProductType;
@@ -66,6 +64,45 @@ export class ProductDto {
   @ApiProperty({ example: true })
   @IsBoolean()
   active!: boolean;
+
+  @ApiProperty({ example: true, description: 'Acheté auprès d’un fournisseur' })
+  @IsBoolean()
+  isPurchased!: boolean;
+
+  @ApiProperty({ example: true, description: 'Vendu au catalogue employé' })
+  @IsBoolean()
+  isSold!: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Libre-service VIP (jamais commandable)',
+  })
+  @IsBoolean()
+  isVipSelfService!: boolean;
+
+  @ApiPropertyOptional({
+    example: 'g',
+    description: 'Unité de stock/recette ("g", "ml", "unité")',
+  })
+  @IsString()
+  @IsOptional()
+  unit?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'sac',
+    description: 'Unité d’achat fournisseur, si différente de `unit`',
+  })
+  @IsString()
+  @IsOptional()
+  purchaseUnit?: string | null;
+
+  @ApiProperty({
+    example: 1,
+    description: 'Unités de stock par unité d’achat (ex. 1 sac = 1000g → 1000)',
+  })
+  @IsNumber()
+  @Min(1)
+  unitsPerPurchase!: number;
 }
 
 export class CreateProductDto {
@@ -74,18 +111,16 @@ export class CreateProductDto {
   @MinLength(1)
   nameAr!: string;
 
-  @ApiPropertyOptional({
-    example: 'Coffee',
-    description: "Nom anglais optionnel — l'arabe sert de repli",
-  })
+  @ApiPropertyOptional({ example: 'Coffee', nullable: true })
   @IsString()
   @IsOptional()
-  nameEn?: string;
+  nameEn?: string | null;
 
   @ApiProperty({ example: 'beverages' })
   @IsString()
   category!: string;
 
+  /** @deprecated remplacé par isSold/isPurchased/isVipSelfService — si isSold/isPurchased/isVipSelfService sont omis, ils sont dérivés de ce champ */
   @ApiProperty({ enum: ProductType })
   @IsEnum(ProductType)
   type!: ProductType;
@@ -119,6 +154,21 @@ export class CreateProductDto {
   @IsOptional()
   imageUrl?: string;
 
+  @ApiPropertyOptional({ description: 'Défaut dérivé de `type` si omis' })
+  @IsBoolean()
+  @IsOptional()
+  isPurchased?: boolean;
+
+  @ApiPropertyOptional({ description: 'Défaut dérivé de `type` si omis' })
+  @IsBoolean()
+  @IsOptional()
+  isSold?: boolean;
+
+  @ApiPropertyOptional({ description: 'Défaut dérivé de `type` si omis' })
+  @IsBoolean()
+  @IsOptional()
+  isVipSelfService?: boolean;
+
   @ApiProperty({
     required: false,
     example: 12.5,
@@ -128,6 +178,32 @@ export class CreateProductDto {
   @Min(0)
   @IsOptional()
   unitCost?: number;
+
+  @ApiPropertyOptional({
+    example: 'g',
+    description: 'Unité de stock/recette ("g", "ml", "unité")',
+  })
+  @IsString()
+  @IsOptional()
+  unit?: string;
+
+  @ApiPropertyOptional({
+    example: 'sac',
+    description: 'Unité d’achat fournisseur, si différente de `unit`',
+  })
+  @IsString()
+  @IsOptional()
+  purchaseUnit?: string;
+
+  @ApiPropertyOptional({
+    example: 1000,
+    description:
+      'Unités de stock par unité d’achat (ex. 1 sac = 1000g → 1000) — défaut 1 (pas de conversion) si omis',
+  })
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  unitsPerPurchase?: number;
 }
 
 /**
@@ -157,4 +233,39 @@ export class ProductAvailabilityDto {
   @ApiProperty({ example: true })
   @IsBoolean()
   available!: boolean;
+}
+
+/**
+ * Nomenclature (BOM) : `quantity` unités de `ingredientProductId` consommées
+ * par unité vendue du produit parent — pas de conversion, même unité que le
+ * stock de l'ingrédient.
+ */
+export class RecipeLineDto {
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0851' })
+  @IsUUID()
+  id!: string;
+
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0851' })
+  @IsUUID()
+  productId!: string;
+
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0851' })
+  @IsUUID()
+  ingredientProductId!: string;
+
+  @ApiProperty({ example: 7 })
+  @IsNumber()
+  @Min(1)
+  quantity!: number;
+}
+
+export class CreateRecipeLineDto {
+  @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0851' })
+  @IsUUID()
+  ingredientProductId!: string;
+
+  @ApiProperty({ example: 7 })
+  @IsNumber()
+  @Min(1)
+  quantity!: number;
 }

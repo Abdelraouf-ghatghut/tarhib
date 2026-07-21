@@ -50,15 +50,15 @@ const shared = {
 export const makeTheme = (app: AppMode, mode: ThemeMode): SnowTheme => {
   const isDark = mode === "dark";
   const isEmployee = app === "employee";
-  const primary = isEmployee ? "#009B55" : "#5B8CFF";
-  const primarySoft = isEmployee ? "#EAF7F0" : "#EEF4FF";
+  const primary = isEmployee ? "#009B55" : "#159455";
+  const primarySoft = isEmployee ? "#EAF7F0" : "#EAF6EF";
   const primaryStrong = isEmployee
     ? isDark
       ? "#34D399"
       : "#008F4C"
     : isDark
-      ? "#7FA3FF"
-      : "#3169E6";
+      ? "#5FD195"
+      : "#11814A";
 
   // Tons des cartes stats = mêmes valeurs que tokens.css du web admin
   // (--stat-card-*, --stat-icon-*-bg, --stat-glow-*). Le ton "brand" suit la
@@ -109,13 +109,13 @@ export const makeTheme = (app: AppMode, mode: ThemeMode): SnowTheme => {
     primaryStrong,
     // Fond de page du dashboard web : --neutral-secondary-soft #F7F8FC —
     // les cartes blanches ressortent dessus, comme sur le web admin.
-    background: isDark ? "#0B1220" : "#FDFDFE",
-    surface: isDark ? "#111827" : "#FDFDFE",
-    surfaceAlt: isDark ? "#1E293B" : "#EEF1F8",
+    background: isDark ? "#0B1220" : "#FFFFFF",
+    surface: isDark ? "#111827" : "#FFFFFF",
+    surfaceAlt: isDark ? "#1E293B" : "#F6F7F8",
     overlay: isDark ? "#1E293B" : "#FBFCFE",
     text: isDark ? "#E5E7EB" : "#0F172A",
     muted: isDark ? "#94A3B8" : "#64748B",
-    border: isDark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.10)",
+    border: isDark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.08)",
     shadow: isDark ? "#000000" : "#0F172A",
     stat,
     ...shared,

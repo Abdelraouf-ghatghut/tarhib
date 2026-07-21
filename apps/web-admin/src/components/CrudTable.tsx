@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { forwardRef, useImperativeHandle, useState } from "react";
 import type { MouseEvent } from "react";
-import { Button, Form, Modal, Popconfirm, Space, Table, message } from "antd";
+import { App, Button, Form, Modal, Space, Table, message } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import type { TableColumnType } from "antd";
 import { getErrorMessage } from "../lib/errors";
+
+export interface CrudTableHandle {
+  /** Ouvre le formulaire de création — pour un bouton "اضافة" externe placé
+   * au niveau du titre de page plutôt que celui par défaut au-dessus du tableau. */
+  openCreate: () => void;
+}
 
 export interface CrudTableProps<T extends { id: string }> {
   data: T[] | undefined;
@@ -15,24 +21,32 @@ export interface CrudTableProps<T extends { id: string }> {
   onDelete?: (id: string) => Promise<void>;
   extraActions?: (record: T) => React.ReactNode;
   rowKey?: string;
+  /** Masque le bouton "اضافة" par défaut (au-dessus du tableau) — utiliser
+   * avec un ref (CrudTableHandle.openCreate) pour un bouton externe. */
+  hideAddButton?: boolean;
   /** Ligne cliquable en plus du bouton Modifier (ex. Drawer de détail) — les
    * actions de la colonne "Actions" restent prioritaires (clic sans effet
    * de bord sur onRow, cf. stopPropagation ci-dessous). */
   onRow?: (record: T) => { onClick?: () => void; style?: React.CSSProperties };
 }
 
-export function CrudTable<T extends { id: string }>({
-  data,
-  isPending,
-  columns,
-  formContent,
-  onSave,
-  onDelete,
-  extraActions,
-  rowKey = "id",
-  onRow,
-}: CrudTableProps<T>) {
+function CrudTableInner<T extends { id: string }>(
+  {
+    data,
+    isPending,
+    columns,
+    formContent,
+    onSave,
+    onDelete,
+    extraActions,
+    rowKey = "id",
+    hideAddButton = false,
+    onRow,
+  }: CrudTableProps<T>,
+  ref: React.ForwardedRef<CrudTableHandle>,
+) {
   const { t } = useTranslation();
+  const { modal } = App.useApp();
   const [form] = Form.useForm();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<T | null>(null);
@@ -44,6 +58,8 @@ export function CrudTable<T extends { id: string }>({
     setOpen(true);
   }
 
+  useImperativeHandle(ref, () => ({ openCreate }));
+
   function openEdit(record: T) {
     setEditing(record);
     form.setFieldsValue(record);
@@ -53,10 +69,12 @@ export function CrudTable<T extends { id: string }>({
   async function handleSave() {
     try {
       const values = (await form.validateFields()) as Record<string, unknown>;
-      // Champs optionnels vidés ("" / undefined) : retirés du payload pour ne
-      // pas déclencher les validations backend (ex. « must be a UUID »)
+      // Un champ vidé (Select allowClear → undefined, Input vidé → "") doit
+      // être envoyé explicitement comme null pour que le backend applique le
+      // "clear" — sinon la clé est absente du payload JSON (undefined n'est
+      // pas sérialisable) et le serveur laisse l'ancienne valeur inchangée.
       for (const key of Object.keys(values)) {
-        if (values[key] === "" || values[key] === undefined) delete values[key];
+        if (values[key] === undefined || values[key] === "") values[key] = null;
       }
       setSaving(true);
       await onSave(values, editing?.id);
@@ -91,14 +109,20 @@ export function CrudTable<T extends { id: string }>({
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} />
           {onDelete && (
-            <Popconfirm
-              title={t("deleteConfirm")}
-              onConfirm={() => handleDelete(record.id)}
-              okText={t("confirm")}
-              cancelText={t("cancel")}
-            >
-              <Button size="small" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() =>
+                modal.confirm({
+                  title: t("deleteConfirm"),
+                  okText: t("confirm"),
+                  cancelText: t("cancel"),
+                  okButtonProps: { danger: true },
+                  onOk: () => handleDelete(record.id),
+                })
+              }
+            />
           )}
           {extraActions?.(record)}
         </Space>
@@ -108,16 +132,25 @@ export function CrudTable<T extends { id: string }>({
 
   return (
     <>
-      <div style={{ marginBlockEnd: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          {t("add")}
-        </Button>
-      </div>
+      {!hideAddButton && (
+        <div style={{ marginBlockEnd: 16 }}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            {t("add")}
+          </Button>
+        </div>
+      )}
 
       <Table<T>
         rowKey={rowKey}
         dataSource={data}
-        columns={[...columns, actionCol]}
+        // whiteSpace: nowrap sur l'entête — évite le retour à la ligne des
+        // titres de colonne (ex. libellés arabes longs), quelle que soit la
+        // largeur de colonne ; le corps du tableau garde son retour à la
+        // ligne normal.
+        columns={[...columns, actionCol].map((col) => ({
+          ...col,
+          title: <span style={{ whiteSpace: "nowrap" }}>{col.title}</span>,
+        }))}
         loading={isPending}
         pagination={{ pageSize: 20 }}
         size="middle"
@@ -142,3 +175,9 @@ export function CrudTable<T extends { id: string }>({
     </>
   );
 }
+
+// forwardRef efface les génériques : on les restaure via un cast de signature
+// (pattern standard pour un composant générique + ref).
+export const CrudTable = forwardRef(CrudTableInner) as <T extends { id: string }>(
+  props: CrudTableProps<T> & { ref?: React.ForwardedRef<CrudTableHandle> },
+) => ReturnType<typeof CrudTableInner>;

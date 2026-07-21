@@ -23,6 +23,7 @@ import {
   assertResourceScope,
   constrainRequestedScope,
 } from '../common/access/request-scope.js';
+import { parsePagination } from '../common/pagination.js';
 import { ProcurementService } from './procurement.service.js';
 import {
   CreatePurchaseOrderDto,
@@ -70,15 +71,30 @@ export class ProcurementController {
   @ApiQuery({ name: 'companyId', required: false })
   @ApiQuery({ name: 'branchId', required: false })
   @ApiQuery({ name: 'status', required: false, enum: PurchaseOrderStatus })
+  @ApiQuery({ name: 'page', required: false, description: 'Défaut 1' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Défaut 200, max 500',
+  })
   @ApiResponse({ status: 200, type: [PurchaseOrderDto] })
   findAll(
     @CurrentUser() user: JwtPayload,
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
     @Query('status') status?: PurchaseOrderStatus,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ): Promise<PurchaseOrderDto[]> {
     const scope = constrainRequestedScope(user, { companyId, branchId });
-    return this.service.findAll(scope.companyId, scope.branchId, status);
+    const { skip, limit: take } = parsePagination(page, limit);
+    return this.service.findAll(
+      scope.companyId,
+      scope.branchId,
+      status,
+      skip,
+      take,
+    );
   }
 
   @Get(':id')

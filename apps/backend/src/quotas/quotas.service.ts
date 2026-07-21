@@ -117,11 +117,16 @@ export class QuotasService {
     return this.toDto(saved);
   }
 
-  async findAll(companyId?: string, employeeId?: string): Promise<QuotaDto[]> {
+  async findAll(
+    companyId?: string,
+    employeeId?: string,
+    skip = 0,
+    take = 200,
+  ): Promise<QuotaDto[]> {
     const where: Partial<Quota> = {};
     if (companyId) where.companyId = companyId;
     if (employeeId) where.employeeId = employeeId;
-    const entities = await this.repo.find({ where });
+    const entities = await this.repo.find({ where, skip, take });
     return entities.map((e) => this.toDto(e));
   }
 

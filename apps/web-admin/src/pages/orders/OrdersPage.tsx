@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import {
+  App,
   Button,
   Card,
   Descriptions,
   Drawer,
-  Popconfirm,
   Row,
   Col,
   Select,
@@ -17,7 +17,7 @@ import {
 } from "antd";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   ordersApi,
@@ -33,6 +33,9 @@ import { useScope } from "../../contexts/ScopeContext";
 import { getErrorMessage } from "../../lib/errors";
 import { bilingualName } from "../../lib/bilingualName";
 import { StatusStepper } from "../../components/StatusStepper";
+import { useEntityLookup } from "../../hooks/useEntityLookup";
+import { exportToCsv } from "../../lib/exportCsv";
+import { DownloadOutlined } from "@ant-design/icons";
 
 const { Title } = Typography;
 
@@ -56,6 +59,7 @@ interface OrderLine {
 }
 interface Order {
   id: string;
+  orderNumber: number;
   status: string;
   priority: string;
   slaDeadline: string;
@@ -107,6 +111,7 @@ interface Employee {
 export function OrdersPage() {
   const { t, i18n } = useTranslation();
   const isAr = i18n.language.startsWith("ar");
+  const { modal } = App.useApp();
   const qc = useQueryClient();
   const { companyId: scopeCompanyId } = useScope();
 
@@ -126,6 +131,9 @@ export function OrdersPage() {
       ordersApi
         .list(Object.keys(queryParams).length ? queryParams : undefined)
         .then((r) => r.data as Order[]),
+    // SLA temps réel : la liste (statuts, échéances) reste à jour même si
+    // un autre admin/agent modifie une commande pendant que cet écran est ouvert.
+    refetchInterval: 30_000,
   });
 
   const { data: products = [] } = useQuery({
@@ -145,44 +153,63 @@ export function OrdersPage() {
     queryKey: ["employees"],
     queryFn: () => employeesApi.list().then((r) => r.data as Employee[]),
   });
-  const companyName = (id: string) => {
-    const c = companies.find((x) => x.id === id);
-    return c ? bilingualName(c.nameAr, c.nameEn, isAr) : id.slice(0, 8);
-  };
-  const branchName = (id: string) => {
-    const b = branches.find((x) => x.id === id);
-    return b ? bilingualName(b.nameAr, b.nameEn, isAr) : id.slice(0, 8);
-  };
+  const companyName = useEntityLookup(
+    companies,
+    (c) => c.id,
+    (c) => bilingualName(c.nameAr, c.nameEn, isAr),
+  );
+  const branchName = useEntityLookup(
+    branches,
+    (b) => b.id,
+    (b) => bilingualName(b.nameAr, b.nameEn, isAr),
+  );
   // employeeId (qui a passé la commande) et les colonnes acteur du stepper
   // (approvedBy, preparedBy…) portent l'identité Keycloak de l'appelant
   // (JwtPayload.sub), pas employees.id.
-  const employeeName = (id: string | null) => {
-    if (!id) return null;
-    const e = employees.find((x) => x.keycloakId === id);
-    if (!e) return id.slice(0, 8);
-    return isAr
-      ? `${e.firstNameAr} ${e.lastNameAr}`.trim()
-      : `${e.firstNameEn} ${e.lastNameEn}`.trim() || e.email;
-  };
+  const employeeName = useEntityLookup(
+    employees,
+    (e) => e.keycloakId,
+    (e) =>
+      isAr
+        ? `${e.firstNameAr} ${e.lastNameAr}`.trim()
+        : `${e.firstNameEn} ${e.lastNameEn}`.trim() || e.email,
+  );
 
-  const productName = (id: string) => {
-    const p = products.find((x) => x.id === id);
-    if (!p) return id.substring(0, 8);
-    return bilingualName(p.nameAr, p.nameEn, isAr);
-  };
+  const productName = useEntityLookup(
+    products,
+    (p) => p.id,
+    (p) => bilingualName(p.nameAr, p.nameEn, isAr),
+  );
 
-  // Niveaux de priorité configurés pour l'entreprise sélectionnée : le filtre
-  // doit refléter les niveaux réellement définis, pas seulement ceux déjà
-  // présents dans les commandes chargées (vide tant qu'aucune commande n'existe).
-  const { data: slaLevels = [] } = useQuery({
-    queryKey: ["sla-levels", scopeCompanyId],
-    queryFn: () => slaLevelsApi.list(scopeCompanyId as string).then((r) => r.data as SlaLevel[]),
-    enabled: !!scopeCompanyId,
+  // Niveaux de priorité : chaque société peut personnaliser ses codes P1..P5
+  // (nom, durée) — la commande ne porte qu'un code, il faut donc les niveaux
+  // de la société de CHAQUE commande affichée, pas seulement de la société
+  // filtrée (sinon "P1"/"P2" bruts s'affichent en vue multi-société).
+  const companyIds = useMemo(() => [...new Set((data ?? []).map((o) => o.companyId))], [data]);
+  const slaLevelQueries = useQueries({
+    queries: companyIds.map((cid) => ({
+      queryKey: ["sla-levels", cid],
+      queryFn: () => slaLevelsApi.list(cid).then((r) => r.data as SlaLevel[]),
+    })),
   });
-  const priorityLabel = (code: string) => {
-    const lvl = slaLevels.find((l) => l.code === code);
+  const slaLevelsByCompany = useMemo(() => {
+    const map: Record<string, SlaLevel[]> = {};
+    companyIds.forEach((cid, i) => {
+      map[cid] = slaLevelQueries[i]?.data ?? [];
+    });
+    return map;
+  }, [companyIds, slaLevelQueries]);
+  const priorityLabel = (code: string, companyId: string) => {
+    const lvl = slaLevelsByCompany[companyId]?.find((l) => l.code === code);
     if (!lvl) return code;
     return bilingualName(lvl.nameAr, lvl.nameEn, isAr);
+  };
+  // Libellé pour le filtre (pas de commande précise à disposition) : société
+  // du scope si choisie, sinon la première société où le code est connu.
+  const priorityFilterLabel = (code: string) => {
+    if (scopeCompanyId) return priorityLabel(code, scopeCompanyId);
+    const cid = companyIds.find((id) => slaLevelsByCompany[id]?.some((l) => l.code === code));
+    return cid ? priorityLabel(code, cid) : code;
   };
 
   // Filtres avancés (priorité, plage de dates) appliqués côté client
@@ -199,9 +226,10 @@ export function OrdersPage() {
   // Options du filtre : niveaux configurés de l'entreprise (scope choisi), sinon
   // au mieux les codes déjà présents dans les commandes chargées (vue multi-société)
   const priorities = useMemo(() => {
-    if (scopeCompanyId && slaLevels.length) return slaLevels.map((l) => l.code);
+    const scopeLevels = scopeCompanyId ? slaLevelsByCompany[scopeCompanyId] : undefined;
+    if (scopeLevels?.length) return scopeLevels.map((l) => l.code);
     return [...new Set((data ?? []).map((o) => o.priority))].sort();
-  }, [data, scopeCompanyId, slaLevels]);
+  }, [data, scopeCompanyId, slaLevelsByCompany]);
 
   async function transition(id: string, status: string) {
     setTransitioning(true);
@@ -225,6 +253,31 @@ export function OrdersPage() {
           <Title level={4} style={{ margin: 0 }}>
             {t("orders")}
           </Title>
+        </Col>
+        <Col>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={() =>
+              exportToCsv(`orders-${dayjs().format("YYYY-MM-DD")}`, filtered, [
+                { label: "ID", value: (o) => `#${o.orderNumber}` },
+                { label: t("status"), value: (o) => statusLabel(o.status) },
+                { label: t("priority"), value: (o) => priorityLabel(o.priority, o.companyId) },
+                { label: t("company"), value: (o) => companyName(o.companyId) },
+                { label: t("branch"), value: (o) => branchName(o.branchId) },
+                { label: t("employee"), value: (o) => employeeName(o.employeeId) },
+                {
+                  label: t("slaDeadline"),
+                  value: (o) => dayjs(o.slaDeadline).format("YYYY-MM-DD HH:mm"),
+                },
+                {
+                  label: t("createdAt"),
+                  value: (o) => dayjs(o.createdAt).format("YYYY-MM-DD HH:mm"),
+                },
+              ])
+            }
+          >
+            {t("exportCsv")}
+          </Button>
         </Col>
       </Row>
 
@@ -256,7 +309,7 @@ export function OrdersPage() {
                 placeholder={t("priority")}
                 value={priorityFilter}
                 onChange={setPriorityFilter}
-                options={priorities.map((p) => ({ value: p, label: priorityLabel(p) }))}
+                options={priorities.map((p) => ({ value: p, label: priorityFilterLabel(p) }))}
               />
             </div>
             <div>
@@ -283,9 +336,9 @@ export function OrdersPage() {
         columns={[
           {
             title: "ID",
-            dataIndex: "id",
-            render: (v: string) => `#${v.substring(0, 8).toUpperCase()}`,
-            width: 110,
+            dataIndex: "orderNumber",
+            render: (v: number) => `#${v}`,
+            width: 90,
           },
           {
             title: t("status"),
@@ -297,7 +350,7 @@ export function OrdersPage() {
             title: t("priority"),
             dataIndex: "priority",
             width: 110,
-            render: (v: string) => priorityLabel(v),
+            render: (v: string, r: Order) => priorityLabel(v, r.companyId),
           },
           {
             title: t("slaDeadline"),
@@ -313,7 +366,7 @@ export function OrdersPage() {
       />
 
       <Drawer
-        title={`${t("orders")} — #${selected?.id.substring(0, 8).toUpperCase()}`}
+        title={`${t("orders")} — #${selected?.orderNumber}`}
         open={!!selected}
         onClose={() => setSelected(null)}
         width={480}
@@ -322,41 +375,67 @@ export function OrdersPage() {
             <Space wrap>
               {selected.status === "PENDING" && (
                 <>
-                  <Popconfirm
-                    title={t("confirm")}
-                    onConfirm={() => transition(selected.id, "APPROVED")}
+                  <Button
+                    type="primary"
+                    loading={transitioning}
+                    onClick={() =>
+                      modal.confirm({
+                        title: t("confirm"),
+                        okText: t("confirm"),
+                        cancelText: t("cancel"),
+                        onOk: () => transition(selected.id, "APPROVED"),
+                      })
+                    }
                   >
-                    <Button type="primary" loading={transitioning}>
-                      {t("approve")}
-                    </Button>
-                  </Popconfirm>
-                  <Popconfirm
-                    title={t("confirm")}
-                    onConfirm={() => transition(selected.id, "REJECTED")}
+                    {t("approve")}
+                  </Button>
+                  <Button
+                    danger
+                    loading={transitioning}
+                    onClick={() =>
+                      modal.confirm({
+                        title: t("confirm"),
+                        okText: t("confirm"),
+                        cancelText: t("cancel"),
+                        okButtonProps: { danger: true },
+                        onOk: () => transition(selected.id, "REJECTED"),
+                      })
+                    }
                   >
-                    <Button danger loading={transitioning}>
-                      {t("reject")}
-                    </Button>
-                  </Popconfirm>
+                    {t("reject")}
+                  </Button>
                 </>
               )}
               {(selected.status === "APPROVED" || selected.status === "PENDING") && (
-                <Popconfirm
-                  title={t("confirm")}
-                  onConfirm={() => transition(selected.id, "IN_PROGRESS")}
+                <Button
+                  loading={transitioning}
+                  onClick={() =>
+                    modal.confirm({
+                      title: t("confirm"),
+                      okText: t("confirm"),
+                      cancelText: t("cancel"),
+                      onOk: () => transition(selected.id, "IN_PROGRESS"),
+                    })
+                  }
                 >
-                  <Button loading={transitioning}>{t("inProgress")}</Button>
-                </Popconfirm>
+                  {t("inProgress")}
+                </Button>
               )}
               {selected.status === "IN_PROGRESS" && (
-                <Popconfirm
-                  title={t("confirm")}
-                  onConfirm={() => transition(selected.id, "DELIVERED")}
+                <Button
+                  type="primary"
+                  loading={transitioning}
+                  onClick={() =>
+                    modal.confirm({
+                      title: t("confirm"),
+                      okText: t("confirm"),
+                      cancelText: t("cancel"),
+                      onOk: () => transition(selected.id, "DELIVERED"),
+                    })
+                  }
                 >
-                  <Button type="primary" loading={transitioning}>
-                    {t("delivered")}
-                  </Button>
-                </Popconfirm>
+                  {t("delivered")}
+                </Button>
               )}
             </Space>
           )
@@ -375,7 +454,7 @@ export function OrdersPage() {
                 {companyName(selected.companyId)} — {branchName(selected.branchId)}
               </Descriptions.Item>
               <Descriptions.Item label={t("priority")}>
-                {priorityLabel(selected.priority)}
+                {priorityLabel(selected.priority, selected.companyId)}
               </Descriptions.Item>
               <Descriptions.Item label={t("slaDeadline")}>
                 {dayjs(selected.slaDeadline).format("DD/MM/YYYY HH:mm")}

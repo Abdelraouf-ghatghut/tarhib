@@ -24,6 +24,18 @@ import VipTasksPage from "./pages/vip/VipTasksPage";
 import SuppliersPage from "./pages/suppliers/SuppliersPage";
 import ProcurementPage from "./pages/procurement/ProcurementPage";
 import AuditLogPage from "./pages/audit/AuditLogPage";
+import { FinanceOverviewPage } from "./pages/finance/FinanceOverviewPage";
+import { ContractsPage } from "./pages/finance/ContractsPage";
+import { ExpensesPage } from "./pages/finance/ExpensesPage";
+import { DebtsPage } from "./pages/finance/DebtsPage";
+import { AccountsPage } from "./pages/finance/AccountsPage";
+import { ChartOfAccountsPage } from "./pages/accounting/ChartOfAccountsPage";
+import { JournalEntriesPage } from "./pages/accounting/JournalEntriesPage";
+import { ReportsPage as AccountingReportsPage } from "./pages/accounting/ReportsPage";
+import { LeaveRequestsPage } from "./pages/hr/LeaveRequestsPage";
+import { ContractsPage as HrContractsPage } from "./pages/hr/ContractsPage";
+import { PerformanceReviewsPage } from "./pages/hr/PerformanceReviewsPage";
+import { PayslipsPage } from "./pages/hr/PayslipsPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -172,6 +184,102 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission anyOf={["company.manage"]}>
             <AuditLogPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "finance",
+        element: (
+          <RequirePermission anyOf={["finance.view", "finance.manage"]}>
+            <FinanceOverviewPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "finance/contracts",
+        element: (
+          <RequirePermission anyOf={["finance.view", "finance.manage"]}>
+            <ContractsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "finance/expenses",
+        element: (
+          <RequirePermission anyOf={["finance.view", "finance.manage"]}>
+            <ExpensesPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "finance/debts",
+        element: (
+          <RequirePermission anyOf={["finance.view", "finance.manage"]}>
+            <DebtsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "finance/accounts",
+        element: (
+          <RequirePermission anyOf={["finance.view", "finance.manage"]}>
+            <AccountsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "accounting/chart-of-accounts",
+        element: (
+          <RequirePermission anyOf={["accounting.view", "accounting.manage"]}>
+            <ChartOfAccountsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "accounting/journal-entries",
+        element: (
+          <RequirePermission anyOf={["accounting.view", "accounting.manage"]}>
+            <JournalEntriesPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "accounting/reports",
+        element: (
+          <RequirePermission anyOf={["accounting.view", "accounting.manage"]}>
+            <AccountingReportsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "hr/leave-requests",
+        element: (
+          <RequirePermission anyOf={["hr.leave.manage", "hr.leave.approve"]}>
+            <LeaveRequestsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "hr/contracts",
+        element: (
+          <RequirePermission anyOf={["hr.contract.manage"]}>
+            <HrContractsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "hr/performance-reviews",
+        element: (
+          <RequirePermission anyOf={["hr.review.manage"]}>
+            <PerformanceReviewsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "hr/payslips",
+        element: (
+          <RequirePermission anyOf={["employee.salary.manage", "company.manage"]}>
+            <PayslipsPage />
           </RequirePermission>
         ),
       },

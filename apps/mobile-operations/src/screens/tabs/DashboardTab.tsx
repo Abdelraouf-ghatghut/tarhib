@@ -15,7 +15,8 @@ import {
   type SnowTheme,
 } from "@tarhib/mobile-shared";
 
-import { EmptyText, LoadingCard, StatusBadge, ui } from "../../components/ui";
+import { CenteredTitle, EmptyText, LoadingCard, StatusBadge, ui } from "../../components/ui";
+import { arOrEn } from "../../lib/format";
 import { formatMinutesUntil, orderCode, productName } from "../../lib/format";
 
 export const DashboardTab = ({
@@ -40,6 +41,7 @@ export const DashboardTab = ({
   productsById: Map<string, CatalogProduct>;
 }) => (
   <>
+    <CenteredTitle title={arOrEn(lang, "لوحة المتابعة", "Dashboard")} theme={theme} />
     {loading ? <LoadingCard theme={theme} /> : null}
     {/* Mêmes 4 tons que les cartes stats du dashboard web : brand / rose / vert / violet. */}
     <View style={ui.metricsRow}>
@@ -129,7 +131,7 @@ const MiniQueueRow = ({
 };
 
 const styles = createSnowStyles({
-  activityCard: { gap: spacing.md },
+  activityCard: { gap: spacing.md, borderRadius: 13, marginTop: spacing.sm },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   liveDot: { width: 9, height: 9, borderRadius: 5 },
   miniRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },

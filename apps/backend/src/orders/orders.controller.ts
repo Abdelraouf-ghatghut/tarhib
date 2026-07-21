@@ -18,6 +18,10 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
+import {
+  assertResourceScope,
+  constrainRequestedScope,
+} from '../common/access/request-scope.js';
 import { CreateOrderDto, OrderDto } from './dto/order.dto.js';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto.js';
 import { OrdersService } from './orders.service.js';
@@ -44,18 +48,37 @@ export class OrdersController {
   @Get()
   @ApiOperation({
     summary:
-      'Lister les commandes (filtrable par companyId / employeeId / status)',
+      'Lister les commandes (filtrable par companyId / branchId / employeeId / status, paginé)',
   })
   @ApiQuery({ name: 'companyId', required: false })
+  @ApiQuery({ name: 'branchId', required: false })
   @ApiQuery({ name: 'employeeId', required: false })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'page', required: false, description: 'Défaut 1' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Défaut 200, max 500',
+  })
   @ApiResponse({ status: 200, type: [OrderDto] })
   findAll(
     @Query('companyId') companyId?: string,
+    @Query('branchId') branchId?: string,
     @Query('employeeId') employeeId?: string,
     @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @CurrentUser() user?: JwtPayload,
   ): Promise<OrderDto[]> {
-    return this.ordersService.findAll(companyId, employeeId, status);
+    const scope = constrainRequestedScope(user!, { companyId, branchId });
+    return this.ordersService.findAll(
+      scope.companyId,
+      employeeId,
+      status,
+      scope.branchId,
+      Number(page) || 1,
+      Math.min(Number(limit) || 200, 500),
+    );
   }
 
   @Get('dashboard/stats')
@@ -82,8 +105,13 @@ export class OrdersController {
   @Get(':id')
   @ApiOperation({ summary: 'Récupérer une commande par ID' })
   @ApiResponse({ status: 200, type: OrderDto })
-  findOne(@Param('id') id: string): Promise<OrderDto> {
-    return this.ordersService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OrderDto> {
+    const order = await this.ordersService.findOne(id);
+    assertResourceScope(user, order);
+    return order;
   }
 
   @Patch(':id/status')

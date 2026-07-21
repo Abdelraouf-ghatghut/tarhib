@@ -1,5 +1,6 @@
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
 import {
   Employee,
   EmployeeScope,
@@ -38,7 +39,7 @@ const employee = (roleId: string): Employee =>
   }) as Employee;
 
 describe('AccessPolicyService — Operations role matrix', () => {
-  const roleRepo = { find: jest.fn() };
+  const roleRepo = { find: jest.fn(), findOne: jest.fn() };
   let service: AccessPolicyService;
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -138,5 +139,62 @@ describe('AccessPolicyService — Operations role matrix', () => {
     expect(access.capabilities.canPrepareOrders).toBe(true);
     expect(access.capabilities.canCompleteCleaningTasks).toBe(true);
     expect(access.capabilities.canDeliverOrders).toBe(false);
+  });
+});
+
+describe('AccessPolicyService.resolveAsRole — impersonation "tester ce rôle"', () => {
+  const roleRepo = { find: jest.fn(), findOne: jest.fn() };
+  let service: AccessPolicyService;
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    const module = await Test.createTestingModule({
+      providers: [
+        AccessPolicyService,
+        { provide: getRepositoryToken(Role), useValue: roleRepo },
+      ],
+    }).compile();
+    service = module.get(AccessPolicyService);
+  });
+
+  it('throws when the target role does not exist', async () => {
+    roleRepo.findOne.mockResolvedValue(null);
+    await expect(
+      service.resolveAsRole(employee('actor-role'), 'missing-role'),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('simulates a client role, deriving scope and companyId from the role', async () => {
+    const clientRole = role('client-role', ['catalog.view']);
+    clientRole.scope = RoleScope.CLIENT;
+    clientRole.companyId = 'co-target';
+    roleRepo.findOne.mockResolvedValue(clientRole);
+    roleRepo.find.mockResolvedValue([clientRole]);
+
+    const access = await service.resolveAsRole(
+      employee('actor-role'),
+      'client-role',
+    );
+
+    expect(access.employee.scope).toBe(EmployeeScope.CLIENT);
+    expect(access.employee.companyId).toBe('co-target');
+    // CLIENT_BASE_PERMISSIONS s'ajoutent toujours au scope CLIENT
+    expect(access.permissions).toEqual(
+      expect.arrayContaining(['catalog.view', 'order.create']),
+    );
+  });
+
+  it('never simulates a role carrying company.manage (anti-escalade)', async () => {
+    const superadminRole = role('superadmin-role', ['company.manage']);
+    roleRepo.findOne.mockResolvedValue(superadminRole);
+    roleRepo.find.mockResolvedValue([superadminRole]);
+
+    const access = await service.resolveAsRole(
+      employee('actor-role'),
+      'superadmin-role',
+    );
+
+    // resolveAsRole lui-même ne bloque pas — la garde vit dans AuthService,
+    // qui inspecte ce résultat avant d'activer la simulation.
+    expect(access.permissions).toContain('company.manage');
   });
 });

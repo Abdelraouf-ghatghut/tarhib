@@ -6,6 +6,7 @@ import { VipLocationProduct } from './entities/vip-location-product.entity.js';
 import { VipSelfServiceService } from './vip-self-service.service.js';
 import { VipSelfServiceController } from './vip-self-service.controller.js';
 import { Product } from '../products/entities/product.entity.js';
+import { InventoryModule } from '../inventory/inventory.module.js';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { Product } from '../products/entities/product.entity.js';
       VipLocationProduct,
       Product,
     ]),
+    InventoryModule,
   ],
   providers: [VipSelfServiceService],
   controllers: [VipSelfServiceController],

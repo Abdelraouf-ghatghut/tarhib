@@ -18,8 +18,8 @@ export class SupplierDto {
   @ApiProperty()
   nameAr!: string;
 
-  @ApiProperty()
-  nameEn!: string;
+  @ApiProperty({ nullable: true })
+  nameEn!: string | null;
 
   @ApiProperty({ nullable: true })
   contactName!: string | null;
@@ -43,10 +43,10 @@ export class CreateSupplierDto {
   @MinLength(2)
   nameAr!: string;
 
-  @ApiPropertyOptional({ description: "Anglais optionnel — repli sur l'arabe" })
+  @ApiPropertyOptional({ nullable: true })
   @IsString()
   @IsOptional()
-  nameEn?: string;
+  nameEn?: string | null;
 
   @ApiProperty({ required: false })
   @IsString()

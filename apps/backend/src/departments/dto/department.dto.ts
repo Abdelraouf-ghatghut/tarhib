@@ -21,13 +21,10 @@ export class CreateDepartmentDto {
   @MinLength(1)
   nameAr!: string;
 
-  @ApiPropertyOptional({
-    example: 'Finance Department',
-    description: "Anglais optionnel — l'arabe sert de repli",
-  })
+  @ApiPropertyOptional({ example: 'Finance Department', nullable: true })
   @IsString()
   @IsOptional()
-  nameEn?: string;
+  nameEn?: string | null;
 }
 
 export class DepartmentDto {
@@ -47,9 +44,8 @@ export class DepartmentDto {
   @IsString()
   nameAr!: string;
 
-  @ApiProperty({ example: 'Finance Department' })
-  @IsString()
-  nameEn!: string;
+  @ApiProperty({ example: 'Finance Department', nullable: true })
+  nameEn!: string | null;
 
   @ApiProperty({ example: true })
   @IsBoolean()

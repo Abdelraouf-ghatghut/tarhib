@@ -9,6 +9,7 @@ import {
 import { PurchaseOrderLine } from './entities/purchase-order-line.entity.js';
 import { Branch } from '../branches/entities/branch.entity.js';
 import { Employee } from '../employees/entities/employee.entity.js';
+import { Product } from '../products/entities/product.entity.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
@@ -39,10 +40,13 @@ describe('ProcurementService — chaîne de validation des achats', () => {
   let poRepo: ReturnType<typeof mockRepo>;
   let branchRepo: ReturnType<typeof mockRepo>;
   let employeeRepo: ReturnType<typeof mockRepo>;
+  let productRepo: ReturnType<typeof mockRepo>;
+  let inventoryService: { addStockForReceipt: jest.Mock };
   let notifications: { notifyEmployee: jest.Mock };
 
   beforeEach(async () => {
     notifications = { notifyEmployee: jest.fn().mockResolvedValue(undefined) };
+    inventoryService = { addStockForReceipt: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -54,10 +58,8 @@ describe('ProcurementService — chaîne de validation des achats', () => {
         },
         { provide: getRepositoryToken(Branch), useFactory: mockRepo },
         { provide: getRepositoryToken(Employee), useFactory: mockRepo },
-        {
-          provide: InventoryService,
-          useValue: { addStockForReceipt: jest.fn() },
-        },
+        { provide: getRepositoryToken(Product), useFactory: mockRepo },
+        { provide: InventoryService, useValue: inventoryService },
         { provide: NotificationsService, useValue: notifications },
       ],
     }).compile();
@@ -66,6 +68,7 @@ describe('ProcurementService — chaîne de validation des achats', () => {
     poRepo = module.get(getRepositoryToken(PurchaseOrder));
     branchRepo = module.get(getRepositoryToken(Branch));
     employeeRepo = module.get(getRepositoryToken(Employee));
+    productRepo = module.get(getRepositoryToken(Product));
   });
 
   describe('submit', () => {
@@ -195,6 +198,65 @@ describe('ProcurementService — chaîne de validation des achats', () => {
       );
       await expect(service.send('po-1', 'sender-1')).rejects.toThrow(
         BadRequestException,
+      );
+    });
+  });
+
+  describe('receive — conversion unité d’achat → stock', () => {
+    it('adds stock as-is when unitsPerPurchase is 1 (no conversion)', async () => {
+      const line = {
+        id: 'line-1',
+        productId: 'prod-coffee',
+        orderedQty: 10,
+        receivedQty: 0,
+      } as PurchaseOrderLine;
+      poRepo.findOne.mockResolvedValue(
+        makePo({ status: PurchaseOrderStatus.SENT, lines: [line] }),
+      );
+      productRepo.find.mockResolvedValue([
+        { id: 'prod-coffee', unitsPerPurchase: 1 },
+      ]);
+
+      await service.receive(
+        'po-1',
+        { lines: [{ lineId: 'line-1', receivedQty: 10 }] },
+        'agent-1',
+      );
+
+      expect(inventoryService.addStockForReceipt).toHaveBeenCalledWith(
+        'prod-coffee',
+        'br-1',
+        'co-1',
+        10,
+      );
+    });
+
+    it('converts purchase units to stock units (1 sac = 1000g)', async () => {
+      const line = {
+        id: 'line-1',
+        productId: 'prod-coffee',
+        orderedQty: 10,
+        receivedQty: 0,
+      } as PurchaseOrderLine;
+      poRepo.findOne.mockResolvedValue(
+        makePo({ status: PurchaseOrderStatus.SENT, lines: [line] }),
+      );
+      productRepo.find.mockResolvedValue([
+        { id: 'prod-coffee', unitsPerPurchase: 1000 },
+      ]);
+
+      await service.receive(
+        'po-1',
+        { lines: [{ lineId: 'line-1', receivedQty: 2 }] },
+        'agent-1',
+      );
+
+      // 2 sacs reçus × 1000g/sac = 2000g ajoutés au stock
+      expect(inventoryService.addStockForReceipt).toHaveBeenCalledWith(
+        'prod-coffee',
+        'br-1',
+        'co-1',
+        2000,
       );
     });
   });

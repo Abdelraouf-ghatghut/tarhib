@@ -10,7 +10,9 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import { EmployeeRole } from '../employees/dto/employee.dto.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { Product } from '../products/entities/product.entity.js';
+import { ProductRecipeLine } from '../products/entities/product-recipe-line.entity.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
+import { InventoryService } from '../inventory/inventory.service.js';
 import { Quota } from '../quotas/entities/quota.entity.js';
 import { QuotasService } from '../quotas/quotas.service.js';
 import { RoleQuota } from '../roles/entities/role-quota.entity.js';
@@ -42,6 +44,7 @@ const caller = (role: EmployeeRole = EmployeeRole.EMPLOYEE): JwtPayload => ({
 
 const makeOrder = (priority: OrderPriority): Order => ({
   id: 'ord-1',
+  orderNumber: 1,
   employeeId: 'emp-1',
   companyId: 'co-1',
   branchId: 'br-1',
@@ -68,6 +71,8 @@ describe('OrdersService', () => {
   let orderRepo: ReturnType<typeof mockRepo>;
   let productRepo: ReturnType<typeof mockRepo>;
   let roleQuotaRepo: ReturnType<typeof mockRepo>;
+  let recipeRepo: ReturnType<typeof mockRepo>;
+  let inventoryService: { decrementForPreparation: jest.Mock };
   let prioritySla: { getSlaMinutes: jest.Mock };
 
   beforeEach(async () => {
@@ -100,6 +105,16 @@ describe('OrdersService', () => {
         },
         { provide: getRepositoryToken(Role), useFactory: mockRepo },
         {
+          provide: getRepositoryToken(ProductRecipeLine),
+          useFactory: mockRepo,
+        },
+        {
+          provide: InventoryService,
+          useValue: {
+            decrementForPreparation: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
           provide: NotificationsService,
           useValue: {
             notifyOrderStatusChanged: jest.fn(),
@@ -118,12 +133,14 @@ describe('OrdersService', () => {
     orderRepo = module.get(getRepositoryToken(Order));
     productRepo = module.get(getRepositoryToken(Product));
     roleQuotaRepo = module.get(getRepositoryToken(RoleQuota));
+    recipeRepo = module.get(getRepositoryToken(ProductRecipeLine));
+    inventoryService = module.get(InventoryService);
 
     // Panier valide par défaut : produit commandable + stock suffisant
     productRepo.find.mockResolvedValue([
       {
         id: 'prod-1',
-        type: 'COMMANDABLE',
+        isSold: true,
         allowedRoles: null,
         active: true,
       },
@@ -154,6 +171,28 @@ describe('OrdersService', () => {
       getRepositoryToken(Employee),
     );
     employeeRepo.findOne.mockResolvedValue(null);
+
+    // orderRepo.manager.transaction(...) est utilisé par create() et
+    // decrementRecipeIngredients() — le mock exécute simplement le callback
+    // avec un faux manager qui route vers les repos mockés existants.
+    const quotaUsageRepo: ReturnType<typeof mockRepo> = module.get(
+      getRepositoryToken(EmployeeQuotaUsage),
+    );
+    const fakeManager = {
+      transaction: jest.fn((cb: (m: unknown) => unknown) => cb(fakeManager)),
+      // Incrément atomique du compteur de numéro de commande par société
+      // (cf. create()) — le mock retourne juste un numéro fixe.
+      query: jest.fn().mockResolvedValue([{ assigned: 1 }]),
+      save: jest.fn((_entity: unknown, value: unknown): unknown =>
+        orderRepo.save(value),
+      ),
+      getRepository: jest.fn((entity: unknown) => {
+        if (entity === EmployeeQuotaUsage) return quotaUsageRepo;
+        if (entity === Quota) return quotaRepo;
+        return mockRepo();
+      }),
+    };
+    (orderRepo as unknown as { manager: unknown }).manager = fakeManager;
   });
 
   it('should be defined', () => {
@@ -348,8 +387,8 @@ describe('OrdersService', () => {
       // prod-2 n'a volontairement aucune entrée de stock dans le mock par
       // défaut (seul prod-1 en a) → rejeté pour INSUFFICIENT_STOCK.
       productRepo.find.mockResolvedValue([
-        { id: 'prod-1', type: 'COMMANDABLE', allowedRoles: null, active: true },
-        { id: 'prod-2', type: 'COMMANDABLE', allowedRoles: null, active: true },
+        { id: 'prod-1', isSold: true, allowedRoles: null, active: true },
+        { id: 'prod-2', isSold: true, allowedRoles: null, active: true },
       ]);
 
       const order = makeOrder(OrderPriority.P5);
@@ -376,7 +415,7 @@ describe('OrdersService', () => {
 
     it('refuses the whole order when every line is rejected', async () => {
       productRepo.find.mockResolvedValue([
-        { id: 'prod-1', type: 'COMMANDABLE', allowedRoles: null, active: true },
+        { id: 'prod-1', isSold: true, allowedRoles: null, active: true },
       ]);
 
       await expect(
@@ -428,6 +467,201 @@ describe('OrdersService', () => {
       await expect(
         service.updateStatus('ord-1', OrderStatus.APPROVED, manager),
       ).rejects.toThrow('crossTenantAccessDenied');
+    });
+  });
+
+  describe('updateStatus — nomenclature (recette) au passage IN_PROGRESS', () => {
+    const platformAdmin: JwtPayload = {
+      sub: 'admin-1',
+      email: 'super@tarhib.app',
+      role: 'ADMIN',
+      companyId: null as unknown as string,
+      branchId: undefined,
+      permissions: ['company.manage'],
+    };
+
+    it('decrements every ingredient of a composed product’s line by recipeQty × orderedQty', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.lines = [
+        {
+          id: 'line-1',
+          productId: 'prod-latte',
+          quantity: 2,
+          validationStatus: 'APPROVED',
+        } as OrderLine,
+      ];
+      orderRepo.findOne.mockResolvedValue(order);
+      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
+      recipeRepo.find.mockResolvedValue([
+        {
+          productId: 'prod-latte',
+          ingredientProductId: 'ing-coffee',
+          quantity: 7,
+        },
+        {
+          productId: 'prod-latte',
+          ingredientProductId: 'ing-milk',
+          quantity: 100,
+        },
+      ]);
+
+      await service.updateStatus(
+        'ord-1',
+        OrderStatus.IN_PROGRESS,
+        platformAdmin,
+      );
+
+      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
+        'ing-coffee',
+        order.branchId,
+        order.companyId,
+        14,
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
+        'ing-milk',
+        order.branchId,
+        order.companyId,
+        200,
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('blocks the transition (order not saved) when an ingredient is insufficient', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.lines = [
+        {
+          id: 'line-1',
+          productId: 'prod-latte',
+          quantity: 2,
+          validationStatus: 'APPROVED',
+        } as OrderLine,
+      ];
+      orderRepo.findOne.mockResolvedValue(order);
+      recipeRepo.find.mockResolvedValue([
+        {
+          productId: 'prod-latte',
+          ingredientProductId: 'ing-coffee',
+          quantity: 7,
+        },
+      ]);
+      inventoryService.decrementForPreparation.mockRejectedValueOnce(
+        new Error('insufficientInventoryStock'),
+      );
+
+      await expect(
+        service.updateStatus('ord-1', OrderStatus.IN_PROGRESS, platformAdmin),
+      ).rejects.toThrow('insufficientInventoryStock');
+      expect(orderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('decrements the product’s own stock when the line’s product has no recipe (plain product)', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.lines = [
+        {
+          id: 'line-1',
+          productId: 'prod-plain',
+          quantity: 3,
+          validationStatus: 'APPROVED',
+        } as OrderLine,
+      ];
+      orderRepo.findOne.mockResolvedValue(order);
+      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
+      recipeRepo.find.mockResolvedValue([]);
+
+      await service.updateStatus(
+        'ord-1',
+        OrderStatus.IN_PROGRESS,
+        platformAdmin,
+      );
+
+      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
+        'prod-plain',
+        order.branchId,
+        order.companyId,
+        3,
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('blocks the transition when a plain product’s own stock is insufficient', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.lines = [
+        {
+          id: 'line-1',
+          productId: 'prod-plain',
+          quantity: 99,
+          validationStatus: 'APPROVED',
+        } as OrderLine,
+      ];
+      orderRepo.findOne.mockResolvedValue(order);
+      recipeRepo.find.mockResolvedValue([]);
+      inventoryService.decrementForPreparation.mockRejectedValueOnce(
+        new Error('insufficientInventoryStock'),
+      );
+
+      await expect(
+        service.updateStatus('ord-1', OrderStatus.IN_PROGRESS, platformAdmin),
+      ).rejects.toThrow('insufficientInventoryStock');
+      expect(orderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('mixes composed and plain products correctly in the same order', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.lines = [
+        {
+          id: 'line-1',
+          productId: 'prod-latte',
+          quantity: 1,
+          validationStatus: 'APPROVED',
+        } as OrderLine,
+        {
+          id: 'line-2',
+          productId: 'prod-plain',
+          quantity: 2,
+          validationStatus: 'APPROVED',
+        } as OrderLine,
+      ];
+      orderRepo.findOne.mockResolvedValue(order);
+      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
+      recipeRepo.find.mockResolvedValue([
+        {
+          productId: 'prod-latte',
+          ingredientProductId: 'ing-coffee',
+          quantity: 7,
+        },
+      ]);
+
+      await service.updateStatus(
+        'ord-1',
+        OrderStatus.IN_PROGRESS,
+        platformAdmin,
+      );
+
+      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
+        'ing-coffee',
+        order.branchId,
+        order.companyId,
+        7,
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
+        'prod-plain',
+        order.branchId,
+        order.companyId,
+        2,
+        expect.anything(),
+        expect.anything(),
+      );
     });
   });
 });

@@ -24,7 +24,7 @@ const { Title } = Typography;
 interface MeetingRoom {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
   branchId: string;
   companyId: string;
   capacity: number;
@@ -58,7 +58,7 @@ interface Employee {
 interface NamedEntity {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
   companyId?: string;
 }
 

@@ -18,21 +18,21 @@ describe('ValidationEngineService — moteur de validation (CLAUDE.md §3.3)', (
     products: [
       {
         id: 'prod-cmd',
-        type: 'COMMANDABLE',
+        isSold: true,
         allowedRoles: null,
         allowedBranches: null,
         active: true,
       },
       {
         id: 'prod-vip',
-        type: 'LIBRE_SERVICE_VIP',
+        isSold: false,
         allowedRoles: null,
         allowedBranches: null,
         active: true,
       },
       {
         id: 'prod-restricted',
-        type: 'COMMANDABLE',
+        isSold: true,
         allowedRoles: ['DEPARTMENT_MANAGER'],
         allowedBranches: null,
         active: true,
@@ -40,6 +40,7 @@ describe('ValidationEngineService — moteur de validation (CLAUDE.md §3.3)', (
     ],
     stocks: [{ productId: 'prod-cmd', branchId: 'br-1', quantity: 10 }],
     quotas: [],
+    recipes: [],
     ...overrides,
   });
 
@@ -145,6 +146,86 @@ describe('ValidationEngineService — moteur de validation (CLAUDE.md §3.3)', (
     const result = engine.validateCart(ctx, [line('prod-cmd')]);
     expect(result.lines[0].decision).toBe('REJECTED');
     expect(result.lines[0].reason).toBe('INSUFFICIENT_STOCK');
+  });
+
+  // ── Étape 2 (nomenclature) : produit composé — disponibilité par ingrédient ─
+
+  it('should APPROVE a composed product when every ingredient has enough stock', () => {
+    const ctx = makeCtx({
+      recipes: [
+        {
+          productId: 'prod-cmd',
+          ingredientProductId: 'ing-coffee',
+          quantity: 7,
+        },
+        {
+          productId: 'prod-cmd',
+          ingredientProductId: 'ing-sugar',
+          quantity: 5,
+        },
+      ],
+      stocks: [
+        { productId: 'ing-coffee', branchId: 'br-1', quantity: 70 },
+        { productId: 'ing-sugar', branchId: 'br-1', quantity: 50 },
+      ],
+    });
+    const result = engine.validateCart(ctx, [line('prod-cmd', 10)]);
+    expect(result.lines[0].decision).toBe('APPROVED');
+  });
+
+  it('should REJECT a composed product when one ingredient runs short — the binding constraint', () => {
+    const ctx = makeCtx({
+      recipes: [
+        {
+          productId: 'prod-cmd',
+          ingredientProductId: 'ing-coffee',
+          quantity: 7,
+        },
+        {
+          productId: 'prod-cmd',
+          ingredientProductId: 'ing-sugar',
+          quantity: 5,
+        },
+      ],
+      stocks: [
+        { productId: 'ing-coffee', branchId: 'br-1', quantity: 70 }, // enough for 10
+        { productId: 'ing-sugar', branchId: 'br-1', quantity: 20 }, // enough for only 4
+      ],
+    });
+    const result = engine.validateCart(ctx, [line('prod-cmd', 10)]);
+    expect(result.lines[0].decision).toBe('REJECTED');
+    expect(result.lines[0].reason).toBe('INSUFFICIENT_STOCK');
+  });
+
+  it('should REJECT a composed product when an ingredient has no stock entry at all', () => {
+    const ctx = makeCtx({
+      recipes: [
+        { productId: 'prod-cmd', ingredientProductId: 'ing-cup', quantity: 1 },
+      ],
+      stocks: [],
+    });
+    const result = engine.validateCart(ctx, [line('prod-cmd', 1)]);
+    expect(result.lines[0].reason).toBe('INSUFFICIENT_STOCK');
+  });
+
+  it('ignores the composed product’s own (nonexistent) stock entry once it has recipe lines', () => {
+    // Le produit a un ancien enregistrement de stock propre (résiduel) mais
+    // possède désormais une recette — seuls les ingrédients comptent.
+    const ctx = makeCtx({
+      recipes: [
+        {
+          productId: 'prod-cmd',
+          ingredientProductId: 'ing-coffee',
+          quantity: 7,
+        },
+      ],
+      stocks: [
+        { productId: 'prod-cmd', branchId: 'br-1', quantity: 999 },
+        { productId: 'ing-coffee', branchId: 'br-1', quantity: 7 },
+      ],
+    });
+    const result = engine.validateCart(ctx, [line('prod-cmd', 1)]);
+    expect(result.lines[0].decision).toBe('APPROVED');
   });
 
   // ── Étape 3 : quota ───────────────────────────────────────────────────────

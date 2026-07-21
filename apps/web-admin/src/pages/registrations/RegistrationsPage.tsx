@@ -1,6 +1,7 @@
 import {
   Button,
   Card,
+  Modal,
   Radio,
   Space,
   Table,
@@ -16,7 +17,13 @@ import { CheckOutlined, CloseOutlined, MailOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
-import { registrationsApi, rolesApi, branchesApi, companiesApi } from "../../lib/api";
+import {
+  registrationsApi,
+  rolesApi,
+  branchesApi,
+  departmentsApi,
+  companiesApi,
+} from "../../lib/api";
 import { useScope } from "../../contexts/ScopeContext";
 import { useAuth } from "../../hooks/useAuth";
 import { ScopeFilterBar } from "../../components/ScopeFilterBar";
@@ -31,6 +38,7 @@ interface PendingEmployee {
   firstNameEn: string;
   lastNameEn: string;
   phoneNumber: string;
+  companyId: string;
   createdAt: string;
 }
 
@@ -56,6 +64,9 @@ export function RegistrationsPage() {
   const isAr = i18n.language === "ar";
   const [inviteForm] = Form.useForm();
   const [inviting, setInviting] = useState(false);
+  const [approveForm] = Form.useForm();
+  const [approveTarget, setApproveTarget] = useState<PendingEmployee | null>(null);
+  const [approving, setApproving] = useState(false);
 
   const companyId = scopeCompanyId ?? authCompanyId ?? undefined;
 
@@ -65,6 +76,7 @@ export function RegistrationsPage() {
     | "CLIENT"
     | "TARHIB";
   const formCompanyId = Form.useWatch("companyId", inviteForm) as string | undefined;
+  const formBranchId = Form.useWatch("branchId", inviteForm) as string | undefined;
 
   const { data: pending = [], isPending } = useQuery({
     queryKey: ["pending-registrations", companyId],
@@ -88,19 +100,61 @@ export function RegistrationsPage() {
     enabled: !!formCompanyId,
   });
 
+  const { data: inviteDepartments = [] } = useQuery({
+    queryKey: ["departments", { branchId: formBranchId }],
+    queryFn: () =>
+      departmentsApi
+        .list({ branchId: formBranchId as string })
+        .then((r) => r.data as NamedEntity[]),
+    enabled: !!formBranchId,
+  });
+
   const roleOptions = roles.filter((r) =>
     employeeType === "TARHIB"
       ? r.scope === "TARHIB"
       : r.scope === "CLIENT" && (!r.companyId || !formCompanyId || r.companyId === formCompanyId),
   );
 
-  async function handleApprove(id: string) {
+  // Approbation d'une auto-inscription : branche/département/rôle assignés
+  // par l'admin (l'employé n'a fourni que son identité à l'inscription) —
+  // cascade société (celle de l'employé) → branche → département.
+  const approveBranchId = Form.useWatch("branchId", approveForm) as string | undefined;
+  const { data: approveBranches = [] } = useQuery({
+    queryKey: ["branches", approveTarget?.companyId],
+    queryFn: () => branchesApi.list(approveTarget!.companyId).then((r) => r.data as NamedEntity[]),
+    enabled: !!approveTarget,
+  });
+  const { data: approveDepartments = [] } = useQuery({
+    queryKey: ["departments", { branchId: approveBranchId }],
+    queryFn: () =>
+      departmentsApi
+        .list({ branchId: approveBranchId as string })
+        .then((r) => r.data as NamedEntity[]),
+    enabled: !!approveBranchId,
+  });
+  const approveRoleOptions = roles.filter(
+    (r) => r.scope === "CLIENT" && (!r.companyId || r.companyId === approveTarget?.companyId),
+  );
+
+  function openApprove(rec: PendingEmployee) {
+    approveForm.resetFields();
+    setApproveTarget(rec);
+  }
+
+  async function submitApprove() {
+    if (!approveTarget) return;
     try {
-      await registrationsApi.approve(id);
+      const values = await approveForm.validateFields();
+      setApproving(true);
+      await registrationsApi.approve(approveTarget.id, values);
       void qc.invalidateQueries({ queryKey: ["pending-registrations"] });
       void message.success(t("approved"));
-    } catch {
-      void message.error(t("errorOccurred"));
+      setApproveTarget(null);
+    } catch (err) {
+      if ((err as { errorFields?: unknown }).errorFields) return;
+      void message.error(getErrorMessage(err, t));
+    } finally {
+      setApproving(false);
     }
   }
 
@@ -173,7 +227,7 @@ export function RegistrationsPage() {
                 size="small"
                 type="primary"
                 icon={<CheckOutlined />}
-                onClick={() => handleApprove(r.id)}
+                onClick={() => openApprove(r)}
               >
                 {t("approve")}
               </Button>
@@ -247,12 +301,26 @@ export function RegistrationsPage() {
             optionFilterProp="label"
             disabled={!formCompanyId}
             placeholder={!formCompanyId ? t("noCompanySelected") : undefined}
+            onChange={() => inviteForm.setFieldValue("departmentId", undefined)}
           />
         </Form.Item>
 
-        <Form.Item name="roleId" label={t("roleLabel")}>
+        {/* Département requis uniquement pour un employé client (le scope
+            créé suit celui du rôle choisi, cf. AuthService.inviteEmployee) */}
+        {employeeType === "CLIENT" && (
+          <Form.Item name="departmentId" label={t("department")} rules={[{ required: true }]}>
+            <Select
+              options={inviteDepartments.map((d) => ({ value: d.id, label: label(d) }))}
+              showSearch
+              optionFilterProp="label"
+              disabled={!formBranchId}
+              placeholder={!formBranchId ? t("noCompanySelected") : undefined}
+            />
+          </Form.Item>
+        )}
+
+        <Form.Item name="roleId" label={t("roleLabel")} rules={[{ required: true }]}>
           <Select
-            allowClear
             options={roleOptions.map((r) => ({ value: r.id, label: label(r) }))}
             showSearch
             optionFilterProp="label"
@@ -280,6 +348,44 @@ export function RegistrationsPage() {
           { key: "invite", label: t("inviteEmployee"), children: inviteTab },
         ]}
       />
+
+      <Modal
+        open={!!approveTarget}
+        title={approveTarget ? `${t("approve")} — ${approveTarget.email}` : ""}
+        onOk={() => void submitApprove()}
+        onCancel={() => setApproveTarget(null)}
+        confirmLoading={approving}
+        okText={t("approve")}
+        cancelText={t("cancel")}
+        destroyOnClose
+      >
+        <Form form={approveForm} layout="vertical" style={{ marginBlockStart: 16 }}>
+          <Form.Item name="branchId" label={t("branch")} rules={[{ required: true }]}>
+            <Select
+              options={approveBranches.map((b) => ({ value: b.id, label: label(b) }))}
+              showSearch
+              optionFilterProp="label"
+              onChange={() => approveForm.setFieldValue("departmentId", undefined)}
+            />
+          </Form.Item>
+          <Form.Item name="departmentId" label={t("department")} rules={[{ required: true }]}>
+            <Select
+              options={approveDepartments.map((d) => ({ value: d.id, label: label(d) }))}
+              showSearch
+              optionFilterProp="label"
+              disabled={!approveBranchId}
+              placeholder={!approveBranchId ? t("noCompanySelected") : undefined}
+            />
+          </Form.Item>
+          <Form.Item name="roleId" label={t("roleLabel")} rules={[{ required: true }]}>
+            <Select
+              options={approveRoleOptions.map((r) => ({ value: r.id, label: label(r) }))}
+              showSearch
+              optionFilterProp="label"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   );
 }

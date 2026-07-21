@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { InternalAxiosRequestConfig } from "axios";
 import { api, setAuthToken, clearAuthToken } from "../lib/api";
 import { AuthContext } from "./auth-context";
-import type { AuthState } from "./auth-context";
+import type { AuthState, Impersonation } from "./auth-context";
 
 /**
  * Sécurité (TARHIB) : aucun token en localStorage. L'access token ne vit
@@ -39,6 +39,18 @@ interface TokenResponse {
   branchId?: string;
 }
 
+/** Forme de AccessProfile renvoyée par le backend pour le mode "tester un rôle" */
+interface AccessProfileResponse {
+  employee: { companyId: string | null; scope: string };
+  primaryRoleId: string | null;
+  roles: { id: string; nameAr: string; nameEn: string | null; primary: boolean }[];
+  permissions: string[];
+}
+
+/** /auth/impersonate-stop répond soit un TokenResponse (mode employé), soit
+ * un AccessProfileResponse (mode rôle) — distingué par la présence d'accessToken. */
+type StopImpersonationResponse = Partial<TokenResponse> & Partial<AccessProfileResponse>;
+
 interface MePayload {
   email?: string;
   role?: string;
@@ -69,6 +81,7 @@ const LEGACY_KEYS = [
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthState>(EMPTY_STATE);
   const [isBooting, setIsBooting] = useState(true);
+  const [impersonation, setImpersonation] = useState<Impersonation | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshInFlight = useRef<Promise<string | null> | null>(null);
   const silentRefreshRef = useRef<() => Promise<string | null>>(() => Promise.resolve(null));
@@ -229,6 +242,113 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [scheduleRefresh],
   );
 
+  // Mode "employé" : identité réelle échangée (nouveau jeton Keycloak) — même
+  // séquence que login(), y compris l'enrichissement /auth/me.
+  const startEmployeeImpersonation = useCallback(
+    async (employeeId: string, label: string) => {
+      const res = await api.post(`/auth/impersonate/employee/${employeeId}`);
+      const data = res.data as TokenResponse;
+      setAuthToken(data.accessToken);
+      scheduleRefresh(data.expiresIn);
+      setAuth({
+        token: data.accessToken,
+        role: data.role ?? null,
+        roleId: data.roleId ?? null,
+        email: data.email ?? null,
+        scope: (data.scope ?? null) as AuthState["scope"],
+        permissions: data.permissions ?? [],
+        companyId: data.companyId ?? null,
+        branchId: data.branchId ?? null,
+        departmentId: null,
+        firstNameAr: null,
+        firstNameEn: null,
+        lastNameAr: null,
+        lastNameEn: null,
+      });
+      try {
+        const me = (await api.get("/auth/me")).data as MePayload;
+        setAuth((prev) => ({
+          ...prev,
+          departmentId: me.departmentId ?? null,
+          firstNameAr: me.firstNameAr ?? null,
+          firstNameEn: me.firstNameEn ?? null,
+          lastNameAr: me.lastNameAr ?? null,
+          lastNameEn: me.lastNameEn ?? null,
+        }));
+      } catch {
+        // non-bloquant : le profil retombera sur l'email en cas d'échec
+      }
+      setImpersonation({ mode: "employee", label });
+    },
+    [scheduleRefresh],
+  );
+
+  // Mode "rôle" : le jeton Keycloak ne change pas — seules les permissions
+  // simulées, renvoyées directement par l'API, sont fusionnées dans l'état.
+  const startRoleImpersonation = useCallback(async (roleId: string, label: string) => {
+    const res = await api.post(`/auth/impersonate/role/${roleId}`);
+    const data = res.data as AccessProfileResponse;
+    setAuth((prev) => ({
+      ...prev,
+      role: label,
+      roleId: data.primaryRoleId ?? null,
+      scope: (data.employee.scope ?? null) as AuthState["scope"],
+      permissions: data.permissions ?? [],
+      companyId: data.employee.companyId ?? null,
+    }));
+    setImpersonation({ mode: "role", label });
+  }, []);
+
+  // Un seul point d'arrêt pour les deux modes — la forme de la réponse
+  // (accessToken présent ou non) indique lequel était actif.
+  const stopImpersonation = useCallback(async () => {
+    const res = await api.post("/auth/impersonate-stop");
+    const data = res.data as StopImpersonationResponse;
+    if (data.accessToken) {
+      setAuthToken(data.accessToken);
+      scheduleRefresh(data.expiresIn ?? 900);
+      // POST /auth/impersonate-stop délègue ici à authService.refresh(), qui
+      // renvoie un jeton Keycloak brut (accessToken/refreshToken/expiresIn
+      // seulement — jamais enrichi en rôle/permissions, contrairement à
+      // login()/startEmployeeImpersonation()). Le profil complet ne peut donc
+      // venir que de /auth/me — sans cet appel, permissions retombait à []
+      // jusqu'au prochain rechargement de page (rebooting via silentRefresh).
+      try {
+        const me = (await api.get("/auth/me")).data as MePayload;
+        setAuth({
+          token: data.accessToken,
+          role: me.role ?? null,
+          roleId: me.roleId ?? null,
+          email: me.email ?? null,
+          scope: (me.scope ?? null) as AuthState["scope"],
+          permissions: me.permissions ?? [],
+          companyId: me.companyId ?? null,
+          branchId: me.branchId ?? null,
+          departmentId: me.departmentId ?? null,
+          firstNameAr: me.firstNameAr ?? null,
+          firstNameEn: me.firstNameEn ?? null,
+          lastNameAr: me.lastNameAr ?? null,
+          lastNameEn: me.lastNameEn ?? null,
+        });
+      } catch {
+        // Au minimum le jeton est posé ; le reste du profil sera correct au
+        // prochain rechargement (restauration de session au boot).
+        setAuth((prev) => ({ ...prev, token: data.accessToken! }));
+      }
+    } else if (data.employee) {
+      const primary = data.roles?.find((r) => r.primary);
+      setAuth((prev) => ({
+        ...prev,
+        role: primary ? (primary.nameEn ?? primary.nameAr) : prev.role,
+        roleId: data.primaryRoleId ?? null,
+        scope: (data.employee!.scope ?? null) as AuthState["scope"],
+        permissions: data.permissions ?? [],
+        companyId: data.employee!.companyId ?? null,
+      }));
+    }
+    setImpersonation(null);
+  }, [scheduleRefresh]);
+
   const hasPermission = useCallback(
     (key: string) => auth.permissions.includes(key),
     [auth.permissions],
@@ -243,8 +363,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       hasPermission,
+      impersonation,
+      startEmployeeImpersonation,
+      startRoleImpersonation,
+      stopImpersonation,
     }),
-    [auth, isBooting, login, logout, hasPermission],
+    [
+      auth,
+      isBooting,
+      login,
+      logout,
+      hasPermission,
+      impersonation,
+      startEmployeeImpersonation,
+      startRoleImpersonation,
+      stopImpersonation,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import { OrderDto, OrderStatus } from '../orders/dto/order.dto.js';
 import { OrdersService } from '../orders/orders.service.js';
@@ -17,6 +17,8 @@ import { Employee } from '../employees/entities/employee.entity.js';
 import { Company } from '../companies/entities/company.entity.js';
 import { Branch } from '../branches/entities/branch.entity.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { Order } from '../orders/entities/order.entity.js';
+import { assertResourceScope } from '../common/access/request-scope.js';
 
 export interface DeliveryTaskDto extends DeliveryTask {
   order: OrderDto;
@@ -26,9 +28,9 @@ export interface DeliveryTaskDto extends DeliveryTask {
     floor: string | null;
     officeNumber: string | null;
     companyNameAr: string;
-    companyNameEn: string;
+    companyNameEn: string | null;
     branchNameAr: string;
-    branchNameEn: string;
+    branchNameEn: string | null;
   } | null;
 }
 
@@ -42,6 +44,7 @@ export class DeliveryService {
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
     @InjectRepository(Branch) private readonly branchRepo: Repository<Branch>,
+    @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
     private readonly notifications: NotificationsService,
     private readonly orders: OrdersService,
   ) {}
@@ -53,29 +56,39 @@ export class DeliveryService {
     const ready = (
       await this.orders.findAll(companyId, undefined, OrderStatus.READY)
     ).filter((o) => !branchId || o.branchId === branchId);
-    for (const order of ready) {
-      const existing = await this.repo.findOne({
-        where: { orderId: order.id },
-      });
-      if (!existing)
-        await this.repo.save(
-          this.repo.create({
-            orderId: order.id,
-            companyId: order.companyId,
-            branchId: order.branchId,
-            assignedEmployeeId: null,
-            status: DeliveryTaskStatus.AVAILABLE,
-            issueReason: null,
-            pickedUpAt: null,
-            deliveredAt: null,
-          }),
-        );
-    }
+    const existingTasks = ready.length
+      ? await this.repo.find({
+          where: { orderId: In(ready.map((order) => order.id)) },
+        })
+      : [];
+    const existingOrderIds = new Set(existingTasks.map((task) => task.orderId));
+    const missingTasks = ready
+      .filter((order) => !existingOrderIds.has(order.id))
+      .map((order) =>
+        this.repo.create({
+          orderId: order.id,
+          companyId: order.companyId,
+          branchId: order.branchId,
+          assignedEmployeeId: null,
+          status: DeliveryTaskStatus.AVAILABLE,
+          issueReason: null,
+          pickedUpAt: null,
+          deliveredAt: null,
+        }),
+      );
+    if (missingTasks.length) await this.repo.save(missingTasks);
     const tasks = await this.repo.find({
       where: branchId ? { branchId } : companyId ? { companyId } : {},
       order: { createdAt: 'ASC' },
     });
-    const orderMap = new Map(ready.map((order) => [order.id, order]));
+    const issueOrderIds = tasks
+      .filter((task) => task.status === DeliveryTaskStatus.ISSUE_REPORTED)
+      .map((task) => task.orderId)
+      .filter((id) => !ready.some((order) => order.id === id));
+    const issueOrders = await this.orders.findByIds(issueOrderIds);
+    const orderMap = new Map(
+      [...ready, ...issueOrders].map((order) => [order.id, order]),
+    );
     const visible = tasks.filter(
       (task) =>
         orderMap.has(task.orderId) &&
@@ -93,7 +106,9 @@ export class DeliveryService {
     const [employees, companies, branches]: [Employee[], Company[], Branch[]] =
       await Promise.all([
         employeeIds.length
-          ? this.employeeRepo.findBy(employeeIds.map((id) => ({ id })))
+          ? this.employeeRepo.find({
+              where: employeeIds.map((keycloakId) => ({ keycloakId })),
+            })
           : [],
         companyIds.length
           ? this.companyRepo.findBy(companyIds.map((id) => ({ id })))
@@ -103,7 +118,9 @@ export class DeliveryService {
           : [],
       ]);
     const employeeMap = new Map<string, Employee>(
-      employees.map((employee) => [employee.id, employee]),
+      employees
+        .filter((employee) => employee.keycloakId)
+        .map((employee) => [employee.keycloakId!, employee]),
     );
     const companyMap = new Map<string, Company>(
       companies.map((company) => [company.id, company]),
@@ -139,11 +156,82 @@ export class DeliveryService {
     return task;
   }
 
+  async reportOrderIssue(
+    orderId: string,
+    reason: string,
+    description: string,
+    user: JwtPayload,
+  ): Promise<DeliveryTask> {
+    const task = await this.repo.manager.transaction(async (manager) => {
+      const orders = manager.getRepository(Order);
+      const tasks = manager.getRepository(DeliveryTask);
+      // QueryBuilder n'applique pas la relation eager `lines`. PostgreSQL peut
+      // ainsi verrouiller uniquement `orders`, sans FOR UPDATE sur le côté
+      // nullable du LEFT JOIN généré par Repository.findOne().
+      const order = await orders
+        .createQueryBuilder('order')
+        .where('order.id = :orderId', { orderId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+      assertResourceScope(user, order);
+      if ([OrderStatus.DELIVERED, OrderStatus.REJECTED].includes(order.status))
+        throw new BadRequestException(`orderCannotBePutOnHold:${order.status}`);
+
+      let deliveryTask = await tasks.findOne({
+        where: { orderId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!deliveryTask) {
+        deliveryTask = tasks.create({
+          orderId,
+          companyId: order.companyId,
+          branchId: order.branchId,
+          assignedEmployeeId: user.employeeId ?? null,
+          status: DeliveryTaskStatus.ISSUE_REPORTED,
+          issueReason: reason.trim(),
+          issueDescription: description.trim(),
+          previousOrderStatus: order.status,
+          previousDeliveryStatus: null,
+          pickedUpAt: null,
+          deliveredAt: null,
+        });
+      } else {
+        if (deliveryTask.status !== DeliveryTaskStatus.ISSUE_REPORTED) {
+          deliveryTask.previousDeliveryStatus = deliveryTask.status;
+          deliveryTask.previousOrderStatus = order.status;
+        }
+        deliveryTask.status = DeliveryTaskStatus.ISSUE_REPORTED;
+        deliveryTask.issueReason = reason.trim();
+        deliveryTask.issueDescription = description.trim();
+      }
+      order.status = OrderStatus.PENDING;
+      await orders.save(order);
+      return tasks.save(deliveryTask);
+    });
+
+    await this.notifications.notifyByPermission(
+      'order.queue.manage',
+      { companyId: task.companyId, branchId: task.branchId },
+      {
+        domain: 'order',
+        titleAr: 'حادث في الطلب',
+        titleEn: 'Order incident',
+        bodyAr: task.issueDescription || description,
+        bodyEn: task.issueDescription || description,
+        referenceId: task.id,
+        data: { deliveryTaskId: task.id, orderId: task.orderId },
+      },
+    );
+    return task;
+  }
+
   async transitionAtomic(
     id: string,
     status: DeliveryTaskStatus,
     user: JwtPayload,
     reason?: string,
+    description?: string,
   ): Promise<DeliveryTask> {
     const task = await this.repo.manager.transaction(async (manager) => {
       const tasks = manager.getRepository(DeliveryTask);
@@ -197,8 +285,33 @@ export class DeliveryService {
         current.pickedUpAt = new Date();
       if (status === DeliveryTaskStatus.ISSUE_REPORTED)
         current.issueReason = reason?.trim() || 'Unspecified issue';
+      if (status === DeliveryTaskStatus.ISSUE_REPORTED)
+        current.issueDescription =
+          description?.trim() || reason?.trim() || 'Unspecified issue';
       if (status === DeliveryTaskStatus.DELIVERED)
         current.deliveredAt = new Date();
+      if (
+        [
+          DeliveryTaskStatus.OUT_FOR_DELIVERY,
+          DeliveryTaskStatus.RETURNED,
+          DeliveryTaskStatus.FAILED,
+        ].includes(status) &&
+        current.previousOrderStatus
+      ) {
+        const orders = manager.getRepository(Order);
+        const order = await orders
+          .createQueryBuilder('order')
+          .where('order.id = :orderId', { orderId: current.orderId })
+          .setLock('pessimistic_write')
+          .getOne();
+        if (order) {
+          order.status =
+            status === DeliveryTaskStatus.OUT_FOR_DELIVERY
+              ? current.previousOrderStatus
+              : OrderStatus.REJECTED;
+          await orders.save(order);
+        }
+      }
       return tasks.save(current);
     });
     if (status === DeliveryTaskStatus.DELIVERED)

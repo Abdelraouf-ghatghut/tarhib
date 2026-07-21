@@ -7,7 +7,7 @@ import { CreateOrderLineDto } from '../dto/create-order-line.dto.js';
 
 export interface ProductSnapshot {
   id: string;
-  type: 'COMMANDABLE' | 'LIBRE_SERVICE_VIP';
+  isSold: boolean;
   allowedRoles: string[] | null;
   allowedBranches: string[] | null;
   active: boolean;
@@ -16,6 +16,17 @@ export interface ProductSnapshot {
 export interface StockSnapshot {
   productId: string;
   branchId: string;
+  quantity: number;
+}
+
+/**
+ * Nomenclature : `quantity` unités de `ingredientProductId` consommées par
+ * unité vendue de `productId`. Un produit avec des lignes de recette n'a pas
+ * de stock propre — sa disponibilité se calcule depuis ses ingrédients.
+ */
+export interface RecipeSnapshot {
+  productId: string;
+  ingredientProductId: string;
   quantity: number;
 }
 
@@ -37,6 +48,7 @@ export interface ValidationContext {
   products: ProductSnapshot[];
   stocks: StockSnapshot[];
   quotas: QuotaSnapshot[];
+  recipes: RecipeSnapshot[];
 }
 
 /**
@@ -80,7 +92,7 @@ export class ValidationEngineService {
   ): LineValidationResult {
     // Étape 1 — Produit commandable + rôle autorisé (§3.3.1)
     const product = ctx.products.find((p) => p.id === productId && p.active);
-    if (!product || product.type !== 'COMMANDABLE') {
+    if (!product || !product.isSold) {
       return {
         productId,
         quantity,
@@ -115,17 +127,41 @@ export class ValidationEngineService {
       };
     }
 
-    // Étape 2 — Stock disponible dans la branche (§3.3.2)
-    const stock = ctx.stocks.find(
-      (s) => s.productId === productId && s.branchId === ctx.branchId,
-    );
-    if (!stock || stock.quantity < quantity) {
-      return {
-        productId,
-        quantity,
-        decision: 'REJECTED',
-        reason: 'INSUFFICIENT_STOCK',
-      };
+    // Étape 2 — Stock disponible dans la branche (§3.3.2). Produit composé
+    // (nomenclature) : disponibilité = plus petit ratio stock/quantité parmi
+    // ses ingrédients — pas de stock propre pour ce produit.
+    const recipeLines = ctx.recipes.filter((r) => r.productId === productId);
+    if (recipeLines.length > 0) {
+      const availableUnits = Math.min(
+        ...recipeLines.map((line) => {
+          const ingredientStock = ctx.stocks.find(
+            (s) =>
+              s.productId === line.ingredientProductId &&
+              s.branchId === ctx.branchId,
+          );
+          return Math.floor((ingredientStock?.quantity ?? 0) / line.quantity);
+        }),
+      );
+      if (availableUnits < quantity) {
+        return {
+          productId,
+          quantity,
+          decision: 'REJECTED',
+          reason: 'INSUFFICIENT_STOCK',
+        };
+      }
+    } else {
+      const stock = ctx.stocks.find(
+        (s) => s.productId === productId && s.branchId === ctx.branchId,
+      );
+      if (!stock || stock.quantity < quantity) {
+        return {
+          productId,
+          quantity,
+          decision: 'REJECTED',
+          reason: 'INSUFFICIENT_STOCK',
+        };
+      }
     }
 
     // Étape 3 — Quota restant sur la période active (§3.3.3)

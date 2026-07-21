@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -40,8 +40,8 @@ export interface AccessProfile {
     departmentId: string | null;
     scope: string;
     /** Renseignés seulement si les relations company/branch ont été chargées par l'appelant. */
-    company: { nameAr: string; nameEn: string } | null;
-    branch: { nameAr: string; nameEn: string } | null;
+    company: { nameAr: string; nameEn: string | null } | null;
+    branch: { nameAr: string; nameEn: string | null } | null;
   };
   primaryRoleId: string | null;
   roles: AccessRoleSummary[];
@@ -279,6 +279,32 @@ export class AccessPolicyService {
       modules,
       dataScope: this.resolveDataScope(employee, permissions),
     };
+  }
+
+  /**
+   * Impersonation (mode "tester ce rôle") : recalcule un profil d'accès
+   * complet comme si `actorEmployee` détenait uniquement `targetRoleId` —
+   * réutilise resolve() tel quel, sans toucher aux méthodes privées.
+   * `sub`/`employeeId` de l'acteur réel restent inchangés côté appelant :
+   * seule la couche permissions est simulée ici.
+   */
+  async resolveAsRole(
+    actorEmployee: Employee,
+    targetRoleId: string,
+  ): Promise<AccessProfile> {
+    const role = await this.roleRepo.findOne({ where: { id: targetRoleId } });
+    if (!role) throw new NotFoundException('roleNotFound');
+    const simulated: Employee = {
+      ...actorEmployee,
+      roleId: role.id,
+      additionalRoles: [],
+      scope:
+        role.scope === RoleScope.CLIENT
+          ? EmployeeScope.CLIENT
+          : EmployeeScope.TARHIB,
+      companyId: role.companyId ?? actorEmployee.companyId,
+    };
+    return this.resolve(simulated);
   }
 
   private async resolveRoles(employee: Employee): Promise<Role[]> {

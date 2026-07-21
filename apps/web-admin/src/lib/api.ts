@@ -91,6 +91,10 @@ export const procurementApi = {
 
 export const productsAdminApi = {
   list: () => api.get("/products/admin"),
+  getRecipe: (productId: string) => api.get(`/products/${productId}/recipe`),
+  addRecipeLine: (productId: string, d: { ingredientProductId: string; quantity: number }) =>
+    api.post(`/products/${productId}/recipe`, d),
+  removeRecipeLine: (lineId: string) => api.delete(`/products/recipe/${lineId}`),
 };
 
 export const vipSelfServiceApi = {
@@ -103,10 +107,11 @@ export const vipSelfServiceApi = {
     api.delete(`/vip-self-service/location-products/${locationProductId}`),
   adjustProduct: (locationProductId: string, d: unknown) =>
     api.patch(`/vip-self-service/location-products/${locationProductId}`, d),
-  replenish: (locationProductId: string) =>
-    api.patch(`/vip-self-service/locations/${locationProductId}/replenish`),
+  replenish: (locationProductId: string, sourceZone?: string) =>
+    api.patch(`/vip-self-service/locations/${locationProductId}/replenish`, { sourceZone }),
   tasks: (params?: Record<string, string>) => api.get("/vip-self-service/tasks", { params }),
-  completeTask: (taskId: string) => api.patch(`/vip-self-service/tasks/${taskId}/complete`),
+  completeTask: (taskId: string, sourceZone?: string) =>
+    api.patch(`/vip-self-service/tasks/${taskId}/complete`, { sourceZone }),
 };
 
 export const inventoryTransfersApi = {
@@ -131,6 +136,7 @@ export const quotasApi = {
 
 export const reportingApi = {
   orders: (params?: Record<string, string>) => api.get("/reports/orders", { params }),
+  quotas: (params?: Record<string, string>) => api.get("/reports/quotas", { params }),
   inventory: (params?: Record<string, string>) => api.get("/reports/inventory", { params }),
   sla: (params?: Record<string, string>) => api.get("/reports/sla", { params }),
   userActivity: (params?: Record<string, string>) => api.get("/reports/user-activity", { params }),
@@ -178,6 +184,7 @@ export const auditApi = {
   list: (params?: {
     entity?: string;
     userId?: string;
+    entityId?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
@@ -185,10 +192,110 @@ export const auditApi = {
   }) => api.get("/audit", { params }),
 };
 
+// Comptabilité interne Tarhib (contrats clients, frais, dettes, comptes) —
+// distincte de la règle "pas de budget" du CLAUDE.md, qui ne concerne que
+// les commandes/quotas employés.
+export const financeApi = {
+  overview: (params?: Record<string, string>) => api.get("/finance/overview", { params }),
+  contracts: {
+    list: (params?: Record<string, string>) => api.get("/finance/contracts", { params }),
+    create: (d: unknown) => api.post("/finance/contracts", d),
+    update: (id: string, d: unknown) => api.patch(`/finance/contracts/${id}`, d),
+    remove: (id: string) => api.delete(`/finance/contracts/${id}`),
+  },
+  expenses: {
+    list: (params?: Record<string, string>) => api.get("/finance/expenses", { params }),
+    create: (d: unknown) => api.post("/finance/expenses", d),
+    update: (id: string, d: unknown) => api.patch(`/finance/expenses/${id}`, d),
+    remove: (id: string) => api.delete(`/finance/expenses/${id}`),
+    correct: (id: string, d: unknown) => api.post(`/finance/expenses/${id}/correct`, d),
+  },
+  debts: {
+    list: () => api.get("/finance/debts"),
+    create: (d: unknown) => api.post("/finance/debts", d),
+    update: (id: string, d: unknown) => api.patch(`/finance/debts/${id}`, d),
+    remove: (id: string) => api.delete(`/finance/debts/${id}`),
+  },
+  accounts: {
+    list: () => api.get("/finance/accounts"),
+    create: (d: unknown) => api.post("/finance/accounts", d),
+    update: (id: string, d: unknown) => api.patch(`/finance/accounts/${id}`, d),
+    remove: (id: string) => api.delete(`/finance/accounts/${id}`),
+  },
+  payroll: {
+    run: (period?: string) => api.post("/finance/payroll/run", period ? { period } : {}),
+  },
+  periods: {
+    get: (period: string) => api.get(`/finance/periods/${period}`),
+    close: (period: string) => api.post(`/finance/periods/${period}/close`),
+    reopen: (period: string) => api.post(`/finance/periods/${period}/reopen`),
+  },
+};
+
+export const accountingApi = {
+  accounts: {
+    list: () => api.get("/accounting/accounts"),
+    create: (d: unknown) => api.post("/accounting/accounts", d),
+    update: (id: string, d: unknown) => api.patch(`/accounting/accounts/${id}`, d),
+  },
+  journalEntries: {
+    create: (d: unknown) => api.post("/accounting/journal-entries", d),
+    validate: (id: string) => api.patch(`/accounting/journal-entries/${id}/validate`),
+  },
+  ledger: (accountId: string, from?: string, to?: string) =>
+    api.get("/accounting/ledger", { params: { accountId, from, to } }),
+  trialBalance: (from?: string, to?: string) =>
+    api.get("/accounting/trial-balance", { params: { from, to } }),
+  balanceSheet: (asOf?: string) => api.get("/accounting/balance-sheet", { params: { asOf } }),
+  incomeStatement: (from?: string, to?: string) =>
+    api.get("/accounting/income-statement", { params: { from, to } }),
+  fiscalYears: {
+    get: (year: number) => api.get(`/accounting/fiscal-years/${year}`),
+    close: (year: number) => api.post(`/accounting/fiscal-years/${year}/close`),
+    reopen: (year: number) => api.post(`/accounting/fiscal-years/${year}/reopen`),
+  },
+};
+
+export const hrApi = {
+  leaveTypes: {
+    list: () => api.get("/hr/leave-types"),
+    create: (d: unknown) => api.post("/hr/leave-types", d),
+    update: (id: string, d: unknown) => api.patch(`/hr/leave-types/${id}`, d),
+  },
+  leaveRequests: {
+    list: (params?: Record<string, string>) => api.get("/hr/leave-requests", { params }),
+    create: (d: unknown) => api.post("/hr/leave-requests", d),
+    approve: (id: string) => api.patch(`/hr/leave-requests/${id}/approve`),
+    reject: (id: string) => api.patch(`/hr/leave-requests/${id}/reject`),
+  },
+  leaveBalances: {
+    list: (params?: Record<string, string>) => api.get("/hr/leave-balances", { params }),
+  },
+  contracts: {
+    list: (employeeId?: string) =>
+      api.get("/hr/contracts", { params: employeeId ? { employeeId } : {} }),
+    create: (d: unknown) => api.post("/hr/contracts", d),
+    update: (id: string, d: unknown) => api.patch(`/hr/contracts/${id}`, d),
+  },
+  performanceReviews: {
+    list: (employeeId?: string) =>
+      api.get("/hr/performance-reviews", { params: employeeId ? { employeeId } : {} }),
+    create: (d: unknown) => api.post("/hr/performance-reviews", d),
+    update: (id: string, d: unknown) => api.patch(`/hr/performance-reviews/${id}`, d),
+  },
+  payrollTaxConfig: {
+    get: () => api.get("/hr/payroll-tax-config"),
+    update: (d: unknown) => api.patch("/hr/payroll-tax-config", d),
+  },
+  payslips: {
+    list: (params?: Record<string, string>) => api.get("/hr/payslips", { params }),
+  },
+};
+
 export const registrationsApi = {
   listPending: (companyId?: string) =>
     api.get("/auth/pending-registrations", { params: companyId ? { companyId } : {} }),
-  approve: (id: string) => api.patch(`/auth/registrations/${id}/approve`),
+  approve: (id: string, d: unknown) => api.patch(`/auth/registrations/${id}/approve`, d),
   reject: (id: string) => api.patch(`/auth/registrations/${id}/reject`),
   invite: (d: unknown) => api.post("/auth/invite", d),
 };

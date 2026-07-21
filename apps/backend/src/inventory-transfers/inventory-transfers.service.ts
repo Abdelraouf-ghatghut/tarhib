@@ -70,6 +70,8 @@ export class InventoryTransfersService {
     companyId?: string,
     branchId?: string,
     status?: TransferStatus,
+    skip = 0,
+    take = 200,
   ): Promise<InventoryTransferDto[]> {
     const where: FindOptionsWhere<InventoryTransfer> = {};
     if (companyId) where.companyId = companyId;
@@ -78,6 +80,8 @@ export class InventoryTransfersService {
     const entities = await this.repo.find({
       where,
       order: { createdAt: 'DESC' },
+      skip,
+      take,
     });
     return entities.map((e) => this.toDto(e));
   }

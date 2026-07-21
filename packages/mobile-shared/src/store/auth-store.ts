@@ -3,7 +3,13 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { create } from "zustand";
 
-import { accessApi, authApi, type AccessProfile, type AccessRoleSummary } from "../api/auth";
+import {
+  accessApi,
+  authApi,
+  type AcceptInvitePayload,
+  type AccessProfile,
+  type AccessRoleSummary,
+} from "../api/auth";
 import { configureApiClient } from "../api/client";
 import type { AppMode } from "../theme";
 
@@ -74,6 +80,7 @@ interface AuthState extends AuthContext {
   restoreSession: (appMode: AppMode) => Promise<void>;
   login: (appMode: AppMode, email: string, password: string) => Promise<void>;
   loginWithOtp: (appMode: AppMode, phoneNumber: string, code: string) => Promise<void>;
+  acceptInvite: (appMode: AppMode, payload: AcceptInvitePayload) => Promise<void>;
   logout: () => Promise<void>;
   refreshAccessContext: (appMode: AppMode) => Promise<void>;
   registerDeviceToken: (token: string) => Promise<void>;
@@ -193,6 +200,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   loginWithOtp: async (appMode, phoneNumber, code) => {
     const { data } = await authApi.verifyOtp(phoneNumber, code, appMode);
+    const context = contextFromLoginResponse(data);
+    set({
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      isAuthenticated: true,
+      ...context,
+    });
+    await setRefreshToken(data.refreshToken);
+    await get().refreshAccessContext(appMode);
+  },
+
+  acceptInvite: async (appMode, payload) => {
+    const { data } = await authApi.acceptInvite(payload);
     const context = contextFromLoginResponse(data);
     set({
       accessToken: data.accessToken,

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -18,9 +19,17 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
-import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
+import {
+  RequirePermission,
+  RequireAnyPermission,
+} from '../auth/decorators/require-permission.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
+import { parsePagination } from '../common/pagination.js';
+import {
+  assertResourceScope,
+  constrainRequestedScope,
+} from '../common/access/request-scope.js';
 import {
   CreateEmployeeDto,
   EmployeeAdminDto,
@@ -43,24 +52,32 @@ export class EmployeesController {
   })
   @ApiResponse({ status: 200, type: [EmployeeAdminDto] })
   findAllAdmin(
+    @CurrentUser() user: JwtPayload,
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
     @Query('departmentId') departmentId?: string,
     @Query('role') role?: string,
     @Query('active') active?: string,
     @Query('roleId') roleId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ): Promise<EmployeeAdminDto[]> {
+    const scope = constrainRequestedScope(user, { companyId, branchId });
+    const { skip, limit: take } = parsePagination(page, limit);
     return this.employeesService.findAllAdmin(
-      companyId,
-      branchId,
+      scope.companyId,
+      scope.branchId,
       departmentId,
       role,
       active,
       roleId,
+      skip,
+      take,
     );
   }
 
   @Post()
+  @RequireAnyPermission('employee.manage', 'company.manage')
   @ApiOperation({ summary: 'Créer un employé' })
   @ApiResponse({ status: 201, type: EmployeeDto })
   create(
@@ -93,33 +110,55 @@ export class EmployeesController {
     required: false,
     description: 'Filtrer par statut actif: true ou false',
   })
+  @ApiQuery({ name: 'page', required: false, description: 'Défaut 1' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Défaut 200, max 500',
+  })
   @ApiResponse({ status: 200, type: [EmployeeDto] })
   findAll(
+    @CurrentUser() user: JwtPayload,
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
     @Query('departmentId') departmentId?: string,
     @Query('role') role?: string,
     @Query('active') active?: string,
     @Query('roleId') roleId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ): Promise<EmployeeDto[]> {
+    const scope = constrainRequestedScope(user, { companyId, branchId });
+    const { skip, limit: take } = parsePagination(page, limit);
     return this.employeesService.findAll(
-      companyId,
-      branchId,
+      scope.companyId,
+      scope.branchId,
       departmentId,
       role,
       active,
       roleId,
+      skip,
+      take,
     );
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Récupérer un employé par ID' })
   @ApiResponse({ status: 200, type: EmployeeDto })
-  findOne(@Param('id') id: string): Promise<EmployeeDto> {
-    return this.employeesService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<EmployeeDto> {
+    const employee = await this.employeesService.findOne(id);
+    assertResourceScope(user, {
+      companyId: employee.companyId ?? '',
+      branchId: employee.branchId ?? undefined,
+    });
+    return employee;
   }
 
   @Patch(':id')
+  @RequireAnyPermission('employee.manage', 'company.manage')
   @ApiOperation({ summary: 'Mettre à jour un employé' })
   @ApiResponse({ status: 200, type: EmployeeDto })
   update(
@@ -131,6 +170,8 @@ export class EmployeesController {
   }
 
   @Delete(':id')
+  @RequireAnyPermission('employee.manage', 'company.manage')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Désactiver un employé (soft delete)' })
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string): Promise<void> {
@@ -138,6 +179,7 @@ export class EmployeesController {
   }
 
   @Patch(':id/deactivate')
+  @RequireAnyPermission('employee.manage', 'company.manage')
   @ApiOperation({
     summary:
       'Désactiver un compte employé (soft delete, révocation sessions) (TARHIB-32)',

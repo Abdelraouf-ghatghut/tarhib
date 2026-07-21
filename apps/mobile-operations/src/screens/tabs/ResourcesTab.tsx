@@ -1,15 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import React from "react";
-import { Text, View } from "react-native";
+import React, { useState } from "react";
+import { Pressable, Text, View } from "react-native";
 import {
   Card,
   PrimaryButton,
   completeVipTask,
   confirmInventoryTransfer,
   createSnowStyles,
+  fetchEmployeeCatalog,
   fetchInventoryTransfers,
   fetchPurchaseOrders,
   fetchReplenishmentRequests,
+  fetchSuppliers,
   fetchVipTasks,
   receivePurchaseOrder,
   spacing,
@@ -21,7 +23,8 @@ import {
   type SnowTheme,
 } from "@tarhib/mobile-shared";
 import { CenteredTitle, EmptyText, LoadingCard, ui } from "../../components/ui";
-import { arOrEn, operationsStatusLabel } from "../../lib/format";
+import { arOrEn, operationsStatusLabel, productName } from "../../lib/format";
+import { RecordDetailModal } from "../../modals/RecordDetailModal";
 
 type Kind = "transfers" | "replenishments" | "vip" | "procurement";
 
@@ -37,6 +40,26 @@ export const ResourcesTab = ({
   canWrite: boolean;
 }) => {
   const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
+  const suppliersQuery = useQuery({
+    queryKey: ["operations-suppliers"],
+    queryFn: fetchSuppliers,
+    staleTime: 300_000,
+  });
+  const productsQuery = useQuery({
+    queryKey: ["operations-products"],
+    queryFn: fetchEmployeeCatalog,
+    staleTime: 300_000,
+  });
+  const supplierNames = new Map(
+    (suppliersQuery.data ?? []).map((item) => [
+      item.id,
+      lang === "ar" ? item.nameAr : item.nameEn || item.nameAr,
+    ]),
+  );
+  const productNames = new Map(
+    (productsQuery.data ?? []).map((item) => [item.id, productName(item, lang, item.id)]),
+  );
   const query = useQuery<Array<Record<string, unknown>>>({
     queryKey: ["operations-resource", kind],
     queryFn: async () => {
@@ -106,7 +129,7 @@ export const ResourcesTab = ({
               ? `${String(row.requestedQty)} ${arOrEn(lang, "وحدة مطلوبة", "units requested")}`
               : kind === "vip"
                 ? `${String(row.locationName ?? "VIP")} · ${String(row.requestedQty)} ${arOrEn(lang, "وحدة", "units")}`
-                : `${Array.isArray(row.lines) ? row.lines.length : 0} ${arOrEn(lang, "بنود", "lines")} · ${arOrEn(lang, "المورد", "supplier")} ${String(row.supplierId).slice(0, 8)}`;
+                : `${Array.isArray(row.lines) ? row.lines.length : 0} ${arOrEn(lang, "بنود", "lines")} · ${arOrEn(lang, "المورد", "supplier")} ${supplierNames.get(String(row.supplierId)) ?? arOrEn(lang, "غير معروف", "Unknown")}`;
         const basicAction =
           kind === "transfers" && status === "PENDING"
             ? { action: "confirm", label: arOrEn(lang, "تأكيد التحويل", "Confirm transfer") }
@@ -142,29 +165,32 @@ export const ResourcesTab = ({
         const action = kind === "procurement" ? purchaseAction : basicAction;
 
         return (
-          <Card
-            key={id}
-            theme={theme}
-            style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}
-          >
-            <View style={ui.rowInfo}>
-              <Text style={[ui.orderId, { color: theme.text }]}>
-                #{id.slice(0, 8).toUpperCase()}
-              </Text>
-              <Text style={[ui.small, { color: theme.muted }]}>{subtitle}</Text>
-              <Text style={[ui.badgeText, { color: theme.primaryStrong }]}>
-                {operationsStatusLabel(status, lang)}
-              </Text>
-            </View>
-            {canWrite && action ? (
-              <PrimaryButton
-                theme={theme}
-                label={action.label}
-                disabled={mutation.isPending}
-                onPress={() => mutation.mutate({ id, action: action.action, order: purchaseOrder })}
-              />
-            ) : null}
-          </Card>
+          <Pressable key={id} onPress={() => setSelected(row)}>
+            <Card
+              theme={theme}
+              style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}
+            >
+              <View style={ui.rowInfo}>
+                <Text style={[ui.orderId, { color: theme.text }]}>
+                  #{id.slice(0, 8).toUpperCase()}
+                </Text>
+                <Text style={[ui.small, { color: theme.muted }]}>{subtitle}</Text>
+                <Text style={[ui.badgeText, { color: theme.primaryStrong }]}>
+                  {operationsStatusLabel(status, lang)}
+                </Text>
+              </View>
+              {canWrite && action ? (
+                <PrimaryButton
+                  theme={theme}
+                  label={action.label}
+                  disabled={mutation.isPending}
+                  onPress={() =>
+                    mutation.mutate({ id, action: action.action, order: purchaseOrder })
+                  }
+                />
+              ) : null}
+            </Card>
+          </Pressable>
         );
       })}
       {!query.isLoading && rows.length === 0 ? (
@@ -173,8 +199,43 @@ export const ResourcesTab = ({
           text={arOrEn(lang, "لا توجد عناصر للمعالجة.", "Nothing to process.")}
         />
       ) : null}
+      {selected ? (
+        <RecordDetailModal
+          visible
+          theme={theme}
+          lang={lang}
+          title={title}
+          reference={`#${String(selected.id).slice(0, 8).toUpperCase()}`}
+          status={operationsStatusLabel(String(selected.status ?? ""), lang)}
+          fields={Object.entries(selected)
+            .filter(
+              ([key, value]) =>
+                !["id", "status", "lines", "companyId", "branchId"].includes(key) &&
+                (!key.endsWith("Id") ||
+                  ["supplierId", "productId", "cleaningProductId", "transferId"].includes(key)) &&
+                value != null &&
+                typeof value !== "object",
+            )
+            .map(([key, value]) => ({
+              label: key.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase()),
+              value:
+                key === "supplierId"
+                  ? (supplierNames.get(String(value)) ??
+                    arOrEn(lang, "مورد غير معروف", "Unknown supplier"))
+                  : key === "productId" || key === "cleaningProductId"
+                    ? (productNames.get(String(value)) ??
+                      arOrEn(lang, "منتج غير معروف", "Unknown product"))
+                    : key.endsWith("EmployeeId")
+                      ? arOrEn(lang, "موظف غير معروف", "Unknown employee")
+                      : String(value),
+            }))}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
     </>
   );
 };
 
-const styles = createSnowStyles({ card: { borderWidth: 1, borderRadius: 16, gap: spacing.md } });
+const styles = createSnowStyles({
+  card: { borderWidth: 1, borderRadius: 13, gap: spacing.md, marginBottom: spacing.md },
+});

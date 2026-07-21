@@ -10,6 +10,7 @@ import {
 import { DeliveryService } from './delivery.service.js';
 import { DeliveryTaskStatus } from './entities/delivery-task.entity.js';
 import { DeliveryIssueDto } from './dto/delivery-issue.dto.js';
+import { OrderIssueDto } from './dto/order-issue.dto.js';
 
 @ApiTags('delivery')
 @ApiBearerAuth()
@@ -64,6 +65,21 @@ export class DeliveryController {
       DeliveryTaskStatus.ISSUE_REPORTED,
       user,
       dto.reason,
+      dto.description,
+    );
+  }
+  @Patch('orders/:orderId/issue')
+  @RequireAnyPermission('order.prepare', 'order.deliver', 'order.queue.manage')
+  reportOrderIssue(
+    @CurrentUser() user: JwtPayload,
+    @Param('orderId') orderId: string,
+    @Body() dto: OrderIssueDto,
+  ) {
+    return this.service.reportOrderIssue(
+      orderId,
+      dto.reason,
+      dto.description,
+      user,
     );
   }
   @Patch('tasks/:id/resume')
@@ -87,9 +103,10 @@ export class DeliveryController {
     status: DeliveryTaskStatus,
     user: JwtPayload,
     reason?: string,
+    description?: string,
   ) {
     const task = await this.service.findOne(id);
     assertResourceScope(user, task);
-    return this.service.transitionAtomic(id, status, user, reason);
+    return this.service.transitionAtomic(id, status, user, reason, description);
   }
 }

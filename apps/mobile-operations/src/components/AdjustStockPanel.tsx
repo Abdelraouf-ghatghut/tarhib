@@ -85,7 +85,7 @@ const styles = createSnowStyles({
     right: spacing.md,
     bottom: 92,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 13,
     padding: spacing.md,
     gap: spacing.sm,
   },

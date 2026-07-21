@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -13,6 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiNoContentResponse,
@@ -40,11 +42,19 @@ import { Public } from './decorators/public.decorator';
 import { RegisterDto } from './dto/register.dto';
 import { InviteEmployeeDto } from './dto/invite-employee.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
+import { ApproveRegistrationDto } from './dto/approve-registration.dto';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 
 /** Cookie HttpOnly portant le refresh token pour le Web Admin (anti-XSS). */
 const REFRESH_COOKIE = 'tarhib_rt';
 const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+
+/**
+ * Cookie HttpOnly mettant de côté le refresh token de l'acteur réel pendant
+ * une impersonation "employé" (mode A) — permet de revenir à son propre
+ * compte via POST /auth/impersonate-stop sans re-authentification.
+ */
+const IMPERSONATOR_COOKIE = 'tarhib_impersonator_rt';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -78,6 +88,7 @@ export class AuthController {
 
   // ── TARHIB-21 ────────────────────────────────────────────────────────────
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Login with email and password' })
@@ -95,6 +106,7 @@ export class AuthController {
 
   // ── TARHIB-22 ────────────────────────────────────────────────────────────
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('otp/request')
   @HttpCode(204)
   @ApiOperation({ summary: 'Request an OTP code by SMS' })
@@ -106,6 +118,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('otp/verify')
   @HttpCode(200)
   @ApiOperation({ summary: 'Verify OTP code and obtain tokens' })
@@ -117,6 +130,7 @@ export class AuthController {
 
   // ── TARHIB-23 ────────────────────────────────────────────────────────────
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('password/reset-request')
   @HttpCode(204)
   @ApiOperation({ summary: 'Request password reset link by email' })
@@ -179,6 +193,97 @@ export class AuthController {
     if (refreshToken) await this.authService.logout({ refreshToken });
   }
 
+  // ── Impersonation : tester rôles/permissions sans changer de compte ─────
+  @Post('impersonate/employee/:employeeId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermission('employee.impersonate')
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Se connecter en tant qu'un employé (test RBAC)" })
+  @ApiOkResponse({ type: TokenResponseDto })
+  async impersonateEmployee(
+    @Param('employeeId') employeeId: string,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<TokenResponseDto> {
+    const cookies = req.cookies as Record<string, string> | undefined;
+    if (cookies?.[IMPERSONATOR_COOKIE]) {
+      throw new BadRequestException('alreadyImpersonating');
+    }
+    const currentRefreshToken = this.refreshTokenFrom(req);
+    const tokens = await this.authService.startEmployeeImpersonation(
+      user,
+      employeeId,
+      req.ip,
+    );
+    res.cookie(IMPERSONATOR_COOKIE, currentRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/auth',
+      maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+    });
+    this.setRefreshCookie(res, tokens.refreshToken);
+    return tokens;
+  }
+
+  @Post('impersonate/role/:roleId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermission('role.impersonate')
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Tester un rôle sans employé précis (test RBAC)' })
+  impersonateRole(
+    @Param('roleId') roleId: string,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    return this.authService.startRoleImpersonation(user, roleId, req.ip);
+  }
+
+  @Post('impersonate-stop')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Revenir à son propre compte (les deux modes)' })
+  async stopImpersonation(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const impersonatorRefreshToken = cookies?.[IMPERSONATOR_COOKIE];
+    if (impersonatorRefreshToken) {
+      // tarhib_rt porte à cet instant le refresh token de la session
+      // d'impersonation (posé par impersonateEmployee) — on le révoque avant
+      // de restaurer celui de l'acteur réel, pour ne pas laisser une session
+      // "employé" valide traîner après le retour à son propre compte. Ceci
+      // n'affecte en rien la vraie session de l'employé (jeton distinct,
+      // obtenu par son propre login, jamais vu par ce backend).
+      const impersonationSessionToken = cookies?.[REFRESH_COOKIE];
+      if (impersonationSessionToken) {
+        await this.authService.logout({
+          refreshToken: impersonationSessionToken,
+        });
+      }
+      const tokens = await this.authService.refresh({
+        refreshToken: impersonatorRefreshToken,
+      });
+      await this.authService.logImpersonationStop(
+        user,
+        'IMPERSONATE_EMPLOYEE_STOP',
+        req.ip,
+      );
+      res.clearCookie(IMPERSONATOR_COOKIE, { path: '/auth' });
+      this.setRefreshCookie(res, tokens.refreshToken);
+      return tokens;
+    }
+    const stopped = await this.authService.stopRoleImpersonation(user, req.ip);
+    if (!stopped) throw new BadRequestException('notImpersonating');
+    return stopped;
+  }
+
   // ── Public ───────────────────────────────────────────────────────────────
   @Get('me')
   @UseGuards(JwtAuthGuard)
@@ -192,6 +297,7 @@ export class AuthController {
 
   // ── Signup ────────────────────────────────────────────────────────────────
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('register')
   @HttpCode(204)
   @ApiOperation({
@@ -216,6 +322,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('accept-invite')
   @HttpCode(200)
   @ApiOperation({ summary: 'Accept invitation and set up account' })
@@ -241,8 +348,11 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Approve a pending registration' })
   @ApiNoContentResponse({ description: 'Approved' })
-  async approveRegistration(@Param('id') id: string): Promise<void> {
-    await this.authService.approveRegistration(id);
+  async approveRegistration(
+    @Param('id') id: string,
+    @Body() dto: ApproveRegistrationDto,
+  ): Promise<void> {
+    await this.authService.approveRegistration(id, dto);
   }
 
   @Patch('registrations/:id/reject')

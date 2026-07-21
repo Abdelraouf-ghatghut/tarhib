@@ -17,13 +17,10 @@ export class CreateBranchDto {
   @MinLength(1)
   nameAr!: string;
 
-  @ApiPropertyOptional({
-    example: 'Algiers HQ',
-    description: "Anglais optionnel — l'arabe sert de repli",
-  })
+  @ApiPropertyOptional({ example: 'Algiers HQ', nullable: true })
   @IsString()
   @IsOptional()
-  nameEn?: string;
+  nameEn?: string | null;
 
   @ApiPropertyOptional({
     description:
@@ -62,9 +59,8 @@ export class BranchDto {
   @IsString()
   nameAr!: string;
 
-  @ApiProperty({ example: 'Algiers HQ' })
-  @IsString()
-  nameEn!: string;
+  @ApiProperty({ example: 'Algiers HQ', nullable: true })
+  nameEn!: string | null;
 
   @ApiProperty({ example: true })
   @IsBoolean()

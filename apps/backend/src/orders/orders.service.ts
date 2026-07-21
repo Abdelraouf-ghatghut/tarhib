@@ -7,7 +7,13 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, FindOptionsWhere, In, Repository } from 'typeorm';
+import {
+  Between,
+  EntityManager,
+  FindOptionsWhere,
+  In,
+  Repository,
+} from 'typeorm';
 import { Order } from './entities/order.entity.js';
 import {
   OrderLine,
@@ -29,11 +35,12 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { NotificationsGateway } from '../notifications/notifications.gateway.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { Product } from '../products/entities/product.entity.js';
-import { ProductType } from '../products/dto/product.dto.js';
+import { ProductRecipeLine } from '../products/entities/product-recipe-line.entity.js';
 import {
   InventoryItem,
   StockZone,
 } from '../inventory/entities/inventory-item.entity.js';
+import { InventoryService } from '../inventory/inventory.service.js';
 import { Quota } from '../quotas/entities/quota.entity.js';
 import { QuotasService } from '../quotas/quotas.service.js';
 import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
@@ -55,17 +62,16 @@ export class OrdersService {
     private readonly productRepo: Repository<Product>,
     @InjectRepository(InventoryItem)
     private readonly inventoryRepo: Repository<InventoryItem>,
-    @InjectRepository(Quota)
-    private readonly quotaRepo: Repository<Quota>,
-    @InjectRepository(EmployeeQuotaUsage)
-    private readonly quotaUsageRepo: Repository<EmployeeQuotaUsage>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
+    @InjectRepository(ProductRecipeLine)
+    private readonly recipeRepo: Repository<ProductRecipeLine>,
     private readonly quotasService: QuotasService,
     private readonly validationEngine: ValidationEngineService,
     private readonly notificationsService: NotificationsService,
     private readonly notificationsGateway: NotificationsGateway,
     private readonly prioritySla: PrioritySlaService,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   /**
@@ -80,21 +86,106 @@ export class OrdersService {
     return role?.slaPriority || OrderPriority.P5;
   }
 
+  /**
+   * Les commandes sont préparées en cuisine : le stock CUISINE est décrémenté
+   * en premier, et complété automatiquement depuis la BRANCHE si insuffisant
+   * (InventoryService.decrementForPreparation). Produit composé (a une
+   * recette) : décrémente ses ingrédients. Produit simple (pas de recette) :
+   * décrémente son propre stock. Une rupture cuisine+branche combinées
+   * bloque toute la transition (voir appelant).
+   */
+  private async decrementRecipeIngredients(
+    order: Order,
+    preparedBy: string,
+  ): Promise<void> {
+    const approvedLines = order.lines.filter(
+      (l) => l.validationStatus === LineValidationStatus.APPROVED,
+    );
+    if (approvedLines.length === 0) return;
+
+    const recipeLines = await this.recipeRepo.find({
+      where: { productId: In(approvedLines.map((l) => l.productId)) },
+    });
+
+    // Une seule transaction pour toutes les lignes : une rupture en cours de
+    // boucle annule les décrémentations déjà faites dans cette même tentative
+    // plutôt que de laisser un stock partiellement décrémenté.
+    await this.orderRepo.manager.transaction(async (manager) => {
+      for (const line of approvedLines) {
+        const recipesForLine = recipeLines.filter(
+          (r) => r.productId === line.productId,
+        );
+        if (recipesForLine.length > 0) {
+          for (const recipe of recipesForLine) {
+            await this.inventoryService.decrementForPreparation(
+              recipe.ingredientProductId,
+              order.branchId,
+              order.companyId,
+              recipe.quantity * line.quantity,
+              manager,
+              preparedBy,
+            );
+          }
+        } else {
+          await this.inventoryService.decrementForPreparation(
+            line.productId,
+            order.branchId,
+            order.companyId,
+            line.quantity,
+            manager,
+            preparedBy,
+          );
+        }
+      }
+    });
+  }
+
   async create(dto: CreateOrderDto, caller: JwtPayload): Promise<OrderDto> {
     const productIds = dto.lines.map((l) => l.productId);
 
-    // Charge les vraies données (§3.3 CLAUDE.md — ordre strict)
-    const [products, stocks] = await Promise.all([
+    // Nomenclature (§3 CLAUDE.md) : un produit composé n'a pas de stock
+    // propre — le stock à vérifier est celui de ses ingrédients.
+    const recipeLines = await this.recipeRepo.find({
+      where: { productId: In(productIds) },
+    });
+    const stockProductIds = [
+      ...new Set([
+        ...productIds,
+        ...recipeLines.map((r) => r.ingredientProductId),
+      ]),
+    ];
+
+    // Charge les vraies données (§3.3 CLAUDE.md — ordre strict). Disponibilité
+    // = cuisine + branche combinées (la préparation décrémente la cuisine en
+    // premier, la branche complète automatiquement en cas de manque — voir
+    // decrementRecipeIngredients / InventoryService.decrementForPreparation).
+    const [products, stockRows] = await Promise.all([
       this.productRepo.find({ where: productIds.map((id) => ({ id })) }),
       this.inventoryRepo.find({
-        where: productIds.map((id) => ({
-          productId: id,
-          branchId: caller.branchId || undefined,
-          companyId: caller.companyId || undefined,
-          zone: StockZone.BRANCH, // §9 CLAUDE.md : vérification au niveau Branche
-        })),
+        where: stockProductIds.flatMap((id) =>
+          [StockZone.KITCHEN, StockZone.BRANCH].map((zone) => ({
+            productId: id,
+            branchId: caller.branchId || undefined,
+            companyId: caller.companyId || undefined,
+            zone,
+          })),
+        ),
       }),
     ]);
+    const stockByProduct = new Map<string, number>();
+    for (const row of stockRows) {
+      stockByProduct.set(
+        row.productId,
+        (stockByProduct.get(row.productId) ?? 0) + row.quantity,
+      );
+    }
+    const stocks = [...stockByProduct.entries()].map(
+      ([productId, quantity]) => ({
+        productId,
+        branchId: caller.branchId || '',
+        quantity,
+      }),
+    );
 
     // Quota system: prefer new role-based quotas, fallback to legacy per-employee quotas
     const quotaSnapshots = await this.quotasService.snapshotsFor(
@@ -110,10 +201,7 @@ export class OrdersService {
       roleId: caller.roleId ?? null,
       products: products.map((p) => ({
         id: p.id,
-        type:
-          p.type === ProductType.LIBRE_SERVICE_VIP
-            ? 'LIBRE_SERVICE_VIP'
-            : 'COMMANDABLE',
+        isSold: p.isSold,
         allowedRoles: p.allowedRoles,
         allowedBranches: p.allowedBranches,
         active: p.active,
@@ -124,6 +212,11 @@ export class OrdersService {
         quantity: s.quantity,
       })),
       quotas: quotaSnapshots,
+      recipes: recipeLines.map((r) => ({
+        productId: r.productId,
+        ingredientProductId: r.ingredientProductId,
+        quantity: r.quantity,
+      })),
     };
 
     const validation = this.validationEngine.validateCart(ctx, dto.lines);
@@ -183,21 +276,38 @@ export class OrdersService {
       }),
     });
 
-    const saved = await this.orderRepo.save(order);
-
-    // Incrémente la consommation pour les lignes APPROVED
-    const approvedLines = saved.lines.filter(
-      (l) => l.validationStatus === LineValidationStatus.APPROVED,
-    );
-    if (approvedLines.length > 0) {
-      await this.incrementQuotaUsage(
-        caller,
-        approvedLines.map((l) => ({
-          productId: l.productId,
-          quantity: l.quantity,
-        })),
+    // Une seule transaction : la commande et l'incrément de quota doivent
+    // réussir ou échouer ensemble, sinon un échec de l'incrément laisserait
+    // une commande APPROVED dont la consommation de quota n'est pas comptée.
+    const saved = await this.orderRepo.manager.transaction(async (manager) => {
+      // Incrément atomique par société (§ numéro de commande court) : upsert
+      // + retour de l'ancienne valeur, sans risque de doublon sous concurrence.
+      const [{ assigned }] = await manager.query<{ assigned: number }[]>(
+        `INSERT INTO company_order_counters (company_id, next_number)
+         VALUES ($1, 2)
+         ON CONFLICT (company_id)
+         DO UPDATE SET next_number = company_order_counters.next_number + 1
+         RETURNING next_number - 1 AS assigned`,
+        [order.companyId],
       );
-    }
+      order.orderNumber = assigned;
+
+      const savedOrder = await manager.save(Order, order);
+      const approvedLines = savedOrder.lines.filter(
+        (l) => l.validationStatus === LineValidationStatus.APPROVED,
+      );
+      if (approvedLines.length > 0) {
+        await this.incrementQuotaUsage(
+          caller,
+          approvedLines.map((l) => ({
+            productId: l.productId,
+            quantity: l.quantity,
+          })),
+          manager,
+        );
+      }
+      return savedOrder;
+    });
 
     this.notificationsGateway.emitOrderUpdate('order:new', {
       orderId: saved.id,
@@ -219,17 +329,36 @@ export class OrdersService {
     companyId?: string,
     employeeId?: string,
     status?: string,
+    branchId?: string,
+    page = 1,
+    limit = 200,
   ): Promise<OrderDto[]> {
     const where: FindOptionsWhere<Order> = {};
     if (companyId) where.companyId = companyId;
+    if (branchId) where.branchId = branchId;
     if (employeeId) where.employeeId = employeeId;
     if (status) where.status = status as OrderStatus;
     const orders = await this.orderRepo.find({
       where,
       order: { createdAt: 'DESC' },
       relations: ['lines'],
+      skip: (Math.max(page, 1) - 1) * limit,
+      take: limit,
     });
-    return orders.map((o) => this.toDto(o));
+    const employeeIds = [...new Set(orders.map((order) => order.employeeId))];
+    const employees = employeeIds.length
+      ? await this.employeeRepo.find({
+          where: employeeIds.map((keycloakId) => ({ keycloakId })),
+        })
+      : [];
+    const employeeByKeycloakId = new Map(
+      employees
+        .filter((employee) => employee.keycloakId)
+        .map((employee) => [employee.keycloakId!, employee]),
+    );
+    return orders.map((order) =>
+      this.toDto(order, employeeByKeycloakId.get(order.employeeId)),
+    );
   }
 
   async dashboardStats(caller: JwtPayload): Promise<{
@@ -353,6 +482,11 @@ export class OrdersService {
     } else if (status === OrderStatus.IN_PROGRESS) {
       order.prepStartedAt = now;
       order.preparedBy = caller.sub;
+      // Décrémente le stock (ingrédients pour un produit composé, produit
+      // lui-même sinon) au moment réel de préparation, pas à la confirmation
+      // (le stock a pu changer entre-temps). Rupture bloque la transition —
+      // le statut n'est pas persisté si decrementForPreparation rejette.
+      await this.decrementRecipeIngredients(order, caller.sub);
     } else if (status === OrderStatus.READY) {
       order.readyAt = now;
       order.readyBy = caller.sub;
@@ -486,10 +620,23 @@ export class OrdersService {
     return this.toDto(order);
   }
 
+  /** Chargement par lot — évite le N+1 (ex. DeliveryService.queue()). */
+  async findByIds(ids: string[]): Promise<OrderDto[]> {
+    if (ids.length === 0) return [];
+    const orders = await this.orderRepo.find({
+      where: { id: In(ids) },
+      relations: ['lines'],
+    });
+    return orders.map((order) => this.toDto(order));
+  }
+
   private async incrementQuotaUsage(
     caller: JwtPayload,
     lines: Array<{ productId: string; quantity: number }>,
+    manager: EntityManager,
   ): Promise<void> {
+    const quotaUsageRepo = manager.getRepository(EmployeeQuotaUsage);
+    const quotaRepo = manager.getRepository(Quota);
     const today = new Date();
     const periodStart = today.toISOString().slice(0, 10);
     // Period end: end of current month
@@ -499,7 +646,7 @@ export class OrdersService {
 
     if (caller.roleId) {
       for (const line of lines) {
-        await this.quotaUsageRepo
+        await quotaUsageRepo
           .createQueryBuilder()
           .insert()
           .into(EmployeeQuotaUsage)
@@ -523,7 +670,7 @@ export class OrdersService {
           )
           .execute()
           .catch(() =>
-            this.quotaUsageRepo.query(
+            quotaUsageRepo.query(
               `UPDATE employee_quota_usage SET used_quantity = used_quantity + $1
                WHERE employee_id = $2 AND product_id = $3 AND company_id = $4
                  AND period_start <= CURRENT_DATE AND period_end >= CURRENT_DATE`,
@@ -536,7 +683,7 @@ export class OrdersService {
 
     // Legacy fallback
     for (const line of lines) {
-      await this.quotaRepo
+      await quotaRepo
         .createQueryBuilder()
         .update()
         .set({ usedQuantity: () => 'used_quantity + :qty' })
@@ -549,12 +696,22 @@ export class OrdersService {
     }
   }
 
-  private toDto(o: Order): OrderDto {
+  private toDto(o: Order, employee?: Employee): OrderDto {
     const dto = new OrderDto();
     dto.id = o.id;
     dto.employeeId = o.employeeId;
+    dto.recipientNameAr = employee
+      ? `${employee.firstNameAr} ${employee.lastNameAr}`
+      : null;
+    dto.recipientNameEn = employee
+      ? `${employee.firstNameEn} ${employee.lastNameEn}`
+      : null;
+    dto.recipientPhone = employee?.phoneNumber ?? null;
+    dto.recipientFloor = employee?.floor ?? null;
+    dto.recipientOffice = employee?.officeNumber ?? null;
     dto.branchId = o.branchId;
     dto.companyId = o.companyId;
+    dto.orderNumber = o.orderNumber;
     dto.status = o.status;
     dto.priority = o.priority;
     dto.slaDeadline = o.slaDeadline.toISOString();

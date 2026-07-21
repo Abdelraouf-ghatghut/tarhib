@@ -12,6 +12,7 @@ export * from "./api/auth";
 export * from "./api/catalog";
 export * from "./api/inventory";
 export * from "./api/orders";
+export * from "./api/organization";
 export * from "./api/operations";
 export * from "./api/quotas";
 export * from "./api/rooms";

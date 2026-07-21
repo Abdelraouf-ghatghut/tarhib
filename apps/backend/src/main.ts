@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { EmptyStringToUndefinedPipe } from './common/pipes/empty-string-to-undefined.pipe';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -12,6 +13,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(cookieParser());
+  // CSP désactivée : cette API ne sert pas de HTML applicatif (Swagger UI
+  // excepté, dont le script inline serait bloqué par une CSP par défaut) —
+  // le CSP du contenu servi au navigateur est du ressort du Web Admin (§17).
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.useGlobalFilters(new AllExceptionsFilter());
 
   // credentials:true est requis pour le cookie de refresh HttpOnly — incompatible
@@ -44,6 +49,7 @@ async function bootstrap() {
     new EmptyStringToUndefinedPipe(),
     new ValidationPipe({
       whitelist: true,
+      forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
     }),

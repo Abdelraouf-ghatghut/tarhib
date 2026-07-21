@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -15,13 +16,16 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { RequireAnyPermission } from '../auth/decorators/require-permission.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import {
   CreateProductDto,
+  CreateRecipeLineDto,
   ProductAdminDto,
   ProductAvailabilityDto,
   ProductDto,
+  RecipeLineDto,
 } from './dto/product.dto.js';
 import { ProductsService } from './products.service.js';
 
@@ -33,6 +37,7 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get('admin')
+  @RequireAnyPermission('company.manage')
   @ApiOperation({
     summary: 'Liste admin (inclut unitCost) — ne jamais exposer côté employé',
   })
@@ -42,6 +47,7 @@ export class ProductsController {
   }
 
   @Post()
+  @RequireAnyPermission('company.manage')
   @ApiOperation({ summary: 'Créer un produit (ADMIN)' })
   @ApiResponse({ status: 201, type: ProductDto })
   create(@Body() dto: CreateProductDto): Promise<ProductDto> {
@@ -104,6 +110,7 @@ export class ProductsController {
   }
 
   @Patch(':id')
+  @RequireAnyPermission('company.manage')
   @ApiOperation({ summary: 'Mettre à jour un produit' })
   @ApiResponse({ status: 200, type: ProductDto })
   update(
@@ -114,10 +121,40 @@ export class ProductsController {
   }
 
   @Delete(':id')
+  @RequireAnyPermission('company.manage')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Désactiver un produit (soft delete)' })
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string): Promise<void> {
     return this.productsService.remove(id);
+  }
+
+  @Get(':id/recipe')
+  @RequireAnyPermission('company.manage')
+  @ApiOperation({ summary: 'Nomenclature (ingrédients) d’un produit composé' })
+  @ApiResponse({ status: 200, type: [RecipeLineDto] })
+  getRecipe(@Param('id') id: string): Promise<RecipeLineDto[]> {
+    return this.productsService.getRecipe(id);
+  }
+
+  @Post(':id/recipe')
+  @RequireAnyPermission('company.manage')
+  @ApiOperation({ summary: 'Ajouter un ingrédient à la nomenclature (ADMIN)' })
+  @ApiResponse({ status: 201, type: RecipeLineDto })
+  addRecipeLine(
+    @Param('id') id: string,
+    @Body() dto: CreateRecipeLineDto,
+  ): Promise<RecipeLineDto> {
+    return this.productsService.addRecipeLine(id, dto);
+  }
+
+  @Delete('recipe/:lineId')
+  @RequireAnyPermission('company.manage')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Retirer un ingrédient de la nomenclature (ADMIN)' })
+  @ApiResponse({ status: 204 })
+  removeRecipeLine(@Param('lineId') lineId: string): Promise<void> {
+    return this.productsService.removeRecipeLine(lineId);
   }
 
   @Post(':id/favorite')

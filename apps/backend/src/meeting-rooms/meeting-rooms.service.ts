@@ -65,7 +65,7 @@ export class MeetingRoomsService {
   async createRoom(dto: CreateMeetingRoomDto): Promise<MeetingRoomDto> {
     const room = this.roomRepo.create({
       nameAr: dto.nameAr,
-      nameEn: dto.nameEn?.trim() || dto.nameAr,
+      nameEn: dto.nameEn?.trim() || null,
       branchId: dto.branchId,
       companyId: dto.companyId,
       capacity: dto.capacity ?? 10,

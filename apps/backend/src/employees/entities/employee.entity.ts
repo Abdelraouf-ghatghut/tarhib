@@ -151,6 +151,12 @@ export class Employee {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   salary!: number | null;
 
+  /** Date de prise de fonction — point de départ de la génération de paie
+   * mensuelle (FinancePayrollService). Null = pas de proratisation possible,
+   * le mois de première génération est compté en entier. */
+  @Column({ name: 'hire_date', type: 'date', nullable: true })
+  hireDate!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -16,6 +17,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { RequireAnyPermission } from '../auth/decorators/require-permission.decorator.js';
 import { SuppliersService } from './suppliers.service.js';
 import {
   CreateSupplierDto,
@@ -24,9 +26,12 @@ import {
   SupplierDto,
 } from './dto/supplier.dto.js';
 
+// Ressource Tarhib interne, jamais consommée par l'app employé (§4 CLAUDE.md)
+// — même garde que le frontend (router.tsx: inventory.manage/company.manage).
 @ApiTags('suppliers')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
+@RequireAnyPermission('inventory.manage', 'company.manage')
 @Controller('suppliers')
 export class SuppliersController {
   constructor(private readonly service: SuppliersService) {}
@@ -64,6 +69,7 @@ export class SuppliersController {
   }
 
   @Delete(':id')
+  @HttpCode(204)
   @ApiResponse({ status: 204 })
   remove(@Param('id') id: string): Promise<void> {
     return this.service.remove(id);

@@ -10,10 +10,13 @@ import { RedisService } from '../redis/redis.service';
 import { Employee } from '../employees/entities/employee.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Role } from '../roles/entities/role.entity';
+import { Branch } from '../branches/entities/branch.entity';
+import { Department } from '../departments/entities/department.entity';
 import { EmployeeRole } from '../employees/dto/employee.dto';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { TokenResponseDto } from './dto/token-response.dto';
 import { AccessPolicyService } from '../access/access-policy.service';
+import { AuditService } from '../audit/audit.service';
 
 const TOKEN: TokenResponseDto = {
   accessToken: 'access-token',
@@ -70,6 +73,8 @@ async function buildService(
       { provide: getRepositoryToken(Employee), useValue: repoMock() },
       { provide: getRepositoryToken(Company), useValue: repoMock() },
       { provide: getRepositoryToken(Role), useValue: repoMock() },
+      { provide: getRepositoryToken(Branch), useValue: repoMock() },
+      { provide: getRepositoryToken(Department), useValue: repoMock() },
       {
         provide: AccessPolicyService,
         useValue: {
@@ -87,6 +92,10 @@ async function buildService(
       {
         provide: ConfigService,
         useValue: { get: (_key: string, def: unknown) => def },
+      },
+      {
+        provide: AuditService,
+        useValue: { log: jest.fn().mockResolvedValue(undefined) },
       },
     ],
   }).compile();

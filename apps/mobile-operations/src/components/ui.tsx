@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
 
 import {
   Card,
@@ -21,8 +21,8 @@ export type IconName = keyof typeof Ionicons.glyphMap;
 
 /** Styles transverses (typo, badges, lignes) partagés entre les onglets Operations. */
 export const ui = createSnowStyles({
-  screenTitle: { fontSize: 20, fontWeight: "700" },
-  sectionTitle: { fontSize: 14, fontWeight: "600" },
+  screenTitle: { fontSize: 22, lineHeight: 29, fontWeight: "700" },
+  sectionTitle: { fontSize: 15, lineHeight: 21, fontWeight: "600" },
   orderId: { fontSize: 15, fontWeight: "600" },
   small: { fontSize: 12, fontWeight: "400" },
   badge: { borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
@@ -36,23 +36,29 @@ export const OpsHeader = ({
   theme,
   copy,
   employeeName,
+  roleLabel,
   unreadNotifications,
   onOpenNotifications,
 }: {
   theme: SnowTheme;
   copy: Copy;
   employeeName: string;
+  roleLabel?: string;
   unreadNotifications?: number;
   onOpenNotifications?: () => void;
 }) => (
   <View style={styles.header}>
     <View style={styles.agentRow}>
       <View style={[styles.avatar, { backgroundColor: theme.primarySoft }]}>
-        <Ionicons name="shield-checkmark" size={24} color={theme.primaryStrong} />
+        <Ionicons name="person" size={27} color={theme.primaryStrong} />
       </View>
-      <View>
-        <Text style={[styles.headerName, { color: theme.text }]}>{copy.operations}</Text>
-        <Text style={[ui.small, { color: theme.muted }]}>{employeeName}</Text>
+      <View style={styles.identityCopy}>
+        <Text style={[styles.greeting, { color: theme.muted }]}>Hello 👋</Text>
+        <View style={styles.identityNameRow}>
+          <Text style={[styles.headerName, { color: theme.text }]}>{employeeName}</Text>
+          <Ionicons name="chevron-down" size={15} color={theme.text} />
+        </View>
+        <Text style={[styles.context, { color: theme.muted }]}>{roleLabel ?? copy.operations}</Text>
       </View>
     </View>
     <Pressable onPress={onOpenNotifications} style={styles.bellButton}>
@@ -89,6 +95,28 @@ export const EmptyText = ({ theme, text }: { theme: SnowTheme; text: string }) =
   <Card theme={theme} style={styles.emptyCard}>
     <Text style={[ui.small, { color: theme.muted }]}>{text}</Text>
   </Card>
+);
+
+export const OperationalEmptyState = ({
+  theme,
+  title,
+  text,
+}: {
+  theme: SnowTheme;
+  title: string;
+  text?: string;
+}) => (
+  <View style={styles.operationalEmpty}>
+    <Image
+      source={require("../assets/shopping_bag.png")}
+      resizeMode="contain"
+      style={styles.operationalEmptyImage}
+    />
+    <Text style={[styles.operationalEmptyTitle, { color: theme.text }]}>{title}</Text>
+    {text ? (
+      <Text style={[styles.operationalEmptyText, { color: theme.muted }]}>{text}</Text>
+    ) : null}
+  </View>
 );
 
 export const StatusBadge = ({
@@ -159,26 +187,53 @@ export const SettingsRow = ({
 
 const styles = createSnowStyles({
   header: {
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingTop: 28,
+    paddingBottom: 18,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   agentRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  identityCopy: { flexShrink: 1, alignItems: "flex-start" },
+  identityNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerName: { fontSize: 16, fontWeight: "600" },
-  centeredTitle: { paddingTop: spacing.lg, alignItems: "center" },
+  greeting: { display: "none" },
+  headerName: { fontSize: 17, fontWeight: "700" },
+  context: { fontSize: 13, fontWeight: "400", marginTop: 3 },
+  centeredTitle: {
+    minHeight: 76,
+    paddingTop: 24,
+    paddingBottom: spacing.md,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
   loadingCard: { minHeight: 64, alignItems: "center", justifyContent: "center" },
   emptyCard: { minHeight: 74, alignItems: "center", justifyContent: "center" },
+  operationalEmpty: {
+    minHeight: 360,
+    paddingVertical: spacing.xl,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+  },
+  operationalEmptyImage: { width: 230, height: 230, marginBottom: -12 },
+  operationalEmptyTitle: { fontSize: 20, lineHeight: 28, fontWeight: "700", textAlign: "center" },
+  operationalEmptyText: { maxWidth: 290, fontSize: 13, lineHeight: 20, textAlign: "center" },
   settingsRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  bellButton: { position: "relative" },
+  bellButton: {
+    position: "relative",
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   bellBadge: {
     position: "absolute",
     top: -4,

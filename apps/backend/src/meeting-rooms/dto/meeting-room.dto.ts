@@ -15,10 +15,10 @@ export class CreateMeetingRoomDto {
   @IsString()
   nameAr!: string;
 
-  @ApiPropertyOptional({ description: "Anglais optionnel — repli sur l'arabe" })
+  @ApiPropertyOptional({ nullable: true })
   @IsString()
   @IsOptional()
-  nameEn?: string;
+  nameEn?: string | null;
 
   @ApiProperty()
   @IsUUID()
@@ -46,10 +46,10 @@ export class UpdateMeetingRoomDto {
   @IsString()
   nameAr?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
-  nameEn?: string;
+  nameEn?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -109,8 +109,8 @@ export class MeetingRoomDto {
   @ApiProperty()
   nameAr!: string;
 
-  @ApiProperty()
-  nameEn!: string;
+  @ApiProperty({ nullable: true })
+  nameEn!: string | null;
 
   @ApiProperty()
   capacity!: number;

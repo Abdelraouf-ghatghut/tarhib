@@ -84,7 +84,7 @@ export function InventoryPage() {
   const [adjustSaving, setAdjustSaving] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("stock");
-  const zoneFilter: StockZone | undefined = undefined;
+  const [zoneFilter, setZoneFilter] = useState<StockZone | undefined>(undefined);
   const { companyId: scopeCompanyId, branchId: scopeBranchId } = useScope();
 
   // Filtre d'alerte : initialisé depuis l'URL (?alert=below|out|critical),
@@ -127,8 +127,11 @@ export function InventoryPage() {
   );
 
   const { data: alertsData, isPending: alertsPending } = useQuery({
-    queryKey: ["inventory", "alerts"],
-    queryFn: () => inventoryApi.alerts().then((r) => r.data as AlertItem[]),
+    queryKey: ["inventory", "alerts", listParams],
+    queryFn: () =>
+      inventoryApi
+        .alerts(Object.keys(listParams).length ? listParams : undefined)
+        .then((r) => r.data as AlertItem[]),
     enabled: activeTab === "alerts",
   });
 
@@ -378,6 +381,21 @@ export function InventoryPage() {
                       { value: "critical", label: t("criticalStock") },
                     ],
                   }}
+                  activeAdvancedCount={zoneFilter ? 1 : 0}
+                  onClearAll={() => setZoneFilter(undefined)}
+                  advanced={
+                    <Select<StockZone | undefined>
+                      allowClear
+                      placeholder={t("zone")}
+                      value={zoneFilter}
+                      onChange={setZoneFilter}
+                      style={{ width: "100%" }}
+                      options={(["CENTRAL", "BRANCH", "KITCHEN"] as StockZone[]).map((z) => ({
+                        value: z,
+                        label: t(`zone_${z}`),
+                      }))}
+                    />
+                  }
                 />
                 <Table<{ productId: string; items: InventoryItem[] }>
                   rowKey="productId"
