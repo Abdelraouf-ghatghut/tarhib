@@ -5,6 +5,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Employee } from '../employees/entities/employee.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Role } from '../roles/entities/role.entity';
+import { Branch } from '../branches/entities/branch.entity';
+import { Department } from '../departments/entities/department.entity';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -16,13 +18,15 @@ import { OtpService } from './otp/otp.service';
 import { OtpDeliveryService } from './sms/sms.service';
 import { EmailService } from './email/email.service';
 import { AccessModule } from '../access/access.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     HttpModule,
     AccessModule,
-    TypeOrmModule.forFeature([Employee, Company, Role]),
+    AuditModule,
+    TypeOrmModule.forFeature([Employee, Company, Role, Branch, Department]),
   ],
   providers: [
     AuthService,

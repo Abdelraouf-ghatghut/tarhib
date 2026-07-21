@@ -25,6 +25,8 @@ import {
 } from "../../lib/api";
 import { bilingualName } from "../../lib/bilingualName";
 import { StatusStepper } from "../../components/StatusStepper";
+import { getErrorMessage } from "../../lib/errors";
+import { useEntityLookup } from "../../hooks/useEntityLookup";
 
 const { Title } = Typography;
 
@@ -123,29 +125,18 @@ export function InventoryTransfersPage() {
   // requestedBy/confirmedBy/cancelledBy portent l'identité Keycloak de
   // l'appelant (JwtPayload.sub), pas employees.id — cf. commentaire côté
   // service (ProcurementService.reject) : on résout donc par keycloakId.
-  const employeeName = (id: string | null) => {
-    if (!id) return null;
-    const e = employees.find((x) => x.keycloakId === id);
-    if (!e) return id.slice(0, 8);
-    return isAr
-      ? `${e.firstNameAr} ${e.lastNameAr}`.trim()
-      : `${e.firstNameEn} ${e.lastNameEn}`.trim() || e.email;
-  };
+  const employeeName = useEntityLookup(
+    employees,
+    (e) => e.keycloakId,
+    (e) =>
+      isAr
+        ? `${e.firstNameAr} ${e.lastNameAr}`.trim()
+        : `${e.firstNameEn} ${e.lastNameEn}`.trim() || e.email,
+  );
 
-  const productName = (id: string) => {
-    const p = products.find((x) => x.id === id);
-    return p ? label(p) : id.slice(0, 8);
-  };
-
-  const branchName = (id: string) => {
-    const b = allBranches.find((x) => x.id === id);
-    return b ? label(b) : id.slice(0, 8);
-  };
-
-  const companyName = (id: string) => {
-    const c = companies.find((x) => x.id === id);
-    return c ? label(c) : id.slice(0, 8);
-  };
+  const productName = useEntityLookup(products, (p) => p.id, label);
+  const branchName = useEntityLookup(allBranches, (b) => b.id, label);
+  const companyName = useEntityLookup(companies, (c) => c.id, label);
 
   const handleCreate = async () => {
     const values = await form.validateFields();
@@ -153,11 +144,11 @@ export function InventoryTransfersPage() {
     try {
       await inventoryTransfersApi.create(values);
       message.success(t("transferCreated"));
-      qc.invalidateQueries({ queryKey: ["inventory-transfers"] });
+      void qc.invalidateQueries({ queryKey: ["inventory-transfers"] });
       setOpen(false);
       form.resetFields();
-    } catch {
-      message.error(t("errorOccurred"));
+    } catch (err) {
+      message.error(getErrorMessage(err, t));
     } finally {
       setSubmitting(false);
     }
@@ -167,9 +158,9 @@ export function InventoryTransfersPage() {
     try {
       await inventoryTransfersApi.confirm(id);
       message.success(t("transferConfirmed"));
-      qc.invalidateQueries({ queryKey: ["inventory-transfers"] });
-    } catch {
-      message.error(t("errorOccurred"));
+      void qc.invalidateQueries({ queryKey: ["inventory-transfers"] });
+    } catch (err) {
+      message.error(getErrorMessage(err, t));
     }
   };
 
@@ -177,9 +168,9 @@ export function InventoryTransfersPage() {
     try {
       await inventoryTransfersApi.cancel(id);
       message.success(t("transferCancelled"));
-      qc.invalidateQueries({ queryKey: ["inventory-transfers"] });
-    } catch {
-      message.error(t("errorOccurred"));
+      void qc.invalidateQueries({ queryKey: ["inventory-transfers"] });
+    } catch (err) {
+      message.error(getErrorMessage(err, t));
     }
   };
 

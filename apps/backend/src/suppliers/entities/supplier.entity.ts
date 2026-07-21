@@ -19,8 +19,8 @@ export class Supplier {
   @Column({ name: 'name_ar' })
   nameAr!: string;
 
-  @Column({ name: 'name_en' })
-  nameEn!: string;
+  @Column({ name: 'name_en', type: 'varchar', nullable: true })
+  nameEn!: string | null;
 
   @Column({ name: 'contact_name', type: 'varchar', nullable: true })
   contactName!: string | null;

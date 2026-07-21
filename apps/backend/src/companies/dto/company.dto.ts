@@ -14,13 +14,10 @@ export class CreateCompanyDto {
   @MinLength(2)
   nameAr!: string;
 
-  @ApiPropertyOptional({
-    example: 'Sonatrach SA',
-    description: "Anglais optionnel — l'arabe sert de repli",
-  })
+  @ApiPropertyOptional({ example: 'Sonatrach SA', nullable: true })
   @IsString()
   @IsOptional()
-  nameEn?: string;
+  nameEn?: string | null;
 
   @ApiProperty({
     example: 'sonatrach-sa',
@@ -45,11 +42,11 @@ export class UpdateCompanyDto {
   @MinLength(2)
   nameAr?: string;
 
-  @ApiPropertyOptional({ example: 'Sonatrach SA' })
+  @ApiPropertyOptional({ example: 'Sonatrach SA', nullable: true })
   @IsOptional()
   @IsString()
   @MinLength(2)
-  nameEn?: string;
+  nameEn?: string | null;
 
   @ApiPropertyOptional({ example: 'sonatrach-sa' })
   @IsOptional()
@@ -78,9 +75,8 @@ export class CompanyDto {
   @IsString()
   nameAr!: string;
 
-  @ApiProperty({ example: 'Sonatrach SA' })
-  @IsString()
-  nameEn!: string;
+  @ApiProperty({ example: 'Sonatrach SA', nullable: true })
+  nameEn!: string | null;
 
   @ApiProperty({ example: 'sonatrach-sa' })
   @IsString()

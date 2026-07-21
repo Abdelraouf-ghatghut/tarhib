@@ -4,7 +4,9 @@ import { Table, Tag, Typography, Space, Select, DatePicker, Button, Card, Toolti
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
+import { DownloadOutlined } from "@ant-design/icons";
 import { auditApi } from "../../lib/api";
+import { exportToCsv } from "../../lib/exportCsv";
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -53,12 +55,19 @@ export default function AuditLogPage() {
   const [entity, setEntity] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[string, string] | null>(null);
   const [page, setPage] = useState(1);
+  // Pas de liste d'utilisateurs/entités à choisir dans un Select (IDs opaques,
+  // pas de contrepartie "employé" pour tout le personnel Tarhib) — on filtre
+  // en cliquant directement sur une ligne existante (§ suivi administratif).
+  const [filterUserId, setFilterUserId] = useState<string | undefined>();
+  const [filterEntityId, setFilterEntityId] = useState<string | undefined>();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["audit-logs", entity, dateRange, page],
+    queryKey: ["audit-logs", entity, dateRange, page, filterUserId, filterEntityId],
     queryFn: async () => {
       const res = await auditApi.list({
         entity,
+        userId: filterUserId,
+        entityId: filterEntityId,
         startDate: dateRange?.[0],
         endDate: dateRange?.[1],
         page,
@@ -107,8 +116,18 @@ export default function AuditLogPage() {
       width: 120,
       render: (v: string | null) =>
         v ? (
-          <Tooltip title={v}>
-            <span style={{ fontFamily: "monospace" }}>{v.slice(0, 8)}…</span>
+          <Tooltip title={t("audit.filterByThisEntity")}>
+            <Button
+              type="link"
+              size="small"
+              style={{ fontFamily: "monospace", padding: 0 }}
+              onClick={() => {
+                setFilterEntityId(v);
+                setPage(1);
+              }}
+            >
+              {v.slice(0, 8)}…
+            </Button>
           </Tooltip>
         ) : (
           "—"
@@ -118,7 +137,21 @@ export default function AuditLogPage() {
       title: t("audit.user"),
       key: "user",
       width: 200,
-      render: (_: unknown, row: AuditLog) => row.userEmail ?? row.userId,
+      render: (_: unknown, row: AuditLog) => (
+        <Tooltip title={t("audit.filterByThisUser")}>
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0 }}
+            onClick={() => {
+              setFilterUserId(row.userId);
+              setPage(1);
+            }}
+          >
+            {row.userEmail ?? row.userId}
+          </Button>
+        </Tooltip>
+      ),
     },
     {
       title: t("audit.ip"),
@@ -167,15 +200,47 @@ export default function AuditLogPage() {
               setPage(1);
             }}
           />
+          {filterUserId && (
+            <Tag closable onClose={() => setFilterUserId(undefined)}>
+              {t("audit.user")}: {filterUserId.slice(0, 8)}…
+            </Tag>
+          )}
+          {filterEntityId && (
+            <Tag closable onClose={() => setFilterEntityId(undefined)}>
+              {t("audit.entityId")}: {filterEntityId.slice(0, 8)}…
+            </Tag>
+          )}
           <Button
             onClick={() => {
               setEntity(undefined);
               setDateRange(null);
+              setFilterUserId(undefined);
+              setFilterEntityId(undefined);
               setPage(1);
             }}
           >
             {t("audit.reset")}
           </Button>
+          <Tooltip title={t("audit.exportPageHint")}>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() =>
+                exportToCsv(`audit-log-${dayjs().format("YYYY-MM-DD")}`, data?.data ?? [], [
+                  {
+                    label: t("audit.date"),
+                    value: (r) => dayjs(r.createdAt).format("YYYY-MM-DD HH:mm:ss"),
+                  },
+                  { label: t("audit.action"), value: (r) => r.action },
+                  { label: t("audit.entity"), value: (r) => r.entity },
+                  { label: t("audit.entityId"), value: (r) => r.entityId },
+                  { label: t("audit.user"), value: (r) => r.userEmail ?? r.userId },
+                  { label: t("audit.ip"), value: (r) => r.ipAddress },
+                ])
+              }
+            >
+              {t("exportCsv")}
+            </Button>
+          </Tooltip>
         </Space>
       </Card>
 

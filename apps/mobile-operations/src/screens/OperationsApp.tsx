@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
-import { ScrollView } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 
 import {
   BottomTabs,
@@ -12,6 +13,8 @@ import {
   fetchEmployeeCatalog,
   fetchInventory,
   fetchKitchenQueue,
+  fetchCompanies,
+  fetchBranches,
   fetchDeliveryQueue,
   fetchOrders,
   markDelivered,
@@ -25,6 +28,7 @@ import {
   useAuthStore,
   useOrderEvents,
   type InventoryItem,
+  type DeliveryTask,
   type Lang,
   type Order,
   type OrderStatus,
@@ -46,10 +50,11 @@ import { StockTab, isLowStock } from "./tabs/StockTab";
 import { WorkplaceTab } from "./tabs/WorkplaceTab";
 import { ResourcesTab } from "./tabs/ResourcesTab";
 import { CleaningTab } from "./tabs/CleaningTab";
-import { DeliveryTab } from "./tabs/DeliveryTab";
+import { DeliveryTab, ScopeFilterModal } from "./tabs/DeliveryTab";
 import { MeetingsTab } from "./tabs/MeetingsTab";
 import { MoreTab, type OperationsModuleItem } from "./tabs/MoreTab";
 import { ProcurementTab } from "./tabs/ProcurementTab";
+import { IncidentsTab } from "./tabs/IncidentsTab";
 
 type Tab =
   | "workplace"
@@ -63,6 +68,7 @@ type Tab =
   | "procurement"
   | "cleaning"
   | "meetings"
+  | "incidents"
   | "more"
   | "profile";
 
@@ -88,12 +94,45 @@ export const OperationsApp = ({
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [scopeFilterOpen, setScopeFilterOpen] = useState(false);
+  const [scopeFilterPicker, setScopeFilterPicker] = useState<"company" | "branch" | null>(null);
   const companyId = useAuthStore((s) => s.companyId);
   const branchId = useAuthStore((s) => s.branchId);
   const employee = useAuthStore((s) => s.employee);
+  const roles = useAuthStore((s) => s.roles);
+  const dataScope = useAuthStore((s) => s.dataScope);
   const permissions = useAuthStore((s) => s.permissions);
   const capabilities = useAuthStore((s) => s.capabilities);
   const queryClient = useQueryClient();
+  const primaryRole = roles.find((role) => role.primary);
+  const roleLabel = primaryRole
+    ? lang === "ar"
+      ? primaryRole.nameAr
+      : primaryRole.nameEn || primaryRole.nameAr
+    : copy.operations;
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(companyId);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(branchId);
+  const effectiveCompanyId = dataScope === "GLOBAL" ? selectedCompanyId : companyId;
+  const effectiveBranchId =
+    dataScope === "GLOBAL" || dataScope === "COMPANY" ? selectedBranchId : branchId;
+
+  useEffect(() => {
+    setSelectedCompanyId(companyId);
+    setSelectedBranchId(branchId);
+  }, [companyId, branchId]);
+
+  const companiesQuery = useQuery({
+    queryKey: ["scope-companies"],
+    queryFn: fetchCompanies,
+    enabled: dataScope === "GLOBAL",
+    staleTime: 300_000,
+  });
+  const branchesQuery = useQuery({
+    queryKey: ["scope-branches", effectiveCompanyId],
+    queryFn: () => fetchBranches(effectiveCompanyId!),
+    enabled: Boolean(effectiveCompanyId && ["GLOBAL", "COMPANY"].includes(dataScope ?? "")),
+    staleTime: 300_000,
+  });
 
   // Rôle réel côté client, en miroir de allowedTransitions() côté backend
   // (orders.service.ts) — un Cuisinier ne voit que start/ready, un Livreur
@@ -134,32 +173,31 @@ export const OperationsApp = ({
     refetchInterval: 30_000,
   });
   const ordersQuery = useQuery({
-    queryKey: ["operations-orders", companyId],
-    queryFn: () => fetchOrders({ companyId }),
+    queryKey: ["operations-orders", effectiveCompanyId, effectiveBranchId],
+    queryFn: () => fetchOrders({ companyId: effectiveCompanyId, branchId: effectiveBranchId }),
     enabled: permissions.includes("order.queue.manage") || canViewDashboard,
     refetchInterval: 20_000,
   });
   const kitchenQuery = useQuery({
-    queryKey: ["kitchen-queue", branchId],
-    queryFn: () => fetchKitchenQueue(branchId ?? undefined),
+    queryKey: ["kitchen-queue", effectiveBranchId],
+    queryFn: () => fetchKitchenQueue(effectiveBranchId ?? undefined),
     enabled: canPrepare,
     refetchInterval: 20_000,
   });
   const deliveryQuery = useQuery({
-    queryKey: ["delivery-queue", branchId],
-    queryFn: () => fetchDeliveryQueue(branchId ?? undefined),
+    queryKey: ["delivery-queue", effectiveBranchId],
+    queryFn: () => fetchDeliveryQueue(effectiveBranchId ?? undefined),
     enabled: canDeliver || canManageQueue,
     refetchInterval: 20_000,
   });
   const inventoryQuery = useQuery({
-    queryKey: ["inventory", companyId, branchId, stockZone],
+    queryKey: ["inventory", effectiveCompanyId, effectiveBranchId, stockZone],
     queryFn: () =>
       fetchInventory({
-        companyId: companyId ?? undefined,
-        branchId: branchId ?? undefined,
-        zone: stockZone,
+        companyId: effectiveCompanyId ?? undefined,
+        branchId: effectiveBranchId ?? undefined,
       }),
-    enabled: Boolean(companyId && branchId),
+    enabled: Boolean(effectiveCompanyId && effectiveBranchId),
     refetchInterval: 30_000,
   });
   const catalogQuery = useQuery({
@@ -221,15 +259,68 @@ export const OperationsApp = ({
     void queryClient.invalidateQueries({ queryKey: ["kitchen-queue"] });
   };
 
-  const startMutation = useMutation({ mutationFn: startPreparation, onSuccess: invalidateOps });
-  const readyMutation = useMutation({ mutationFn: markReady, onSuccess: invalidateOps });
-  const deliveredMutation = useMutation({ mutationFn: markDelivered, onSuccess: invalidateOps });
+  type OptimisticOrderContext = {
+    orderQueries: Array<[readonly unknown[], Order[] | undefined]>;
+    kitchenQueries: Array<[readonly unknown[], Order[] | undefined]>;
+    deliveryQueries: Array<[readonly unknown[], DeliveryTask[] | undefined]>;
+    selected: Order | null;
+  };
+  const optimisticallySetOrderStatus = (
+    orderId: string,
+    status: OrderStatus,
+  ): OptimisticOrderContext => {
+    const context: OptimisticOrderContext = {
+      orderQueries: queryClient.getQueriesData<Order[]>({ queryKey: ["operations-orders"] }),
+      kitchenQueries: queryClient.getQueriesData<Order[]>({ queryKey: ["kitchen-queue"] }),
+      deliveryQueries: queryClient.getQueriesData<DeliveryTask[]>({ queryKey: ["delivery-queue"] }),
+      selected: selectedOrder,
+    };
+    const update = (order: Order) => (order.id === orderId ? { ...order, status } : order);
+    queryClient.setQueriesData<Order[]>({ queryKey: ["operations-orders"] }, (current) =>
+      current?.map(update),
+    );
+    queryClient.setQueriesData<Order[]>({ queryKey: ["kitchen-queue"] }, (current) =>
+      current?.map(update),
+    );
+    queryClient.setQueriesData<DeliveryTask[]>({ queryKey: ["delivery-queue"] }, (current) =>
+      current?.map((task) => ({ ...task, order: update(task.order) })),
+    );
+    setSelectedOrder((current) => (current?.id === orderId ? update(current) : current));
+    return context;
+  };
+  const rollbackOrder = (context?: OptimisticOrderContext) => {
+    if (!context) return;
+    context.orderQueries.forEach(([key, data]) => queryClient.setQueryData(key, data));
+    context.kitchenQueries.forEach(([key, data]) => queryClient.setQueryData(key, data));
+    context.deliveryQueries.forEach(([key, data]) => queryClient.setQueryData(key, data));
+    setSelectedOrder(context.selected);
+  };
+
+  const startMutation = useMutation({
+    mutationFn: startPreparation,
+    onMutate: (orderId) => optimisticallySetOrderStatus(orderId, "IN_PROGRESS"),
+    onError: (_error, _orderId, context) => rollbackOrder(context),
+    onSettled: invalidateOps,
+  });
+  const readyMutation = useMutation({
+    mutationFn: markReady,
+    onMutate: (orderId) => optimisticallySetOrderStatus(orderId, "READY"),
+    onError: (_error, _orderId, context) => rollbackOrder(context),
+    onSettled: invalidateOps,
+  });
+  const deliveredMutation = useMutation({
+    mutationFn: markDelivered,
+    onMutate: (orderId) => optimisticallySetOrderStatus(orderId, "DELIVERED"),
+    onError: (_error, _orderId, context) => rollbackOrder(context),
+    onSettled: invalidateOps,
+  });
   const incidentMutation = useMutation({
-    mutationFn: (input: { orderId: string; reason: string }) =>
-      reportOrderIncident(input.orderId, input.reason),
+    mutationFn: (input: { orderId: string; reason: string; description: string }) =>
+      reportOrderIncident(input.orderId, input.reason, input.description),
     onSuccess: () => {
       setSelectedOrder(null);
       invalidateOps();
+      void queryClient.invalidateQueries({ queryKey: ["delivery-queue"] });
     },
   });
   const stockMutation = useMutation({
@@ -325,23 +416,75 @@ export const OperationsApp = ({
           },
         ]
       : []),
+    ...(canManageQueue
+      ? [
+          {
+            key: "incidents",
+            label: arOrEn(lang, "الحوادث", "Incidents"),
+            icon: "alert-circle" as const,
+            badge: deliveryTasks.filter((task) => task.status === "ISSUE_REPORTED").length,
+          },
+        ]
+      : []),
     ...(canViewDashboard
       ? [{ key: "dashboard", label: copy.dashboard, icon: "bar-chart" as const }]
       : []),
   ];
-  const primaryModules = moduleTabs.length > 3 ? moduleTabs.slice(0, 2) : moduleTabs;
-  const overflowModules = moduleTabs.length > 3 ? moduleTabs.slice(2) : [];
+  const taskModule = moduleTabs.find((item) => item.key === (canPrepare ? "kitchen" : "delivery"));
+  const stockModule = moduleTabs.find((item) => item.key === "stock");
+  const fixedKeys = new Set([taskModule?.key, stockModule?.key].filter(Boolean));
+  const primaryModules = [taskModule, stockModule].filter((item): item is OperationsModuleItem =>
+    Boolean(item),
+  );
+  const overflowModules = moduleTabs.filter((item) => !fixedKeys.has(item.key));
 
   return (
     <Screen theme={theme}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        <OpsHeader
-          theme={theme}
-          copy={copy}
-          employeeName={displayEmployeeName(employee, copy)}
-          unreadNotifications={notifications.unreadCount}
-          onOpenNotifications={() => setNotificationsOpen(true)}
-        />
+        {!(["kitchen", "delivery", "stock", "more"] as Tab[]).includes(tab) ? (
+          <OpsHeader
+            theme={theme}
+            copy={copy}
+            employeeName={displayEmployeeName(employee, copy)}
+            roleLabel={roleLabel}
+            unreadNotifications={notifications.unreadCount}
+            onOpenNotifications={() => setNotificationsOpen(true)}
+          />
+        ) : null}
+
+        {["GLOBAL", "COMPANY"].includes(dataScope ?? "") &&
+        !["profile", "workplace", "more", "delivery", "kitchen", "stock"].includes(tab) ? (
+          <>
+            <View pointerEvents="box-none" style={styles.scopeTriggerLayer}>
+              <Pressable onPress={() => setScopeFilterOpen(true)} style={styles.scopeTrigger}>
+                <Ionicons name="filter-outline" size={25} color={theme.text} />
+              </Pressable>
+            </View>
+            <ScopeFilterModal
+              visible={scopeFilterOpen}
+              picker={scopeFilterPicker}
+              theme={theme}
+              lang={lang}
+              scope={{
+                companies: companiesQuery.data ?? [],
+                branches: branchesQuery.data ?? [],
+                companyId: effectiveCompanyId,
+                branchId: effectiveBranchId,
+                canChangeCompany: dataScope === "GLOBAL",
+                onCompanyChange: (id) => {
+                  setSelectedCompanyId(id);
+                  setSelectedBranchId(null);
+                },
+                onBranchChange: setSelectedBranchId,
+              }}
+              onPickerChange={setScopeFilterPicker}
+              onClose={() => {
+                setScopeFilterPicker(null);
+                setScopeFilterOpen(false);
+              }}
+            />
+          </>
+        ) : null}
 
         {tab === "workplace" ? (
           <WorkplaceTab
@@ -354,6 +497,28 @@ export const OperationsApp = ({
             onOpenKitchen={canPrepare ? () => setTab("kitchen") : undefined}
             onOpenDelivery={canDeliver ? () => setTab("delivery") : undefined}
             onOpenStock={canViewStock ? () => setTab("stock") : undefined}
+            onOpenIncidents={
+              canPrepare || canDeliver || canManageQueue ? () => setTab("incidents") : undefined
+            }
+            incidentsCount={deliveryTasks.filter((task) => task.status === "ISSUE_REPORTED").length}
+            onOpenMessages={() => setNotificationsOpen(true)}
+            unreadMessages={notifications.unreadCount}
+            scope={
+              ["GLOBAL", "COMPANY"].includes(dataScope ?? "")
+                ? {
+                    companies: companiesQuery.data ?? [],
+                    branches: branchesQuery.data ?? [],
+                    companyId: effectiveCompanyId,
+                    branchId: effectiveBranchId,
+                    canChangeCompany: dataScope === "GLOBAL",
+                    onCompanyChange: (id) => {
+                      setSelectedCompanyId(id);
+                      setSelectedBranchId(null);
+                    },
+                    onBranchChange: setSelectedBranchId,
+                  }
+                : undefined
+            }
           />
         ) : null}
 
@@ -377,19 +542,34 @@ export const OperationsApp = ({
             lang={lang}
             copy={copy}
             loading={kitchenQuery.isLoading}
-            orders={kitchenOrders.filter(
-              (order) => queueFilter === "ALL" || order.status === queueFilter,
-            )}
+            orders={kitchenOrders}
             filter={queueFilter}
             busy={queueBusy}
             canPrepare={canPrepare}
             canDeliver={false}
             allowedFilters={["ALL", "APPROVED", "IN_PROGRESS"]}
+            productsById={productsById}
             onFilterChange={setQueueFilter}
             onStart={(orderId) => startMutation.mutate(orderId)}
             onReady={(orderId) => readyMutation.mutate(orderId)}
             onDeliver={(orderId) => deliveredMutation.mutate(orderId)}
             onOpenOrder={setSelectedOrder}
+            scope={
+              ["GLOBAL", "COMPANY"].includes(dataScope ?? "")
+                ? {
+                    companies: companiesQuery.data ?? [],
+                    branches: branchesQuery.data ?? [],
+                    companyId: effectiveCompanyId,
+                    branchId: effectiveBranchId,
+                    canChangeCompany: dataScope === "GLOBAL",
+                    onCompanyChange: (id) => {
+                      setSelectedCompanyId(id);
+                      setSelectedBranchId(null);
+                    },
+                    onBranchChange: setSelectedBranchId,
+                  }
+                : undefined
+            }
           />
         ) : null}
 
@@ -400,6 +580,23 @@ export const OperationsApp = ({
             tasks={deliveryTasks}
             loading={deliveryQuery.isLoading}
             canManage={canManageQueue}
+            productsById={productsById}
+            scope={
+              ["GLOBAL", "COMPANY"].includes(dataScope ?? "")
+                ? {
+                    companies: companiesQuery.data ?? [],
+                    branches: branchesQuery.data ?? [],
+                    companyId: effectiveCompanyId,
+                    branchId: effectiveBranchId,
+                    canChangeCompany: dataScope === "GLOBAL",
+                    onCompanyChange: (id) => {
+                      setSelectedCompanyId(id);
+                      setSelectedBranchId(null);
+                    },
+                    onBranchChange: setSelectedBranchId,
+                  }
+                : undefined
+            }
           />
         ) : null}
 
@@ -411,9 +608,26 @@ export const OperationsApp = ({
             loading={inventoryQuery.isLoading}
             items={inventoryItems}
             zone={stockZone}
-            hasBranchContext={Boolean(companyId && branchId)}
+            hasBranchContext={Boolean(effectiveCompanyId && effectiveBranchId)}
             productNameFor={itemName}
+            productsById={productsById}
             onZoneChange={setStockZone}
+            scope={
+              ["GLOBAL", "COMPANY"].includes(dataScope ?? "")
+                ? {
+                    companies: companiesQuery.data ?? [],
+                    branches: branchesQuery.data ?? [],
+                    companyId: effectiveCompanyId,
+                    branchId: effectiveBranchId,
+                    canChangeCompany: dataScope === "GLOBAL",
+                    onCompanyChange: (id) => {
+                      setSelectedCompanyId(id);
+                      setSelectedBranchId(null);
+                    },
+                    onBranchChange: setSelectedBranchId,
+                  }
+                : undefined
+            }
             onAdjust={(item) => {
               setAdjustingItem(item);
               setAdjustReason(undefined);
@@ -467,11 +681,16 @@ export const OperationsApp = ({
             canManage={permissions.includes("meeting.preparation.manage")}
           />
         ) : null}
+        {tab === "incidents" ? (
+          <IncidentsTab theme={theme} lang={lang} tasks={deliveryTasks} />
+        ) : null}
         {tab === "more" ? (
           <MoreTab
             theme={theme}
             lang={lang}
             modules={overflowModules}
+            unreadNotifications={notifications.unreadCount}
+            onOpenNotifications={() => setNotificationsOpen(true)}
             onSelect={(key) => setTab(key as Tab)}
           />
         ) : null}
@@ -482,7 +701,8 @@ export const OperationsApp = ({
             lang={lang}
             copy={copy}
             employeeName={displayEmployeeName(employee, copy)}
-            permissionsCount={permissions.length}
+            employee={employee}
+            roles={roles}
             canSeeMeetingPrep={canSeeMeetingPrep}
             onToggleTheme={onToggleTheme}
             onToggleLang={onToggleLang}
@@ -539,7 +759,9 @@ export const OperationsApp = ({
         onStart={(orderId) => startMutation.mutate(orderId)}
         onReady={(orderId) => readyMutation.mutate(orderId)}
         onDeliver={(orderId) => deliveredMutation.mutate(orderId)}
-        onReportIncident={(orderId, reason) => incidentMutation.mutate({ orderId, reason })}
+        onReportIncident={(orderId, reason, description) =>
+          incidentMutation.mutate({ orderId, reason, description })
+        }
         onClose={() => setSelectedOrder(null)}
       />
 
@@ -565,4 +787,14 @@ export const OperationsApp = ({
 
 const styles = createSnowStyles({
   scroll: { paddingBottom: 112, gap: spacing.md },
+  scopeTriggerLayer: { position: "relative", height: 0, zIndex: 20 },
+  scopeTrigger: {
+    position: "absolute",
+    left: 0,
+    top: 18,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

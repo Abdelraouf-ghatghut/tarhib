@@ -18,8 +18,8 @@ export class Company {
   @Column({ name: 'name_ar', type: 'varchar', length: 200 })
   nameAr!: string;
 
-  @Column({ name: 'name_en', type: 'varchar', length: 200 })
-  nameEn!: string;
+  @Column({ name: 'name_en', type: 'varchar', length: 200, nullable: true })
+  nameEn!: string | null;
 
   @Column({ unique: true })
   slug!: string;

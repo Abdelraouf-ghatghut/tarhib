@@ -14,21 +14,9 @@ import {
   Card,
   message,
   Tooltip,
-  Modal,
   Form,
-  Input,
-  InputNumber,
-  Drawer,
-  Descriptions,
-  Popconfirm,
 } from "antd";
-import {
-  CheckOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  EditOutlined,
-  DeleteOutlined,
-} from "@ant-design/icons";
+import { CheckOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import {
   vipSelfServiceApi,
   companiesApi,
@@ -39,89 +27,42 @@ import {
 } from "../../lib/api";
 import { getErrorMessage } from "../../lib/errors";
 import { bilingualName } from "../../lib/bilingualName";
+import { useEntityLookup } from "../../hooks/useEntityLookup";
+import { useAuth } from "../../hooks/useAuth";
+import { CreateLocationModal } from "./CreateLocationModal";
+import { LocationDetailDrawer } from "./LocationDetailDrawer";
+import { EditProductModal } from "./EditProductModal";
+import { SourceZoneModal } from "./SourceZoneModal";
+import {
+  STATUS_COLOR,
+  type Employee,
+  type GroupedLocation,
+  type NamedEntity,
+  type TaskStatus,
+  type VipLocation,
+  type VipProduct,
+  type VipTask,
+  type ZoneAction,
+} from "./types";
 
 const { Title } = Typography;
-
-type TaskStatus = "OPEN" | "IN_PROGRESS" | "COMPLETED";
-
-interface VipTask {
-  id: string;
-  productId: string;
-  branchId: string;
-  companyId: string;
-  locationName: string | null;
-  requestedQty: number;
-  status: TaskStatus;
-  assignedAgentId: string | null;
-  completedBy: string | null;
-  completedAt: string | null;
-  createdAt: string;
-}
-
-interface VipLocation {
-  id: string;
-  vipLocationId: string;
-  productId: string;
-  productNameAr: string;
-  productNameEn: string;
-  locationName: string | null;
-  branchId: string;
-  companyId: string;
-  departmentId: string | null;
-  assignedEmployeeId: string | null;
-  currentStock: number;
-  minThreshold: number;
-  maxThreshold: number | null;
-  belowThreshold: boolean;
-  openTaskId: string | null;
-}
-
-interface GroupedLocation {
-  vipLocationId: string;
-  companyId: string;
-  branchId: string;
-  departmentId: string | null;
-  assignedEmployeeId: string | null;
-  locationName: string | null;
-  products: VipLocation[];
-}
-
-interface NamedEntity {
-  id: string;
-  nameAr: string;
-  nameEn: string;
-  companyId?: string;
-  branchId?: string;
-}
-
-interface Employee {
-  id: string;
-  firstNameAr: string;
-  lastNameAr: string;
-  firstNameEn: string;
-  lastNameEn: string;
-  email: string;
-  companyId: string | null;
-}
-
-interface VipProduct {
-  id: string;
-  nameAr: string;
-  nameEn: string;
-  type: string;
-}
-
-const STATUS_COLOR: Record<TaskStatus, string> = {
-  OPEN: "orange",
-  IN_PROGRESS: "blue",
-  COMPLETED: "green",
-};
 
 export default function VipTasksPage() {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const isRtl = i18n.dir() === "rtl";
   const [statusFilter, setStatusFilter] = useState<TaskStatus | undefined>(undefined);
+  const { hasPermission } = useAuth();
+  // Reflète exactement VipSelfServiceService.resolveSourceZone (backend) :
+  // CENTRAL n'est jamais une source valide ici (transfert physique avec
+  // délai — passer par Transferts de stock), et BRANCH n'est proposé que si
+  // l'appelant a une visibilité stock au-delà de la cuisine.
+  const allowedZones =
+    hasPermission("stock.view") ||
+    hasPermission("stock.manage") ||
+    hasPermission("inventory.manage")
+      ? (["KITCHEN", "BRANCH"] as const)
+      : (["KITCHEN"] as const);
 
   const {
     data: tasks = [],
@@ -212,27 +153,19 @@ export default function VipTasksPage() {
     queryKey: ["products-admin"],
     queryFn: () => productsAdminApi.list().then((r) => r.data as VipProduct[]),
   });
-  const vipProducts = allProducts.filter((p) => p.type === "LIBRE_SERVICE_VIP");
+  const vipProducts = allProducts.filter((p) => p.isVipSelfService);
 
   const label = (e: NamedEntity) => bilingualName(e.nameAr, e.nameEn, isRtl);
   const productLabel = (p: VipProduct) => bilingualName(p.nameAr, p.nameEn, isRtl);
   const employeeLabel = (e: Employee) =>
     (isRtl ? `${e.firstNameAr} ${e.lastNameAr}` : `${e.firstNameEn} ${e.lastNameEn}`).trim() ||
     e.email;
-  const branchName = (id: string) => {
-    const b = allBranches.find((x) => x.id === id);
-    return b ? label(b) : id.substring(0, 8);
-  };
-  const departmentName = (id: string | null) => {
-    if (!id) return "—";
-    const d = allDepartments.find((x) => x.id === id);
-    return d ? label(d) : id.substring(0, 8);
-  };
-  const employeeName = (id: string | null) => {
-    if (!id) return "—";
-    const e = allEmployees.find((x) => x.id === id);
-    return e ? employeeLabel(e) : id.substring(0, 8);
-  };
+  const lookupBranch = useEntityLookup(allBranches, (b) => b.id, label);
+  const lookupDepartment = useEntityLookup(allDepartments, (d) => d.id, label);
+  const lookupEmployee = useEntityLookup(allEmployees, (e) => e.id, employeeLabel);
+  const branchName = (id: string) => lookupBranch(id) ?? "—";
+  const departmentName = (id: string | null) => lookupDepartment(id) ?? "—";
+  const employeeName = (id: string | null) => lookupEmployee(id) ?? "—";
 
   const invalidateVip = () => {
     queryClient.invalidateQueries({ queryKey: ["vipLocations"] });
@@ -282,22 +215,32 @@ export default function VipTasksPage() {
   });
 
   const completeTask = useMutation({
-    mutationFn: (taskId: string) => vipSelfServiceApi.completeTask(taskId),
+    mutationFn: (vars: { id: string; sourceZone: string }) =>
+      vipSelfServiceApi.completeTask(vars.id, vars.sourceZone),
     onSuccess: () => {
       message.success(t("vipTaskCompleted"));
       invalidateVip();
+      setZoneAction(null);
     },
-    onError: () => message.error(t("errorOccurred")),
+    onError: (err) => message.error(getErrorMessage(err, t)),
   });
 
   const replenish = useMutation({
-    mutationFn: (locationProductId: string) => vipSelfServiceApi.replenish(locationProductId),
+    mutationFn: (vars: { id: string; sourceZone: string }) =>
+      vipSelfServiceApi.replenish(vars.id, vars.sourceZone),
     onSuccess: () => {
       message.success(t("vipReplenished"));
       invalidateVip();
+      setZoneAction(null);
     },
-    onError: () => message.error(t("errorOccurred")),
+    onError: (err) => message.error(getErrorMessage(err, t)),
   });
+
+  // Zone source du réappro VIP : le stock peut être en CENTRAL/BRANCH/KITCHEN
+  // avant d'être déplacé vers l'emplacement VIP (clarification métier) — on
+  // demande la zone plutôt que de supposer BRANCH silencieusement.
+  const [zoneAction, setZoneAction] = useState<ZoneAction | null>(null);
+  const [zoneForm] = Form.useForm();
 
   const openCount = tasks.filter((t) => t.status === "OPEN").length;
   const belowThresholdCount = locations.filter((l) => l.belowThreshold).length;
@@ -343,7 +286,7 @@ export default function VipTasksPage() {
               size="small"
               icon={<CheckOutlined />}
               loading={completeTask.isPending}
-              onClick={() => completeTask.mutate(record.id)}
+              onClick={() => setZoneAction({ kind: "task", id: record.id })}
             >
               {t("complete")}
             </Button>
@@ -389,72 +332,6 @@ export default function VipTasksPage() {
         const below = r.products.some((p) => p.belowThreshold);
         return <Tag color={below ? "red" : "green"}>{below ? t("belowThreshold") : t("ok")}</Tag>;
       },
-    },
-  ];
-
-  const productColumns = [
-    {
-      title: isRtl ? t("nameAr") : t("nameEn"),
-      key: "name",
-      render: (_: unknown, r: VipLocation) => (isRtl ? r.productNameAr : r.productNameEn),
-    },
-    { title: t("currentStock"), dataIndex: "currentStock", key: "currentStock" },
-    { title: t("minThreshold"), dataIndex: "minThreshold", key: "minThreshold" },
-    {
-      title: t("maxThreshold"),
-      dataIndex: "maxThreshold",
-      key: "maxThreshold",
-      render: (v: number | null) => v ?? "—",
-    },
-    {
-      title: t("status"),
-      key: "belowThreshold",
-      render: (_: unknown, r: VipLocation) => (
-        <Tag color={r.belowThreshold ? "red" : "green"}>
-          {r.belowThreshold ? t("belowThreshold") : t("ok")}
-        </Tag>
-      ),
-    },
-    {
-      title: t("actions"),
-      key: "actions",
-      render: (_: unknown, r: VipLocation) => (
-        <Space>
-          {r.belowThreshold && (
-            <Button
-              size="small"
-              loading={replenish.isPending}
-              onClick={() => replenish.mutate(r.id)}
-            >
-              {t("replenish")}
-            </Button>
-          )}
-          <Tooltip title={t("edit")}>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => {
-                setEditingProduct(r);
-                editForm.setFieldsValue({
-                  quantity: r.currentStock,
-                  minThreshold: r.minThreshold,
-                  maxThreshold: r.maxThreshold ?? undefined,
-                });
-              }}
-            />
-          </Tooltip>
-          <Popconfirm
-            title={t("removeProductConfirm")}
-            onConfirm={() => removeProduct.mutate(r.id)}
-            okText={t("confirm")}
-            cancelText={t("cancel")}
-          >
-            <Tooltip title={t("removeProduct")}>
-              <Button size="small" danger icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      ),
     },
   ];
 
@@ -557,238 +434,75 @@ export default function VipTasksPage() {
         />
       </Card>
 
-      <Modal
+      <CreateLocationModal
         open={createOpen}
-        title={t("newVipLocation")}
-        onOk={() => createForm.submit()}
-        onCancel={() => {
+        onClose={() => {
           setCreateOpen(false);
           createForm.resetFields();
         }}
-        confirmLoading={createLocation.isPending}
-        okText={t("save")}
-        cancelText={t("cancel")}
-        destroyOnClose
-        width={640}
-      >
-        <Form
-          form={createForm}
-          layout="vertical"
-          style={{ marginBlockStart: 16 }}
-          onFinish={(v) => createLocation.mutate(v as Record<string, unknown>)}
-        >
-          <Form.Item name="companyId" label={t("company")} rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={companies.map((c) => ({ value: c.id, label: label(c) }))}
-              onChange={() => {
-                createForm.setFieldValue("branchId", undefined);
-                createForm.setFieldValue("departmentId", undefined);
-                createForm.setFieldValue("assignedEmployeeId", undefined);
-              }}
-            />
-          </Form.Item>
-          <Form.Item name="branchId" label={t("branch")} rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              disabled={!createCompanyId}
-              placeholder={!createCompanyId ? t("noCompanySelected") : undefined}
-              options={branches.map((b) => ({ value: b.id, label: label(b) }))}
-              onChange={() => createForm.setFieldValue("departmentId", undefined)}
-            />
-          </Form.Item>
-          <Form.Item name="departmentId" label={t("department")} tooltip={t("vipDepartmentHint")}>
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              disabled={!createBranchId}
-              options={departments.map((d) => ({ value: d.id, label: label(d) }))}
-            />
-          </Form.Item>
-          <Form.Item
-            name="assignedEmployeeId"
-            label={t("assignedEmployee")}
-            tooltip={t("vipEmployeeHint")}
-          >
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              disabled={!createCompanyId}
-              options={employees.map((e) => ({ value: e.id, label: employeeLabel(e) }))}
-            />
-          </Form.Item>
-          <Form.Item name="locationName" label={t("locationName")}>
-            <Input placeholder={t("locationNamePlaceholder")} />
-          </Form.Item>
+        companies={companies}
+        branches={branches}
+        departments={departments}
+        employees={employees}
+        vipProducts={vipProducts}
+        createCompanyId={createCompanyId}
+        createBranchId={createBranchId}
+        createLocation={createLocation}
+        label={label}
+        employeeLabel={employeeLabel}
+        productLabel={productLabel}
+        form={createForm}
+      />
 
-          <Form.List name="products" initialValue={[{}]}>
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name }) => (
-                  <Space key={key} wrap align="start" style={{ width: "100%" }}>
-                    <Form.Item
-                      name={[name, "productId"]}
-                      rules={[{ required: true }]}
-                      style={{ flex: 2 }}
-                    >
-                      <Select
-                        showSearch
-                        optionFilterProp="label"
-                        placeholder={t("product")}
-                        options={vipProducts.map((p) => ({ value: p.id, label: productLabel(p) }))}
-                        style={{ minWidth: 200 }}
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      name={[name, "quantity"]}
-                      initialValue={0}
-                      rules={[{ required: true }]}
-                    >
-                      <InputNumber min={0} placeholder={t("quantity")} />
-                    </Form.Item>
-                    <Form.Item name={[name, "minThreshold"]} initialValue={0}>
-                      <InputNumber min={0} placeholder={t("minThreshold")} />
-                    </Form.Item>
-                    <Form.Item name={[name, "maxThreshold"]}>
-                      <InputNumber min={1} placeholder={t("maxThreshold")} />
-                    </Form.Item>
-                    <Button danger onClick={() => remove(name)}>
-                      ✕
-                    </Button>
-                  </Space>
-                ))}
-                <Button type="dashed" onClick={() => add()} block>
-                  + {t("addLine")}
-                </Button>
-              </>
-            )}
-          </Form.List>
-        </Form>
-      </Modal>
-
-      <Drawer
-        title={selectedLocation ? (selectedLocation.locationName ?? t("vipLocations")) : ""}
-        open={!!selectedLocation}
+      <LocationDetailDrawer
+        selectedLocation={selectedLocation}
         onClose={() => setSelectedLocationId(null)}
-        width={560}
-      >
-        {selectedLocation && (
-          <>
-            <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label={t("company")}>
-                {companies.find((c) => c.id === selectedLocation.companyId)
-                  ? label(companies.find((c) => c.id === selectedLocation.companyId)!)
-                  : selectedLocation.companyId.slice(0, 8)}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("branch")}>
-                {branchName(selectedLocation.branchId)}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("department")}>
-                {departmentName(selectedLocation.departmentId)}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("assignedEmployee")}>
-                {employeeName(selectedLocation.assignedEmployeeId)}
-              </Descriptions.Item>
-            </Descriptions>
+        isRtl={isRtl}
+        companies={companies}
+        label={label}
+        branchName={branchName}
+        departmentName={departmentName}
+        employeeName={employeeName}
+        productLabel={productLabel}
+        availableProducts={availableProductsForSelected}
+        addProduct={addProduct}
+        removeProduct={removeProduct}
+        onEditProduct={(product) => {
+          setEditingProduct(product);
+          editForm.setFieldsValue({
+            quantity: product.currentStock,
+            minThreshold: product.minThreshold,
+            maxThreshold: product.maxThreshold ?? undefined,
+          });
+        }}
+        replenishPending={replenish.isPending}
+        onReplenish={(product) => setZoneAction({ kind: "location", id: product.id })}
+        addProductForm={addProductForm}
+      />
 
-            <Typography.Title level={5} style={{ marginBlockStart: 20, marginBlockEnd: 8 }}>
-              {t("productCount")}
-            </Typography.Title>
-            <Table
-              rowKey="id"
-              size="small"
-              dataSource={selectedLocation.products}
-              columns={productColumns}
-              pagination={false}
-            />
+      <EditProductModal
+        editingProduct={editingProduct}
+        onClose={() => setEditingProduct(null)}
+        isRtl={isRtl}
+        adjustProduct={adjustProduct}
+        form={editForm}
+      />
 
-            <Typography.Title level={5} style={{ marginBlockStart: 20, marginBlockEnd: 8 }}>
-              {t("addProductToLocation")}
-            </Typography.Title>
-            {availableProductsForSelected.length === 0 ? (
-              <Typography.Text type="secondary">{t("noProductsAvailable")}</Typography.Text>
-            ) : (
-              <Form
-                form={addProductForm}
-                layout="inline"
-                onFinish={(v) => addProduct.mutate(v as Record<string, unknown>)}
-                style={{ rowGap: 8 }}
-              >
-                <Form.Item name="productId" rules={[{ required: true }]} style={{ minWidth: 200 }}>
-                  <Select
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder={t("product")}
-                    options={availableProductsForSelected.map((p) => ({
-                      value: p.id,
-                      label: productLabel(p),
-                    }))}
-                  />
-                </Form.Item>
-                <Form.Item name="quantity" initialValue={0} rules={[{ required: true }]}>
-                  <InputNumber min={0} placeholder={t("quantity")} />
-                </Form.Item>
-                <Form.Item name="minThreshold" initialValue={0}>
-                  <InputNumber min={0} placeholder={t("minThreshold")} />
-                </Form.Item>
-                <Form.Item name="maxThreshold">
-                  <InputNumber min={1} placeholder={t("maxThreshold")} />
-                </Form.Item>
-                <Form.Item>
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    icon={<PlusOutlined />}
-                    loading={addProduct.isPending}
-                  >
-                    {t("addProduct")}
-                  </Button>
-                </Form.Item>
-              </Form>
-            )}
-          </>
-        )}
-      </Drawer>
-
-      <Modal
-        open={!!editingProduct}
-        title={
-          editingProduct
-            ? isRtl
-              ? editingProduct.productNameAr
-              : editingProduct.productNameEn
-            : ""
-        }
-        onOk={() => editForm.submit()}
-        onCancel={() => setEditingProduct(null)}
-        confirmLoading={adjustProduct.isPending}
-        okText={t("save")}
-        cancelText={t("cancel")}
-        destroyOnClose
-      >
-        <Form
-          form={editForm}
-          layout="vertical"
-          onFinish={(v) => {
-            if (!editingProduct) return;
-            adjustProduct.mutate({ id: editingProduct.id, values: v as Record<string, unknown> });
-          }}
-        >
-          <Form.Item name="quantity" label={t("quantity")} rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="minThreshold" label={t("minThreshold")}>
-            <InputNumber min={0} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="maxThreshold" label={t("maxThreshold")}>
-            <InputNumber min={1} style={{ width: "100%" }} />
-          </Form.Item>
-        </Form>
-      </Modal>
+      <SourceZoneModal
+        zoneAction={zoneAction}
+        allowedZones={allowedZones}
+        onClose={() => setZoneAction(null)}
+        loading={completeTask.isPending || replenish.isPending}
+        onSubmit={(v) => {
+          if (!zoneAction) return;
+          if (zoneAction.kind === "task") {
+            completeTask.mutate({ id: zoneAction.id, sourceZone: v.sourceZone });
+          } else {
+            replenish.mutate({ id: zoneAction.id, sourceZone: v.sourceZone });
+          }
+        }}
+        form={zoneForm}
+      />
     </div>
   );
 }

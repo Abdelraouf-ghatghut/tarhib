@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { RequireAnyPermission } from '../auth/decorators/require-permission.decorator.js';
 import { PermissionsService } from './permissions.service.js';
 
 @ApiTags('permissions')
@@ -10,6 +11,7 @@ export class PermissionsController {
   constructor(private readonly service: PermissionsService) {}
 
   @Get()
+  @RequireAnyPermission('company.manage', 'branch.manage')
   findAll(@Query('scope') scope?: string) {
     return this.service.findAll(scope);
   }

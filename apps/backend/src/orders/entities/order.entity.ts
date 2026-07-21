@@ -22,6 +22,11 @@ export class Order {
   @Column({ name: 'company_id' })
   companyId!: string;
 
+  // Court, propre à la société (1, 2, 3…) — affiché à la place de `id`
+  // (UUID) partout côté admin/agent. Attribué via company_order_counters.
+  @Column({ name: 'order_number', type: 'int' })
+  orderNumber!: number;
+
   @Column({ type: 'varchar', length: 20, default: OrderStatus.PENDING })
   status!: OrderStatus;
 

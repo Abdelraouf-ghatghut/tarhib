@@ -42,6 +42,7 @@ import {
   ShopOutlined,
   ShoppingCartOutlined,
   CrownOutlined,
+  WalletOutlined,
   GiftOutlined,
   QuestionCircleOutlined,
   SearchOutlined,
@@ -51,6 +52,8 @@ import {
   HomeOutlined,
   IdcardOutlined,
   GlobalOutlined,
+  BookOutlined,
+  SolutionOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -76,7 +79,8 @@ interface NavGroup {
 
 export function AdminLayout() {
   const { t, i18n } = useTranslation();
-  const { logout, email, hasPermission, isSuperadmin } = useAuth();
+  const { logout, email, hasPermission, isSuperadmin, impersonation, stopImpersonation } =
+    useAuth();
   const { isDark, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -193,6 +197,83 @@ export function AdminLayout() {
         key: "reports",
         label: t("reports"),
         items: [{ key: "/reports", label: t("reports"), icon: <BarChartOutlined /> }],
+      });
+    }
+
+    if (hasPermission("finance.view") || hasPermission("finance.manage")) {
+      groups.push({
+        key: "finance",
+        label: t("finance"),
+        items: [
+          { key: "/finance", label: t("financeOverview"), icon: <WalletOutlined /> },
+          { key: "/finance/contracts", label: t("contracts"), icon: <FileTextOutlined /> },
+          { key: "/finance/expenses", label: t("expenses"), icon: <ShoppingCartOutlined /> },
+          { key: "/finance/debts", label: t("debts"), icon: <BankOutlined /> },
+          { key: "/finance/accounts", label: t("accounts"), icon: <IdcardOutlined /> },
+        ],
+      });
+    }
+
+    if (hasPermission("accounting.view") || hasPermission("accounting.manage")) {
+      groups.push({
+        key: "accounting",
+        label: t("accounting"),
+        items: [
+          {
+            key: "/accounting/chart-of-accounts",
+            label: t("chartOfAccounts"),
+            icon: <BookOutlined />,
+          },
+          {
+            key: "/accounting/journal-entries",
+            label: t("journalEntries"),
+            icon: <FileTextOutlined />,
+          },
+          {
+            key: "/accounting/reports",
+            label: t("accountingReports"),
+            icon: <BarChartOutlined />,
+          },
+        ],
+      });
+    }
+
+    if (
+      hasPermission("hr.leave.manage") ||
+      hasPermission("hr.leave.approve") ||
+      hasPermission("hr.contract.manage") ||
+      hasPermission("hr.review.manage") ||
+      hasPermission("employee.salary.manage")
+    ) {
+      groups.push({
+        key: "hr",
+        label: t("humanResources"),
+        items: [
+          ...(hasPermission("hr.leave.manage") || hasPermission("hr.leave.approve")
+            ? [{ key: "/hr/leave-requests", label: t("leaveRequests"), icon: <CalendarOutlined /> }]
+            : []),
+          ...(hasPermission("hr.contract.manage")
+            ? [
+                {
+                  key: "/hr/contracts",
+                  label: t("employmentContracts"),
+                  icon: <FileTextOutlined />,
+                },
+              ]
+            : []),
+          ...(hasPermission("hr.review.manage")
+            ? [
+                {
+                  key: "/hr/performance-reviews",
+                  label: t("performanceReviews"),
+                  icon: <SolutionOutlined />,
+                },
+              ]
+            : []),
+          ...(hasPermission("employee.salary.manage") || hasPermission("company.manage")
+            ? [{ key: "/hr/payslips", label: t("payslips"), icon: <WalletOutlined /> }]
+            : []),
+        ],
       });
     }
 
@@ -527,6 +608,30 @@ export function AdminLayout() {
             </Dropdown>
           </Space>
         </Header>
+
+        {impersonation && (
+          <div
+            style={{
+              background: "var(--warning)",
+              color: "#1a1200",
+              padding: "8px 20px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <Text style={{ color: "inherit", fontSize: 13, fontWeight: 600 }}>
+              {impersonation.mode === "employee"
+                ? t("impersonationEmployeeBanner", { name: impersonation.label })
+                : t("impersonationRoleBanner", { role: impersonation.label })}
+            </Text>
+            <Button size="small" onClick={() => void stopImpersonation().then(() => navigate("/"))}>
+              {t("returnToMyAccount")}
+            </Button>
+          </div>
+        )}
 
         <Content style={{ margin: screens.md ? 24 : 12, overflow: "initial" }}>
           <Outlet />

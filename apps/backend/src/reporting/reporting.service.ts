@@ -19,6 +19,7 @@ import {
   EmployeeScope,
 } from '../employees/entities/employee.entity.js';
 import { OrderLine } from '../orders/entities/order-line.entity.js';
+import { Quota } from '../quotas/entities/quota.entity.js';
 
 type TrendGranularity = 'day' | 'week' | 'month' | 'year';
 const GRANULARITIES: TrendGranularity[] = ['day', 'week', 'month', 'year'];
@@ -52,7 +53,7 @@ export interface UserActivityReport {
   ordersByBranch: {
     branchId: string;
     nameAr: string;
-    nameEn: string;
+    nameEn: string | null;
     orderCount: number;
   }[];
   total: number;
@@ -108,6 +109,26 @@ export interface InventoryDetailReport {
   rows: InventoryDetailRow[];
 }
 
+export interface QuotaReport {
+  total: number;
+  averageConsumptionRate: number;
+  nearCapCount: number;
+  byProduct: Array<{
+    productId: string;
+    maxQuantity: number;
+    usedQuantity: number;
+    consumptionRate: number;
+  }>;
+  nearCapEmployees: Array<{
+    employeeId: string;
+    productId: string;
+    maxQuantity: number;
+    usedQuantity: number;
+    consumptionRate: number;
+    periodEnd: string;
+  }>;
+}
+
 export interface ExecutiveReport {
   kpis: {
     companiesCount: number;
@@ -158,7 +179,95 @@ export class ReportingService {
     private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(OrderLine)
     private readonly orderLineRepo: Repository<OrderLine>,
+    @InjectRepository(Quota)
+    private readonly quotaRepo: Repository<Quota>,
   ) {}
+
+  /**
+   * Consommation des quotas individuels (employé × produit × période) — la
+   * seule vue globale existante aujourd'hui sur la règle métier centrale du
+   * produit (§3 CLAUDE.md), absente du reporting jusqu'ici. `nearCap` = 80%
+   * consommé, seuil d'alerte avant épuisement.
+   */
+  async getQuotaReport(
+    companyId: string,
+    opts: { branchId?: string } = {},
+  ): Promise<QuotaReport> {
+    const NEAR_CAP_RATE = 0.8;
+    const qb = this.quotaRepo.createQueryBuilder('q');
+    if (companyId) qb.andWhere('q.company_id = :companyId', { companyId });
+    // Les quotas individuels ne portent pas branch_id — filtrage par branche
+    // fait via les employés de cette branche si demandé (Quota.employeeId
+    // référence employees.id, cf. QuotasPage.tsx côté web-admin).
+    if (opts.branchId) {
+      qb.innerJoin(Employee, 'e', 'e.id = q.employee_id').andWhere(
+        'e.branch_id = :branchId',
+        { branchId: opts.branchId },
+      );
+    }
+
+    const quotas = await qb.getMany();
+    const total = quotas.length;
+    if (total === 0) {
+      return {
+        total: 0,
+        averageConsumptionRate: 0,
+        nearCapCount: 0,
+        byProduct: [],
+        nearCapEmployees: [],
+      };
+    }
+
+    const rateOf = (q: Quota) =>
+      q.maxQuantity > 0 ? q.usedQuantity / q.maxQuantity : 0;
+
+    const averageConsumptionRate =
+      quotas.reduce((sum, q) => sum + rateOf(q), 0) / total;
+    const nearCapCount = quotas.filter(
+      (q) => rateOf(q) >= NEAR_CAP_RATE,
+    ).length;
+
+    const byProductMap = new Map<
+      string,
+      { maxQuantity: number; usedQuantity: number }
+    >();
+    for (const q of quotas) {
+      const entry = byProductMap.get(q.productId) ?? {
+        maxQuantity: 0,
+        usedQuantity: 0,
+      };
+      entry.maxQuantity += q.maxQuantity;
+      entry.usedQuantity += q.usedQuantity;
+      byProductMap.set(q.productId, entry);
+    }
+    const byProduct = [...byProductMap.entries()].map(([productId, v]) => ({
+      productId,
+      maxQuantity: v.maxQuantity,
+      usedQuantity: v.usedQuantity,
+      consumptionRate: v.maxQuantity > 0 ? v.usedQuantity / v.maxQuantity : 0,
+    }));
+
+    const nearCapEmployees = quotas
+      .filter((q) => rateOf(q) >= NEAR_CAP_RATE)
+      .sort((a, b) => rateOf(b) - rateOf(a))
+      .slice(0, 20)
+      .map((q) => ({
+        employeeId: q.employeeId,
+        productId: q.productId,
+        maxQuantity: q.maxQuantity,
+        usedQuantity: q.usedQuantity,
+        consumptionRate: rateOf(q),
+        periodEnd: q.periodEnd,
+      }));
+
+    return {
+      total,
+      averageConsumptionRate,
+      nearCapCount,
+      byProduct,
+      nearCapEmployees,
+    };
+  }
 
   async getOrdersReport(
     companyId: string,

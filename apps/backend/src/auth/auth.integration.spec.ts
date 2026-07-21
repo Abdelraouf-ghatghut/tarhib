@@ -29,6 +29,9 @@ import { EmployeeRole } from '../employees/dto/employee.dto';
 import { Employee } from '../employees/entities/employee.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Role } from '../roles/entities/role.entity';
+import { Branch } from '../branches/entities/branch.entity';
+import { Department } from '../departments/entities/department.entity';
+import { AuditLog } from '../audit/entities/audit-log.entity';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import { AuthModule } from './auth.module';
 import { AuthService } from './auth.service';
@@ -124,6 +127,12 @@ describe('Auth guards (integration)', () => {
       .overrideProvider(getRepositoryToken(Company))
       .useValue(repoStub)
       .overrideProvider(getRepositoryToken(Role))
+      .useValue(repoStub)
+      .overrideProvider(getRepositoryToken(Branch))
+      .useValue(repoStub)
+      .overrideProvider(getRepositoryToken(Department))
+      .useValue(repoStub)
+      .overrideProvider(getRepositoryToken(AuditLog))
       .useValue(repoStub)
       .compile();
 

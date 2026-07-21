@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -29,6 +30,7 @@ import {
   AddVipLocationProductDto,
   AdjustVipLocationProductDto,
   CreateVipLocationDto,
+  ReplenishSourceDto,
   VipLocationDto,
   VipReplenishmentTaskDto,
 } from './dto/vip-self-service.dto.js';
@@ -95,6 +97,7 @@ export class VipSelfServiceController {
 
   @Delete('location-products/:id')
   @RequireAnyPermission('vip.location.manage', 'vip.manage')
+  @HttpCode(204)
   @ApiOperation({ summary: "Retirer un produit d'un lieu VIP" })
   async removeProduct(
     @Param('id') id: string,
@@ -129,9 +132,15 @@ export class VipSelfServiceController {
   async replenishLocation(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
+    @Body() dto?: ReplenishSourceDto,
   ): Promise<VipLocationDto> {
     assertResourceScope(user, await this.service.getLocationProductScope(id));
-    return this.service.replenishLocation(id, user.sub);
+    return this.service.replenishLocation(
+      id,
+      user.sub,
+      user.permissions,
+      dto?.sourceZone,
+    );
   }
 
   @Get('tasks')
@@ -158,8 +167,14 @@ export class VipSelfServiceController {
   async completeTask(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
+    @Body() dto?: ReplenishSourceDto,
   ): Promise<VipReplenishmentTaskDto> {
     assertResourceScope(user, await this.service.getTaskScope(id));
-    return this.service.completeTask(id, user.sub);
+    return this.service.completeTask(
+      id,
+      user.sub,
+      user.permissions,
+      dto?.sourceZone,
+    );
   }
 }

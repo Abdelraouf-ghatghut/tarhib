@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role, RoleScope, SlaPriority } from './entities/role.entity.js';
 import { Permission } from './entities/permission.entity.js';
-import { RoleQuota, QuotaPeriodType } from './entities/role-quota.entity.js';
+import { RoleQuota } from './entities/role-quota.entity.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { MeetingRoom } from '../meeting-rooms/entities/meeting-room.entity.js';
 import {
@@ -235,7 +235,7 @@ export class RolesService {
       where: {
         roleId,
         productId: dto.productId,
-        periodType: dto.periodType as QuotaPeriodType,
+        periodType: dto.periodType,
       },
     });
 
@@ -248,7 +248,7 @@ export class RolesService {
           roleId,
           companyId: role.companyId ?? callerCompanyId,
           productId: dto.productId,
-          periodType: dto.periodType as QuotaPeriodType,
+          periodType: dto.periodType,
           maxQuantity: dto.maxQuantity,
         }),
       );

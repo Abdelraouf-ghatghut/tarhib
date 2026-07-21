@@ -1,7 +1,10 @@
-import { Form, Input, Select, Switch, Tag, Typography } from "antd";
+import { useRef } from "react";
+import { Button, Col, Form, Input, Row, Select, Switch, Tag, Typography } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CrudTable } from "../../components/CrudTable";
+import type { CrudTableHandle } from "../../components/CrudTable";
 import { ScopeFilterBar } from "../../components/ScopeFilterBar";
 import { useScope } from "../../contexts/ScopeContext";
 import { useAuth } from "../../hooks/useAuth";
@@ -13,7 +16,7 @@ const { Title } = Typography;
 interface Department {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
   companyId: string;
   branchId: string;
   active: boolean;
@@ -22,7 +25,7 @@ interface Department {
 interface NamedEntity {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
 }
 
 /**
@@ -79,6 +82,7 @@ export function DepartmentsPage() {
   const qc = useQueryClient();
   const isAr = i18n.language === "ar";
   const { hasPermission } = useAuth();
+  const crudRef = useRef<CrudTableHandle>(null);
   const { companyId: scopeCompanyId, branchId: scopeBranchId } = useScope();
 
   // Affichage filtré par entreprise (et branche) via la barre de scope
@@ -125,11 +129,28 @@ export function DepartmentsPage() {
 
   return (
     <>
-      <Title level={4}>{t("departments")}</Title>
+      <Row justify="space-between" align="middle" style={{ marginBlockEnd: 16 }}>
+        <Col>
+          <Title level={4} style={{ margin: 0 }}>
+            {t("departments")}
+          </Title>
+        </Col>
+        <Col>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => crudRef.current?.openCreate()}
+          >
+            {t("add")}
+          </Button>
+        </Col>
+      </Row>
 
       <ScopeFilterBar />
 
       <CrudTable<Department>
+        ref={crudRef}
+        hideAddButton
         data={data}
         isPending={isPending}
         onSave={onSave}
@@ -142,7 +163,11 @@ export function DepartmentsPage() {
           },
           { title: t("branch"), dataIndex: "branchId", render: (v: string) => branchMap[v] ?? v },
           { title: t("nameAr"), dataIndex: "nameAr" },
-          { title: t("nameEn"), dataIndex: "nameEn" },
+          {
+            title: t("nameEn"),
+            dataIndex: "nameEn",
+            render: (v: string | null) => v?.trim() || "—",
+          },
           {
             title: t("active"),
             dataIndex: "active",

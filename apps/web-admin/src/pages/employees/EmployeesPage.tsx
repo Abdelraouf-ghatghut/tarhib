@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Button,
+  Col,
   Descriptions,
   Drawer,
+  App,
   Form,
   Input,
   InputNumber,
-  Popconfirm,
+  Row,
   Select,
   Space,
   Switch,
@@ -14,10 +16,13 @@ import {
   Typography,
   message,
 } from "antd";
-import { StopOutlined } from "@ant-design/icons";
+import { PlusOutlined, StopOutlined, SwapOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import dayjs from "dayjs";
 import { CrudTable } from "../../components/CrudTable";
+import type { CrudTableHandle } from "../../components/CrudTable";
 import { ScopeFilterBar } from "../../components/ScopeFilterBar";
 import { FilterBar } from "../../components/FilterBar";
 import { useScope } from "../../contexts/ScopeContext";
@@ -67,6 +72,7 @@ interface Employee {
   active: boolean;
   // Présent uniquement via /employees/admin (employee.salary.manage)
   salary?: number | null;
+  hireDate?: string | null;
 }
 
 interface NamedEntity {
@@ -214,6 +220,14 @@ function EmployeeFormFields({
         </Form.Item>
       )}
 
+      {/* Prise de fonction : personnel interne uniquement — sert de point de
+          départ à la génération de paie mensuelle proratisée. */}
+      {!isClientPage && (
+        <Form.Item name="hireDate" label={t("hireDate")}>
+          <Input type="date" />
+        </Form.Item>
+      )}
+
       <Form.Item name="roleId" label={t("roleLabel")} rules={[{ required: true }]}>
         <Select
           showSearch
@@ -260,13 +274,20 @@ function EmployeeFormFields({
 
 export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
   const { t, i18n } = useTranslation();
+  const { modal } = App.useApp();
   const qc = useQueryClient();
-  const { hasPermission } = useAuth();
+  const navigate = useNavigate();
+  const { hasPermission, email: myEmail, impersonation, startEmployeeImpersonation } = useAuth();
   const isAr = i18n.language === "ar";
   const isClientPage = scope === "CLIENT";
   // Le salaire n'a de sens que pour le personnel interne, et reste réservé
   // à employee.salary.manage même sur cette page (voir EmployeesController).
   const canManageSalary = !isClientPage && hasPermission("employee.salary.manage");
+  // Le web admin est un outil interne (AuthContext.login() rejette tout
+  // employé CLIENT) : impersonner un employé n'a de sens que sur l'onglet
+  // interne. Prévisualiser un rôle client se fait via RolesPage (mode "rôle").
+  const canImpersonate = !isClientPage && hasPermission("employee.impersonate") && !impersonation;
+  const crudRef = useRef<CrudTableHandle>(null);
   const { companyId: scopeCompanyId, branchId: scopeBranchId } = useScope();
 
   const [filterRoleId, setFilterRoleId] = useState<string | undefined>();
@@ -327,13 +348,9 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
   );
 
   async function onSave(values: Record<string, unknown>, id?: string) {
-    // Le scope est porté par la page (interne/client), pas par le formulaire.
-    // Les champs vidés ("" / undefined) sont retirés pour ne pas déclencher
-    // la validation UUID côté API.
+    // Le scope est porté par la page (interne/client), pas par le formulaire
+    // (CrudTable a déjà converti les champs vidés en null explicite).
     const payload: Record<string, unknown> = { ...values, scope };
-    for (const key of Object.keys(payload)) {
-      if (payload[key] === "" || payload[key] === undefined) delete payload[key];
-    }
     if (id) await employeesApi.update(id, payload);
     else await employeesApi.create(payload);
     void qc.invalidateQueries({ queryKey: ["employees"] });
@@ -391,7 +408,22 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
 
   return (
     <>
-      <Title level={4}>{isClientPage ? t("employeesClient") : t("employeesInternal")}</Title>
+      <Row justify="space-between" align="middle" style={{ marginBlockEnd: 16 }}>
+        <Col>
+          <Title level={4} style={{ margin: 0 }}>
+            {isClientPage ? t("employeesClient") : t("employeesInternal")}
+          </Title>
+        </Col>
+        <Col>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => crudRef.current?.openCreate()}
+          >
+            {t("add")}
+          </Button>
+        </Col>
+      </Row>
 
       {isClientPage && <ScopeFilterBar />}
 
@@ -480,45 +512,74 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
       )}
 
       <CrudTable<Employee>
+        ref={crudRef}
+        hideAddButton
         data={data}
         isPending={isPending}
         onSave={onSave}
         onDelete={onDelete}
         onRow={(rec) => ({ onClick: () => setSelected(rec), style: { cursor: "pointer" } })}
         extraActions={(rec) => (
-          <Popconfirm
-            title={t("deactivateConfirm")}
-            onConfirm={() => {
-              void onDeactivate(rec.id);
-            }}
-            okText={t("confirm")}
-            cancelText={t("cancel")}
-            disabled={!rec.active}
-          >
+          <Space size={4}>
+            {canImpersonate && rec.email !== myEmail && (
+              <Button
+                size="small"
+                icon={<SwapOutlined />}
+                title={t("impersonate")}
+                onClick={() =>
+                  modal.confirm({
+                    title: t("impersonateConfirm", { name: fullName(rec) }),
+                    okText: t("confirm"),
+                    cancelText: t("cancel"),
+                    onOk: async () => {
+                      try {
+                        await startEmployeeImpersonation(rec.id, fullName(rec));
+                        void message.success(t("impersonationStarted", { name: fullName(rec) }));
+                        navigate("/");
+                      } catch (err) {
+                        void message.error(getErrorMessage(err, t));
+                      }
+                    },
+                  })
+                }
+              />
+            )}
             <Button
               size="small"
               danger
               icon={<StopOutlined />}
               disabled={!rec.active}
               title={t("deactivate")}
+              onClick={() =>
+                modal.confirm({
+                  title: t("deactivateConfirm"),
+                  okText: t("confirm"),
+                  cancelText: t("cancel"),
+                  okButtonProps: { danger: true },
+                  onOk: () => onDeactivate(rec.id),
+                })
+              }
             />
-          </Popconfirm>
+          </Space>
         )}
         columns={[
           {
             title: t("name"),
             key: "name",
+            sorter: (a: Employee, b: Employee) => fullName(a).localeCompare(fullName(b)),
             render: (_: unknown, rec: Employee) => fullName(rec),
           },
-          { title: t("email"), dataIndex: "email" },
+          { title: t("email"), dataIndex: "email", width: 220, ellipsis: true },
           {
             title: t("phone"),
             dataIndex: "phoneNumber",
+            width: 160,
             render: (v: string) => <span dir="ltr">{v}</span>,
           },
           {
             title: t("role"),
             key: "role",
+            width: 220,
             render: (_: unknown, rec: Employee) => roleTags(rec),
           },
           // Interne : où l'employé est dispatché en mission
@@ -527,6 +588,13 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
                 {
                   title: t("assignmentSite"),
                   key: "site",
+                  sorter: (a: Employee, b: Employee) => {
+                    const nameOf = (rec: Employee) => {
+                      const company = companies.find((c) => c.id === rec.companyId);
+                      return company ? label(company) : "";
+                    };
+                    return nameOf(a).localeCompare(nameOf(b));
+                  },
                   render: (_: unknown, rec: Employee) => {
                     if (!rec.companyId) return <Tag>{t("unassigned")}</Tag>;
                     const company = companies.find((c) => c.id === rec.companyId);
@@ -545,6 +613,7 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
                 {
                   title: t("location"),
                   key: "location",
+                  width: 160,
                   render: (_: unknown, rec: Employee) =>
                     rec.floor || rec.officeNumber
                       ? [rec.floor, rec.officeNumber].filter(Boolean).join(" — ")
@@ -558,15 +627,29 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
                 {
                   title: t("salary"),
                   dataIndex: "salary",
-                  render: (v: number | null | undefined) => (v != null ? v : "—"),
+                  width: 140,
+                  sorter: (a: Employee, b: Employee) => (a.salary ?? -1) - (b.salary ?? -1),
+                  render: (v: number | null | undefined) =>
+                    v != null
+                      ? `${v.toLocaleString(isAr ? "ar" : "en")} ${t("currencyUnit")}`
+                      : "—",
+                },
+                {
+                  title: t("hireDate"),
+                  dataIndex: "hireDate",
+                  width: 200,
+                  sorter: (a: Employee, b: Employee) =>
+                    (a.hireDate ?? "").localeCompare(b.hireDate ?? ""),
+                  render: (v: string | null | undefined) =>
+                    v ? dayjs(v).format("DD/MM/YYYY") : "—",
                 },
               ]
             : []),
           {
             title: t("active"),
             dataIndex: "active",
+            width: 90,
             render: (v: boolean) => <Tag color={v ? "green" : "default"}>{v ? "✓" : "✗"}</Tag>,
-            width: 80,
           },
         ]}
         formContent={(rec) => (
@@ -633,7 +716,14 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
                 </Descriptions.Item>
                 {canManageSalary && (
                   <Descriptions.Item label={t("salary")}>
-                    {selected.salary != null ? selected.salary : "—"}
+                    {selected.salary != null
+                      ? `${selected.salary.toLocaleString(isAr ? "ar" : "en")} ${t("currencyUnit")}`
+                      : "—"}
+                  </Descriptions.Item>
+                )}
+                {canManageSalary && (
+                  <Descriptions.Item label={t("hireDate")}>
+                    {selected.hireDate ? dayjs(selected.hireDate).format("DD/MM/YYYY") : "—"}
                   </Descriptions.Item>
                 )}
               </>

@@ -1,11 +1,11 @@
 import { useState } from "react";
 import {
+  App,
   Button,
   Card,
   DatePicker,
   Grid,
   Input,
-  Popconfirm,
   Select,
   Space,
   Tabs,
@@ -20,6 +20,7 @@ import {
   BankOutlined,
   DeleteOutlined,
   EditOutlined,
+  ExperimentOutlined,
   InboxOutlined,
   PlusOutlined,
   SafetyOutlined,
@@ -27,6 +28,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   companiesApi,
@@ -63,8 +65,11 @@ type SortBy = "newest" | "oldest" | "name";
 export function RolesPage() {
   const { t, i18n } = useTranslation();
   const isAr = i18n.language === "ar";
-  const { isSuperadmin } = useAuth();
+  const { isSuperadmin, hasPermission, impersonation, startRoleImpersonation } = useAuth();
+  const canTestRole = hasPermission("role.impersonate") && !impersonation;
+  const { modal } = App.useApp();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
 
@@ -195,8 +200,8 @@ export function RolesPage() {
       }
       void qc.invalidateQueries({ queryKey: ["roles"] });
       setView({ mode: "list" });
-    } catch {
-      void message.error(t("errorOccurred"));
+    } catch (err) {
+      void message.error(getErrorMessage(err, t));
     } finally {
       setSaving(false);
     }
@@ -301,6 +306,32 @@ export function RolesPage() {
           </Text>
           {/* stopPropagation : les actions ne doivent pas ouvrir la fiche détail */}
           <Space size={4} onClick={(e) => e.stopPropagation()}>
+            {canTestRole && (
+              <Tooltip title={t("testThisRole")}>
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<ExperimentOutlined />}
+                  onClick={() => {
+                    const label = bilingualName(role.nameAr, role.nameEn, isAr);
+                    modal.confirm({
+                      title: t("testRoleConfirm", { role: label }),
+                      okText: t("confirm"),
+                      cancelText: t("cancel"),
+                      onOk: async () => {
+                        try {
+                          await startRoleImpersonation(role.id, label);
+                          void message.success(t("roleTestStarted", { role: label }));
+                          navigate("/");
+                        } catch (err) {
+                          void message.error(getErrorMessage(err, t));
+                        }
+                      },
+                    });
+                  }}
+                />
+              </Tooltip>
+            )}
             <Tooltip title={t("edit")}>
               <Button
                 size="small"
@@ -309,17 +340,23 @@ export function RolesPage() {
                 onClick={() => setView({ mode: "edit", role })}
               />
             </Tooltip>
-            <Popconfirm
-              title={t("deleteConfirm")}
-              onConfirm={() => void handleDelete(role.id)}
-              okText={t("confirm")}
-              cancelText={t("cancel")}
-              okButtonProps={{ danger: true }}
-            >
-              <Tooltip title={t("delete")}>
-                <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-              </Tooltip>
-            </Popconfirm>
+            <Tooltip title={t("delete")}>
+              <Button
+                size="small"
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() =>
+                  modal.confirm({
+                    title: t("deleteConfirm"),
+                    okText: t("confirm"),
+                    cancelText: t("cancel"),
+                    okButtonProps: { danger: true },
+                    onOk: () => handleDelete(role.id),
+                  })
+                }
+              />
+            </Tooltip>
           </Space>
         </div>
       </Card>

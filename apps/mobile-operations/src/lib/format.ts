@@ -57,9 +57,9 @@ export function formatMinutesUntil(iso: string, copy: Copy): string {
 export function productName(
   product: CatalogProduct | undefined,
   lang: Lang,
-  fallbackId: string,
+  _fallbackId: string,
 ): string {
-  if (!product) return `#${fallbackId.slice(0, 8)}`;
+  if (!product) return arOrEn(lang, "منتج غير معروف", "Unknown product");
   return lang === "ar" ? product.nameAr : (product.nameEn ?? product.nameAr);
 }
 

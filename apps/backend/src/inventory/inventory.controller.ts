@@ -24,6 +24,7 @@ import {
   assertResourceScope,
   constrainRequestedScope,
 } from '../common/access/request-scope.js';
+import { parsePagination } from '../common/pagination.js';
 import {
   CreateInventoryItemDto,
   InventoryItemDto,
@@ -66,12 +67,20 @@ export class InventoryController {
   @ApiQuery({ name: 'companyId', required: false })
   @ApiQuery({ name: 'branchId', required: false })
   @ApiQuery({ name: 'zone', required: false, enum: StockZone })
+  @ApiQuery({ name: 'page', required: false, description: 'Défaut 1' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Défaut 200, max 500',
+  })
   @ApiResponse({ status: 200, type: [InventoryItemDto] })
   findAll(
     @CurrentUser() user: JwtPayload,
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
     @Query('zone') zone?: StockZone,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ): Promise<InventoryItemDto[]> {
     const scope = constrainRequestedScope(user, { companyId, branchId });
     const permittedZone =
@@ -81,10 +90,13 @@ export class InventoryController {
       )
         ? StockZone.KITCHEN
         : zone;
+    const { skip, limit: take } = parsePagination(page, limit);
     return this.inventoryService.findAll(
       scope.companyId,
       scope.branchId,
       permittedZone,
+      skip,
+      take,
     );
   }
 

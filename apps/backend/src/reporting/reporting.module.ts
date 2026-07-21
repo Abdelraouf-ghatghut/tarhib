@@ -10,6 +10,7 @@ import { Company } from '../companies/entities/company.entity.js';
 import { Branch } from '../branches/entities/branch.entity.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { OrderLine } from '../orders/entities/order-line.entity.js';
+import { Quota } from '../quotas/entities/quota.entity.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { ReportingService } from './reporting.service.js';
 import { ReportingController } from './reporting.controller.js';
@@ -27,6 +28,7 @@ import { ReportingController } from './reporting.controller.js';
       Branch,
       Employee,
       OrderLine,
+      Quota,
     ]),
     AuthModule,
   ],

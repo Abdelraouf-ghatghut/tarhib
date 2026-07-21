@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  App,
   Table,
   Button,
   Space,
@@ -15,7 +16,6 @@ import {
   message,
   Tag,
   Typography,
-  Popconfirm,
 } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined } from "@ant-design/icons";
 import { suppliersApi, productsAdminApi } from "../../lib/api";
@@ -27,7 +27,7 @@ const { Title, Text } = Typography;
 interface Supplier {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
   contactName: string | null;
   email: string | null;
   phone: string | null;
@@ -38,7 +38,7 @@ interface Supplier {
 interface Product {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
 }
 
 interface ProductPrice {
@@ -190,6 +190,7 @@ function ProductPricesEditor({ supplierId }: { supplierId: string }) {
 
 export default function SuppliersPage() {
   const { t } = useTranslation();
+  const { modal } = App.useApp();
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [modalOpen, setModalOpen] = useState(false);
@@ -244,7 +245,12 @@ export default function SuppliersPage() {
 
   const columns = [
     { title: t("nameAr"), dataIndex: "nameAr", key: "nameAr" },
-    { title: t("nameEn"), dataIndex: "nameEn", key: "nameEn" },
+    {
+      title: t("nameEn"),
+      dataIndex: "nameEn",
+      key: "nameEn",
+      render: (v: string | null) => v?.trim() || "—",
+    },
     {
       title: t("contact"),
       key: "contact",
@@ -272,9 +278,21 @@ export default function SuppliersPage() {
         <Space>
           <Button size="small" icon={<DollarOutlined />} onClick={() => setPricesFor(r)} />
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          <Popconfirm title={t("deleteConfirm")} onConfirm={() => remove.mutate(r.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />} loading={remove.isPending} />
-          </Popconfirm>
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            loading={remove.isPending}
+            onClick={() =>
+              modal.confirm({
+                title: t("deleteConfirm"),
+                okText: t("confirm"),
+                cancelText: t("cancel"),
+                okButtonProps: { danger: true },
+                onOk: () => remove.mutateAsync(r.id),
+              })
+            }
+          />
         </Space>
       ),
     },

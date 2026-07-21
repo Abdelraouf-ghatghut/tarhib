@@ -16,6 +16,16 @@ import {
 const SALARY_PERMISSION = 'employee.salary.manage';
 import { KeycloakService } from '../auth/keycloak/keycloak.service.js';
 import { Role } from '../roles/entities/role.entity.js';
+import {
+  ExpenseCategory,
+  FinanceExpense,
+} from '../finance/entities/finance-expense.entity.js';
+import { FinancePeriod } from '../finance/entities/finance-period.entity.js';
+import {
+  computeProratedSalary,
+  currentYearMonth,
+} from '../finance/payroll-period.util.js';
+import { isPeriodClosed } from '../finance/period-lock.util.js';
 
 @Injectable()
 export class EmployeesService {
@@ -26,6 +36,10 @@ export class EmployeesService {
     private readonly repo: Repository<Employee>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
+    @InjectRepository(FinanceExpense)
+    private readonly expenseRepo: Repository<FinanceExpense>,
+    @InjectRepository(FinancePeriod)
+    private readonly periodRepo: Repository<FinancePeriod>,
     private readonly keycloakService: KeycloakService,
   ) {}
 
@@ -89,12 +103,14 @@ export class EmployeesService {
       salary: callerPermissions.includes(SALARY_PERMISSION)
         ? (dto.salary ?? null)
         : null,
+      hireDate: dto.hireDate ?? null,
     });
     entity.additionalRoles = await this.loadAdditionalRoles(
       dto.additionalRoleIds,
       dto.roleId,
     );
     const saved = await this.repo.save(entity);
+    await this.syncCurrentMonthSalaryExpense(saved);
     return this.toDto(saved);
   }
 
@@ -105,6 +121,8 @@ export class EmployeesService {
     role?: string,
     active?: string,
     roleId?: string,
+    skip = 0,
+    take = 200,
   ): Promise<EmployeeDto[]> {
     const where: FindOptionsWhere<Employee> = {};
     if (companyId) where.companyId = companyId;
@@ -122,6 +140,8 @@ export class EmployeesService {
       where: resolvedWhere,
       order: { lastNameEn: 'ASC' },
       relations: ['additionalRoles'],
+      skip,
+      take,
     });
     return entities.map((e) => this.toDto(e));
   }
@@ -190,7 +210,9 @@ export class EmployeesService {
     ) {
       entity.salary = dto.salary ?? null;
     }
+    if (dto.hireDate !== undefined) entity.hireDate = dto.hireDate ?? null;
     const saved = await this.repo.save(entity);
+    await this.syncCurrentMonthSalaryExpense(saved);
     return this.toDto(saved);
   }
 
@@ -219,6 +241,74 @@ export class EmployeesService {
     return this.toDto(saved);
   }
 
+  /**
+   * Synchronisation salaire ↔ dépense (المصاريف) : la ligne de dépense
+   * "SALARIES" du mois en cours reflète toujours employees.salary —
+   * fire-and-forget, ne doit jamais faire échouer la sauvegarde de l'employé
+   * (même gabarit que la révocation Keycloak de deactivate() ci-dessus). Les
+   * mois suivants sont générés par FinancePayrollService (cron mensuel +
+   * rattrapage manuel). L'autre sens (dépense → salaire) est géré par
+   * FinanceService via un update TypeORM brut, jamais par ce service, pour
+   * ne pas créer de boucle — et uniquement pour le mois en cours (une
+   * correction sur un mois passé ne doit pas changer le salaire actuel).
+   */
+  private async syncCurrentMonthSalaryExpense(saved: Employee): Promise<void> {
+    try {
+      const period = currentYearMonth();
+      if (await isPeriodClosed(this.periodRepo, period)) {
+        // Cas limite : le mois en cours a été clôturé pendant la
+        // modification du salaire — la correction doit alors passer par
+        // FinanceService.correctExpense, pas par cette synchronisation.
+        this.logger.warn(
+          `Salary expense sync skipped for employee ${saved.id}: period ${period} is closed`,
+        );
+        return;
+      }
+      const existing = await this.expenseRepo.findOne({
+        where: {
+          employeeId: saved.id,
+          category: ExpenseCategory.SALARIES,
+          payrollPeriod: period,
+        },
+      });
+      const salary = saved.salary ? Number(saved.salary) : 0;
+
+      if (salary <= 0) {
+        if (existing) await this.expenseRepo.delete(existing.id);
+        return;
+      }
+
+      const amount = computeProratedSalary(salary, saved.hireDate, period);
+      if (amount === null) return; // prise de fonction postérieure au mois en cours
+
+      if (existing) {
+        existing.amount = amount;
+        await this.expenseRepo.save(existing);
+      } else {
+        const label = `${saved.firstNameEn} ${saved.lastNameEn}`.trim();
+        await this.expenseRepo.save(
+          this.expenseRepo.create({
+            category: ExpenseCategory.SALARIES,
+            label: label || saved.email,
+            amount,
+            expenseDate: new Date().toISOString().slice(0, 10),
+            // Le site d'affectation (companyId) est une mission, pas un lien
+            // financier : le salaire d'un employé Tarhib ne dépend d'aucune
+            // société cliente (même règle appliquée par FinanceService).
+            companyId: null,
+            employeeId: saved.id,
+            payrollPeriod: period,
+            notes: null,
+          }),
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Salary expense sync failed for employee ${saved.id}: ${String(err)}`,
+      );
+    }
+  }
+
   private async loadAdditionalRoles(
     roleIds?: string[],
     primaryRoleId?: string | null,
@@ -243,6 +333,8 @@ export class EmployeesService {
     role?: string,
     active?: string,
     roleId?: string,
+    skip = 0,
+    take = 200,
   ): Promise<EmployeeAdminDto[]> {
     const where: FindOptionsWhere<Employee> = {};
     if (companyId) where.companyId = companyId;
@@ -260,6 +352,8 @@ export class EmployeesService {
       where: resolvedWhere,
       order: { lastNameEn: 'ASC' },
       relations: ['additionalRoles'],
+      skip,
+      take,
     });
     return entities.map((e) => this.toAdminDto(e));
   }
@@ -292,6 +386,7 @@ export class EmployeesService {
     const dto = new EmployeeAdminDto();
     Object.assign(dto, this.toDto(e));
     dto.salary = e.salary ? Number(e.salary) : null;
+    dto.hireDate = e.hireDate;
     return dto;
   }
 }

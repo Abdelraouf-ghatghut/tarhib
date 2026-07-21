@@ -1,7 +1,10 @@
-import { Form, Input, Switch, Tag, Typography } from "antd";
+import { useRef } from "react";
+import { Button, Col, Form, Input, Row, Switch, Tag, Typography } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CrudTable } from "../../components/CrudTable";
+import type { CrudTableHandle } from "../../components/CrudTable";
 import { companiesApi } from "../../lib/api";
 
 const { Title } = Typography;
@@ -9,7 +12,7 @@ const { Title } = Typography;
 interface Company {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
   slug: string;
   active: boolean;
 }
@@ -17,6 +20,7 @@ interface Company {
 export function CompaniesPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const crudRef = useRef<CrudTableHandle>(null);
 
   const { data, isPending } = useQuery({
     queryKey: ["companies"],
@@ -39,15 +43,36 @@ export function CompaniesPage() {
 
   return (
     <>
-      <Title level={4}>{t("companies")}</Title>
+      <Row justify="space-between" align="middle" style={{ marginBlockEnd: 16 }}>
+        <Col>
+          <Title level={4} style={{ margin: 0 }}>
+            {t("companies")}
+          </Title>
+        </Col>
+        <Col>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => crudRef.current?.openCreate()}
+          >
+            {t("add")}
+          </Button>
+        </Col>
+      </Row>
       <CrudTable<Company>
+        ref={crudRef}
+        hideAddButton
         data={data}
         isPending={isPending}
         onSave={onSave}
         onDelete={onDelete}
         columns={[
           { title: t("nameAr"), dataIndex: "nameAr" },
-          { title: t("nameEn"), dataIndex: "nameEn" },
+          {
+            title: t("nameEn"),
+            dataIndex: "nameEn",
+            render: (v: string | null) => v?.trim() || "—",
+          },
           { title: t("slug"), dataIndex: "slug" },
           {
             title: t("active"),

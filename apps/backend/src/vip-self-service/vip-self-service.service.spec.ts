@@ -1,12 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { VipSelfServiceService } from './vip-self-service.service.js';
 import { VipReplenishmentTask } from './entities/vip-replenishment-task.entity.js';
 import { VipLocation } from './entities/vip-location.entity.js';
 import { VipLocationProduct } from './entities/vip-location-product.entity.js';
 import { Product } from '../products/entities/product.entity.js';
 import { ProductType } from '../products/dto/product.dto.js';
+import { InventoryService } from '../inventory/inventory.service.js';
+import { StockZone } from '../inventory/entities/inventory-item.entity.js';
 
 const mockRepo = () => ({
   create: jest.fn((v: unknown) => v),
@@ -22,6 +28,7 @@ const vipProduct = (overrides: Partial<Product> = {}): Product =>
     nameAr: 'قهوة VIP',
     nameEn: 'VIP Coffee',
     type: ProductType.LIBRE_SERVICE_VIP,
+    isVipSelfService: true,
     active: true,
     ...overrides,
   }) as Product;
@@ -32,6 +39,7 @@ describe('VipSelfServiceService', () => {
   let locationRepo: ReturnType<typeof mockRepo>;
   let locationProductRepo: ReturnType<typeof mockRepo>;
   let productRepo: ReturnType<typeof mockRepo>;
+  let inventoryService: { decrementBranchStock: jest.Mock };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -47,6 +55,12 @@ describe('VipSelfServiceService', () => {
           useFactory: mockRepo,
         },
         { provide: getRepositoryToken(Product), useFactory: mockRepo },
+        {
+          provide: InventoryService,
+          useValue: {
+            decrementBranchStock: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -55,6 +69,7 @@ describe('VipSelfServiceService', () => {
     locationRepo = module.get(getRepositoryToken(VipLocation));
     locationProductRepo = module.get(getRepositoryToken(VipLocationProduct));
     productRepo = module.get(getRepositoryToken(Product));
+    inventoryService = module.get(InventoryService);
   });
 
   describe('createLocation', () => {
@@ -93,7 +108,11 @@ describe('VipSelfServiceService', () => {
 
     it('rejects a product that is not LIBRE_SERVICE_VIP', async () => {
       productRepo.find.mockResolvedValue([
-        vipProduct({ id: 'prod-commandable', type: ProductType.COMMANDABLE }),
+        vipProduct({
+          id: 'prod-commandable',
+          type: ProductType.COMMANDABLE,
+          isVipSelfService: false,
+        }),
       ]);
 
       await expect(
@@ -139,9 +158,101 @@ describe('VipSelfServiceService', () => {
   describe('completeTask', () => {
     it('rejects completing an already-completed task', async () => {
       taskRepo.findOne.mockResolvedValue({ id: 't-1', status: 'COMPLETED' });
-      await expect(service.completeTask('t-1', 'emp-1')).rejects.toThrow(
+      await expect(service.completeTask('t-1', 'emp-1', [])).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('defaults to KITCHEN and decrements it when no zone is requested', async () => {
+      taskRepo.findOne.mockResolvedValue({ id: 't-1', status: 'OPEN' });
+      taskRepo.save.mockImplementation((v: unknown) => Promise.resolve(v));
+      locationProductRepo.findOne.mockResolvedValue({
+        id: 'lp-1',
+        vipLocationId: 'loc-1',
+        productId: 'prod-vip',
+        quantity: 2,
+        minThreshold: 2,
+        maxThreshold: 10,
+      });
+      locationProductRepo.save.mockImplementation((v: unknown) =>
+        Promise.resolve(v),
+      );
+      locationRepo.findOne.mockResolvedValue({
+        id: 'loc-1',
+        branchId: 'br-1',
+        companyId: 'co-1',
+      });
+
+      // Permissions kitchen-only : KITCHEN doit rester accessible par défaut.
+      await service.completeTask('t-1', 'emp-1', ['stock.kitchen.view']);
+
+      expect(inventoryService.decrementBranchStock).toHaveBeenCalledWith(
+        'prod-vip',
+        'br-1',
+        'co-1',
+        8,
+        StockZone.KITCHEN,
+      );
+    });
+
+    it('allows BRANCH when the caller has stock.view', async () => {
+      taskRepo.findOne.mockResolvedValue({ id: 't-1', status: 'OPEN' });
+      taskRepo.save.mockImplementation((v: unknown) => Promise.resolve(v));
+      locationProductRepo.findOne.mockResolvedValue({
+        id: 'lp-1',
+        vipLocationId: 'loc-1',
+        productId: 'prod-vip',
+        quantity: 2,
+        minThreshold: 2,
+        maxThreshold: 10,
+      });
+      locationProductRepo.save.mockImplementation((v: unknown) =>
+        Promise.resolve(v),
+      );
+      locationRepo.findOne.mockResolvedValue({
+        id: 'loc-1',
+        branchId: 'br-1',
+        companyId: 'co-1',
+      });
+
+      await service.completeTask(
+        't-1',
+        'emp-1',
+        ['stock.view'],
+        StockZone.BRANCH,
+      );
+
+      expect(inventoryService.decrementBranchStock).toHaveBeenCalledWith(
+        'prod-vip',
+        'br-1',
+        'co-1',
+        8,
+        StockZone.BRANCH,
+      );
+    });
+
+    it('rejects BRANCH for a caller with kitchen-only access', async () => {
+      taskRepo.findOne.mockResolvedValue({ id: 't-1', status: 'OPEN' });
+      await expect(
+        service.completeTask(
+          't-1',
+          'emp-1',
+          ['stock.kitchen.view'],
+          StockZone.BRANCH,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('always rejects CENTRAL — requires a physical transfer to BRANCH first', async () => {
+      await expect(
+        service.completeTask(
+          't-1',
+          'emp-1',
+          ['stock.manage', 'inventory.manage'],
+          StockZone.CENTRAL,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(inventoryService.decrementBranchStock).not.toHaveBeenCalled();
     });
   });
 

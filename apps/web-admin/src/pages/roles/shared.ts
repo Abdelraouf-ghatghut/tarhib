@@ -46,6 +46,7 @@ export interface Product {
   nameAr: string;
   nameEn: string;
   type: string;
+  isSold: boolean;
 }
 
 export interface Permission {
@@ -73,6 +74,7 @@ const PERMISSION_GROUP_KEYS: Record<string, string> = {
   company: "permissionGroupCompany",
   employee: "permissionGroupEmployee",
   favorite: "permissionGroupFavorite",
+  finance: "permissionGroupFinance",
   inventory: "permissionGroupInventory",
   meeting: "permissionGroupMeeting",
   notification: "permissionGroupNotification",

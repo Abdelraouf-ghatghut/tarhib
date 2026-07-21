@@ -8,6 +8,8 @@ import { passportJwtSecret } from 'jwks-rsa';
 import { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 import { Employee } from '../../employees/entities/employee.entity.js';
 import { AccessPolicyService } from '../../access/access-policy.service.js';
+import { RedisService } from '../../redis/redis.service.js';
+import { IMPERSONATE_ROLE_KEY_PREFIX } from '../impersonation.constants.js';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -16,6 +18,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly redis: RedisService,
   ) {
     const keycloakUrl = config.get<string>(
       'KEYCLOAK_ADMIN_URL',
@@ -77,21 +80,35 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     base.branchId = employee.branchId || base.branchId;
 
     const access = await this.accessPolicy.resolve(employee);
-    const primary = access.roles.find((r) => r.primary) ?? access.roles[0];
+
+    // Mode "tester ce rôle" (impersonation) : un indicateur Redis, posé par
+    // POST /auth/impersonate/role/:roleId, substitue les permissions réelles
+    // par celles du rôle simulé — sub/employeeId restent ceux de l'employé
+    // réel, seule cette couche est affectée (traçabilité d'audit intacte).
+    const overrideRoleId = await this.redis.get(
+      `${IMPERSONATE_ROLE_KEY_PREFIX}${employee.id}`,
+    );
+    const effective = overrideRoleId
+      ? await this.accessPolicy.resolveAsRole(employee, overrideRoleId)
+      : access;
+
+    const primary =
+      effective.roles.find((r) => r.primary) ?? effective.roles[0];
     if (primary) {
       base.roleId = primary.id;
-      base.roleIds = access.roles.map((r) => r.id);
+      base.roleIds = effective.roles.map((r) => r.id);
       base.roleName = primary.nameEn ?? primary.nameAr;
-      base.roleNames = access.roles.map((r) => r.nameEn ?? r.nameAr);
+      base.roleNames = effective.roles.map((r) => r.nameEn ?? r.nameAr);
       base.scope = primary.scope;
       base.role = primary.nameEn ?? primary.nameAr;
     } else {
       base.role = employee.role ?? 'EMPLOYEE';
     }
-    base.permissions = access.permissions;
-    base.capabilities = access.capabilities;
-    base.modules = access.modules.map((m) => m.key);
-    base.dataScope = access.dataScope;
+    base.companyId = effective.employee.companyId || base.companyId;
+    base.permissions = effective.permissions;
+    base.capabilities = effective.capabilities;
+    base.modules = effective.modules.map((m) => m.key);
+    base.dataScope = effective.dataScope;
     return base;
   }
 }

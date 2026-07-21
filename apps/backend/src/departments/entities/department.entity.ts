@@ -27,8 +27,9 @@ export class Department {
   @Column({ name: 'name_ar' })
   nameAr!: string;
 
-  @Column({ name: 'name_en' })
-  nameEn!: string;
+  // Optionnel : l'arabe est la langue de référence, l'anglais un complément
+  @Column({ name: 'name_en', type: 'varchar', nullable: true })
+  nameEn!: string | null;
 
   @Column({ default: true })
   active!: boolean;

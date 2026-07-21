@@ -5,6 +5,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { OrderStatus } from '../../orders/dto/order.dto.js';
 
 export enum DeliveryTaskStatus {
   AVAILABLE = 'AVAILABLE',
@@ -34,6 +35,22 @@ export class DeliveryTask {
   @Column({ name: 'issue_reason', type: 'text', nullable: true }) issueReason!:
     | string
     | null;
+  @Column({ name: 'issue_description', type: 'text', nullable: true })
+  issueDescription!: string | null;
+  @Column({
+    name: 'previous_order_status',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  previousOrderStatus!: OrderStatus | null;
+  @Column({
+    name: 'previous_delivery_status',
+    type: 'varchar',
+    length: 30,
+    nullable: true,
+  })
+  previousDeliveryStatus!: DeliveryTaskStatus | null;
   @Column({ name: 'picked_up_at', type: 'timestamptz', nullable: true })
   pickedUpAt!: Date | null;
   @Column({ name: 'delivered_at', type: 'timestamptz', nullable: true })

@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ProductsService } from './products.service.js';
 import { Product } from './entities/product.entity.js';
 import { ProductFavorite } from './entities/product-favorite.entity.js';
+import { ProductRecipeLine } from './entities/product-recipe-line.entity.js';
 import { ProductSupplierPrice } from './entities/product-supplier-price.entity.js';
 import { ProductType } from './dto/product.dto.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
@@ -44,6 +45,7 @@ describe('ProductsService', () => {
   let repo: ReturnType<typeof mockRepo>;
   let favoritesRepo: ReturnType<typeof mockRepo>;
   let inventoryRepo: ReturnType<typeof mockRepo>;
+  let recipeRepo: ReturnType<typeof mockRepo>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -52,6 +54,10 @@ describe('ProductsService', () => {
         { provide: getRepositoryToken(Product), useFactory: mockRepo },
         { provide: getRepositoryToken(ProductFavorite), useFactory: mockRepo },
         { provide: getRepositoryToken(InventoryItem), useFactory: mockRepo },
+        {
+          provide: getRepositoryToken(ProductRecipeLine),
+          useFactory: mockRepo,
+        },
         {
           provide: getRepositoryToken(ProductSupplierPrice),
           useFactory: mockRepo,
@@ -64,10 +70,77 @@ describe('ProductsService', () => {
     repo = module.get(getRepositoryToken(Product));
     favoritesRepo = module.get(getRepositoryToken(ProductFavorite));
     inventoryRepo = module.get(getRepositoryToken(InventoryItem));
+    recipeRepo = module.get(getRepositoryToken(ProductRecipeLine));
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('create/update — isPurchased/isSold/isVipSelfService dérivés de type', () => {
+    beforeEach(() => {
+      repo.create.mockImplementation((v: unknown) => v);
+      repo.save.mockImplementation((v: unknown) => Promise.resolve(v));
+    });
+
+    it('derives isSold=true, isVipSelfService=false for COMMANDABLE when flags are omitted', async () => {
+      const dto = {
+        nameAr: 'قهوة',
+        category: 'beverages',
+        type: ProductType.COMMANDABLE,
+        active: true,
+      } as Parameters<typeof service.create>[0];
+
+      const result = await service.create(dto);
+
+      expect(result.isSold).toBe(true);
+      expect(result.isPurchased).toBe(true);
+      expect(result.isVipSelfService).toBe(false);
+    });
+
+    it('derives isSold=false, isVipSelfService=true for LIBRE_SERVICE_VIP when flags are omitted', async () => {
+      const dto = {
+        nameAr: 'مشروب VIP',
+        category: 'beverages',
+        type: ProductType.LIBRE_SERVICE_VIP,
+        active: true,
+      } as Parameters<typeof service.create>[0];
+
+      const result = await service.create(dto);
+
+      expect(result.isSold).toBe(false);
+      expect(result.isPurchased).toBe(true);
+      expect(result.isVipSelfService).toBe(true);
+    });
+
+    it('lets explicit flags override the type-derived defaults', async () => {
+      const dto = {
+        nameAr: 'بن',
+        category: 'ingredients',
+        type: ProductType.COMMANDABLE,
+        active: true,
+        isSold: false,
+        isPurchased: true,
+        isVipSelfService: false,
+      } as Parameters<typeof service.create>[0];
+
+      const result = await service.create(dto);
+
+      expect(result.isSold).toBe(false);
+    });
+
+    it('re-derives flags on update when type changes and flags are not explicitly sent', async () => {
+      repo.findOne.mockResolvedValue(
+        makeProduct({ isSold: true, isVipSelfService: false }),
+      );
+
+      const result = await service.update('prod-1', {
+        type: ProductType.LIBRE_SERVICE_VIP,
+      });
+
+      expect(result.isSold).toBe(false);
+      expect(result.isVipSelfService).toBe(true);
+    });
   });
 
   describe('findAvailability — additif, ne touche pas findAll/isAdmin', () => {
@@ -97,32 +170,27 @@ describe('ProductsService', () => {
   });
 
   describe('findAll — règle §3.2 CLAUDE.md (filtrage backend)', () => {
-    it('should return only COMMANDABLE products for EMPLOYEE role', async () => {
-      const commandable = makeProduct({ type: ProductType.COMMANDABLE });
+    it('should return only isSold products for EMPLOYEE role', async () => {
+      const commandable = makeProduct({ isSold: true });
       const qb = makeQb([commandable]);
       repo.createQueryBuilder.mockReturnValue(qb);
 
       const result = await service.findAll('EMPLOYEE');
 
-      expect(qb.andWhere).toHaveBeenCalledWith('p.type = :type', {
-        type: ProductType.COMMANDABLE,
-      });
+      expect(qb.andWhere).toHaveBeenCalledWith('p.is_sold = true');
       expect(result).toHaveLength(1);
-      expect(result[0].type).toBe(ProductType.COMMANDABLE);
+      expect(result[0].isSold).toBe(true);
     });
 
-    it('should return all products (incl. LIBRE_SERVICE_VIP) for ADMIN', async () => {
-      const vip = makeProduct({ type: ProductType.LIBRE_SERVICE_VIP });
+    it('should return all products (incl. VIP) for ADMIN', async () => {
+      const vip = makeProduct({ isSold: false, isVipSelfService: true });
       const qb = makeQb([vip]);
       repo.createQueryBuilder.mockReturnValue(qb);
 
       const result = await service.findAll('ADMIN');
 
-      expect(qb.andWhere).not.toHaveBeenCalledWith(
-        'p.type = :type',
-        expect.anything(),
-      );
-      expect(result[0].type).toBe(ProductType.LIBRE_SERVICE_VIP);
+      expect(qb.andWhere).not.toHaveBeenCalledWith('p.is_sold = true');
+      expect(result[0].isVipSelfService).toBe(true);
     });
 
     it('should filter by allowedRoles when product has role restrictions', async () => {
@@ -161,6 +229,77 @@ describe('ProductsService', () => {
       await expect(service.findOne('unknown')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('recette (nomenclature)', () => {
+    it('adds an ingredient line to a product’s recipe', async () => {
+      repo.findOne
+        .mockResolvedValueOnce(makeProduct({ id: 'prod-latte' }))
+        .mockResolvedValueOnce(makeProduct({ id: 'ing-coffee' }));
+      recipeRepo.findOne
+        .mockResolvedValueOnce(null) // ingredient has no recipe of its own
+        .mockResolvedValueOnce(null) // product is not itself an ingredient elsewhere
+        .mockResolvedValueOnce(null); // no existing line for this pair
+      recipeRepo.create.mockImplementation((v: unknown) => v);
+      recipeRepo.save.mockImplementation((v: unknown) =>
+        Promise.resolve({ id: 'line-1', ...(v as object) }),
+      );
+
+      const result = await service.addRecipeLine('prod-latte', {
+        ingredientProductId: 'ing-coffee',
+        quantity: 7,
+      });
+
+      expect(result.ingredientProductId).toBe('ing-coffee');
+      expect(result.quantity).toBe(7);
+    });
+
+    it('rejects a line where the product references itself', async () => {
+      await expect(
+        service.addRecipeLine('prod-1', {
+          ingredientProductId: 'prod-1',
+          quantity: 1,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects nesting — the ingredient already has its own recipe', async () => {
+      repo.findOne
+        .mockResolvedValueOnce(makeProduct({ id: 'prod-combo' }))
+        .mockResolvedValueOnce(makeProduct({ id: 'prod-latte' }));
+      recipeRepo.findOne
+        .mockResolvedValueOnce({ id: 'existing-line' }) // ingredient (prod-latte) has a recipe
+        .mockResolvedValueOnce(null);
+
+      await expect(
+        service.addRecipeLine('prod-combo', {
+          ingredientProductId: 'prod-latte',
+          quantity: 1,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects nesting — the product is already used as an ingredient elsewhere', async () => {
+      repo.findOne
+        .mockResolvedValueOnce(makeProduct({ id: 'ing-coffee' }))
+        .mockResolvedValueOnce(makeProduct({ id: 'ing-sugar' }));
+      recipeRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'existing-line' }); // ing-coffee already used as an ingredient
+
+      await expect(
+        service.addRecipeLine('ing-coffee', {
+          ingredientProductId: 'ing-sugar',
+          quantity: 1,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('recipeSnapshotsFor returns [] for an empty productIds list without querying', async () => {
+      const result = await service.recipeSnapshotsFor([]);
+      expect(result).toEqual([]);
+      expect(recipeRepo.find).not.toHaveBeenCalled();
     });
   });
 

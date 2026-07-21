@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import {
   PurchaseOrder,
   PurchaseOrderStatus,
@@ -21,6 +21,7 @@ import {
 import { InventoryService } from '../inventory/inventory.service.js';
 import { Branch } from '../branches/entities/branch.entity.js';
 import { Employee } from '../employees/entities/employee.entity.js';
+import { Product } from '../products/entities/product.entity.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import {
   InventoryItem,
@@ -38,6 +39,8 @@ export class ProcurementService {
     private readonly branchRepo: Repository<Branch>,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
     private readonly inventoryService: InventoryService,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -71,6 +74,8 @@ export class ProcurementService {
     companyId?: string,
     branchId?: string,
     status?: PurchaseOrderStatus,
+    skip = 0,
+    take = 200,
   ): Promise<PurchaseOrderDto[]> {
     const where: FindOptionsWhere<PurchaseOrder> = {};
     if (companyId) where.companyId = companyId;
@@ -79,6 +84,8 @@ export class ProcurementService {
     const orders = await this.poRepo.find({
       where,
       order: { createdAt: 'DESC' },
+      skip,
+      take,
     });
     return orders.map((o) => this.toDto(o));
   }
@@ -326,6 +333,16 @@ export class ProcurementService {
       );
     }
 
+    // Conversion d'unité d'achat → stock (ex. 1 sac reçu = 1000g en stock) —
+    // unitsPerPurchase vaut 1 par défaut, donc aucun effet pour les produits
+    // qui n'ont pas cette distinction.
+    const products = await this.productRepo.find({
+      where: { id: In(po.lines.map((l) => l.productId)) },
+    });
+    const unitsPerPurchase = new Map(
+      products.map((p) => [p.id, p.unitsPerPurchase]),
+    );
+
     for (const reception of dto.lines) {
       const line = po.lines.find((l) => l.id === reception.lineId);
       if (!line) continue;
@@ -338,12 +355,13 @@ export class ProcurementService {
       line.receivedQty += qty;
       await this.lineRepo.save(line);
 
-      // Entrée stock automatique
+      // Entrée stock automatique — convertie en unité de stock.
+      const stockQty = qty * (unitsPerPurchase.get(line.productId) ?? 1);
       await this.inventoryService.addStockForReceipt(
         line.productId,
         po.branchId,
         po.companyId,
-        qty,
+        stockQty,
       );
     }
 

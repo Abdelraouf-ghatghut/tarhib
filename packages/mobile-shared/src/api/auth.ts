@@ -61,6 +61,16 @@ export interface AccessProfile {
   dataScope: "GLOBAL" | "COMPANY" | "BRANCH" | "OWN";
 }
 
+export interface AcceptInvitePayload {
+  code: string;
+  firstNameAr: string;
+  firstNameEn: string;
+  lastNameAr: string;
+  lastNameEn: string;
+  phoneNumber: string;
+  password: string;
+}
+
 export const authApi = {
   login: (email: string, password: string) =>
     api.post<LoginResponse>("/auth/login", { email, password }),
@@ -71,6 +81,10 @@ export const authApi = {
   refresh: (refreshToken: string) => api.post<LoginResponse>("/auth/refresh", { refreshToken }),
   logout: (refreshToken: string) => api.post("/auth/logout", { refreshToken }),
   deviceToken: (token: string) => api.patch("/auth/device-token", { token }),
+  acceptInvite: (payload: AcceptInvitePayload) => {
+    const { code, ...rest } = payload;
+    return api.post<LoginResponse>("/auth/accept-invite", { token: code, ...rest });
+  },
 };
 
 // GET /mobile/me (client employees) or GET /operations/me (Tarhib staff) —

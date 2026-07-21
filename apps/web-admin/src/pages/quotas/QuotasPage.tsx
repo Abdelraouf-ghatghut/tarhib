@@ -1,12 +1,12 @@
 import { useState } from "react";
 import {
   Alert,
+  App,
   Button,
   DatePicker,
   Form,
   InputNumber,
   Modal,
-  Popconfirm,
   Progress,
   Select,
   Space,
@@ -15,7 +15,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -26,6 +26,8 @@ import { useScope } from "../../contexts/ScopeContext";
 import { useAuth } from "../../hooks/useAuth";
 import { getErrorMessage } from "../../lib/errors";
 import { bilingualName } from "../../lib/bilingualName";
+import { useEntityLookup } from "../../hooks/useEntityLookup";
+import { exportToCsv } from "../../lib/exportCsv";
 
 const { Title, Text } = Typography;
 
@@ -44,6 +46,7 @@ interface Product {
   id: string;
   nameAr: string;
   nameEn: string;
+  isSold: boolean;
 }
 
 interface Employee {
@@ -63,6 +66,7 @@ interface Employee {
  */
 export function QuotasPage() {
   const { t, i18n } = useTranslation();
+  const { modal } = App.useApp();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const isAr = i18n.language.startsWith("ar");
@@ -95,17 +99,19 @@ export function QuotasPage() {
       employeesApi.list(companyId ? { companyId } : undefined).then((r) => r.data as Employee[]),
   });
 
-  const productName = (id: string) => {
-    const p = products.find((x) => x.id === id);
-    return p ? bilingualName(p.nameAr, p.nameEn, isAr) : id.substring(0, 8);
-  };
+  const productName = useEntityLookup(
+    products,
+    (p) => p.id,
+    (p) => bilingualName(p.nameAr, p.nameEn, isAr),
+  );
 
-  const employeeName = (id: string) => {
-    const e = employees.find((x) => x.id === id);
-    if (!e) return id.substring(0, 8);
-    const name = isAr ? `${e.firstNameAr} ${e.lastNameAr}` : `${e.firstNameEn} ${e.lastNameEn}`;
-    return name.trim() || e.email;
-  };
+  const employeeName = useEntityLookup(
+    employees,
+    (e) => e.id,
+    (e) =>
+      (isAr ? `${e.firstNameAr} ${e.lastNameAr}` : `${e.firstNameEn} ${e.lastNameEn}`).trim() ||
+      e.email,
+  );
 
   function openCreate() {
     setEditing(null);
@@ -189,9 +195,25 @@ export function QuotasPage() {
         <Title level={4} style={{ margin: 0 }}>
           {t("quotas")}
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          {t("newQuota")}
-        </Button>
+        <Space>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={() =>
+              exportToCsv(`quotas-${dayjs().format("YYYY-MM-DD")}`, quotas, [
+                { label: t("employee"), value: (q) => employeeName(q.employeeId) },
+                { label: t("product"), value: (q) => productName(q.productId) },
+                { label: t("period"), value: (q) => `${q.periodStart} → ${q.periodEnd}` },
+                { label: t("maxQuantity"), value: (q) => q.maxQuantity },
+                { label: t("usedQuantity"), value: (q) => q.usedQuantity },
+              ])
+            }
+          >
+            {t("exportCsv")}
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            {t("newQuota")}
+          </Button>
+        </Space>
       </div>
 
       {/* Les quotas récurrents par rôle se gèrent dans Rôles & permissions */}
@@ -270,15 +292,21 @@ export function QuotasPage() {
                   icon={<EditOutlined />}
                   onClick={() => openEdit(r)}
                 />
-                <Popconfirm
-                  title={t("deleteConfirm")}
-                  onConfirm={() => void handleDelete(r.id)}
-                  okText={t("confirm")}
-                  cancelText={t("cancel")}
-                  okButtonProps={{ danger: true }}
-                >
-                  <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() =>
+                    modal.confirm({
+                      title: t("deleteConfirm"),
+                      okText: t("confirm"),
+                      cancelText: t("cancel"),
+                      okButtonProps: { danger: true },
+                      onOk: () => handleDelete(r.id),
+                    })
+                  }
+                />
               </Space>
             ),
           },
@@ -319,10 +347,12 @@ export function QuotasPage() {
             <Select
               showSearch
               optionFilterProp="label"
-              options={products.map((p) => ({
-                value: p.id,
-                label: bilingualName(p.nameAr, p.nameEn, isAr),
-              }))}
+              options={products
+                .filter((p) => p.isSold)
+                .map((p) => ({
+                  value: p.id,
+                  label: bilingualName(p.nameAr, p.nameEn, isAr),
+                }))}
             />
           </Form.Item>
           <Form.Item

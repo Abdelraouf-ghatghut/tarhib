@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,7 +20,8 @@ import {
   VipReplenishmentTaskDto,
 } from './dto/vip-self-service.dto.js';
 import { Product } from '../products/entities/product.entity.js';
-import { ProductType } from '../products/dto/product.dto.js';
+import { InventoryService } from '../inventory/inventory.service.js';
+import { StockZone } from '../inventory/entities/inventory-item.entity.js';
 
 @Injectable()
 export class VipSelfServiceService {
@@ -32,7 +34,38 @@ export class VipSelfServiceService {
     private readonly locationProductRepo: Repository<VipLocationProduct>,
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
+    private readonly inventoryService: InventoryService,
   ) {}
+
+  /**
+   * Zone source d'une réappro VIP : jamais CENTRAL (transfert physique avec
+   * délai — l'agent doit d'abord faire arriver le stock en branche via
+   * inventory-transfers, puis relancer la complétion depuis BRANCH). Parmi
+   * KITCHEN/BRANCH, restreint à ce que les permissions stock de l'appelant
+   * autorisent : kitchen-only (stock.kitchen.view/request seuls) → KITCHEN
+   * uniquement ; stock.view/stock.manage/inventory.manage → KITCHEN+BRANCH.
+   */
+  private resolveSourceZone(
+    requested: StockZone | undefined,
+    callerPermissions: string[],
+  ): StockZone {
+    if (requested === StockZone.CENTRAL) {
+      throw new BadRequestException('vipCentralSourceRequiresTransfer');
+    }
+    const hasBranchAccess =
+      callerPermissions.includes('stock.view') ||
+      callerPermissions.includes('stock.manage') ||
+      callerPermissions.includes('inventory.manage');
+    const allowedZones = hasBranchAccess
+      ? [StockZone.KITCHEN, StockZone.BRANCH]
+      : [StockZone.KITCHEN];
+
+    const zone = requested ?? StockZone.KITCHEN;
+    if (!allowedZones.includes(zone)) {
+      throw new ForbiddenException('vipSourceZoneOutsideAccess');
+    }
+    return zone;
+  }
 
   private async assertVipProducts(productIds: string[]): Promise<void> {
     const products = await this.productRepo.find({
@@ -41,7 +74,7 @@ export class VipSelfServiceService {
     if (products.length !== productIds.length) {
       throw new NotFoundException('Un ou plusieurs produits sont introuvables');
     }
-    if (products.some((p) => p.type !== ProductType.LIBRE_SERVICE_VIP)) {
+    if (products.some((p) => !p.isVipSelfService)) {
       throw new BadRequestException('productNotVip');
     }
   }
@@ -279,7 +312,10 @@ export class VipSelfServiceService {
   async completeTask(
     id: string,
     completedBy: string,
+    callerPermissions: string[],
+    sourceZone?: StockZone,
   ): Promise<VipReplenishmentTaskDto> {
+    const zone = this.resolveSourceZone(sourceZone, callerPermissions);
     const task = await this.taskRepo.findOne({ where: { id } });
     if (!task) throw new NotFoundException(`Task ${id} not found`);
     if (task.status === VipTaskStatus.COMPLETED) {
@@ -290,6 +326,21 @@ export class VipSelfServiceService {
       where: { id: task.vipLocationProductId },
     });
     if (item && item.maxThreshold) {
+      const delta = item.maxThreshold - item.quantity;
+      if (delta > 0) {
+        const location = await this.locationRepo.findOne({
+          where: { id: item.vipLocationId },
+        });
+        if (location) {
+          await this.inventoryService.decrementBranchStock(
+            item.productId,
+            location.branchId,
+            location.companyId,
+            delta,
+            zone,
+          );
+        }
+      }
       item.quantity = item.maxThreshold;
       await this.locationProductRepo.save(item);
     }
@@ -347,7 +398,10 @@ export class VipSelfServiceService {
   async replenishLocation(
     vipLocationProductId: string,
     completedBy: string,
+    callerPermissions: string[],
+    sourceZone?: StockZone,
   ): Promise<VipLocationDto> {
+    const zone = this.resolveSourceZone(sourceZone, callerPermissions);
     const item = await this.locationProductRepo.findOne({
       where: { id: vipLocationProductId },
     });
@@ -360,6 +414,16 @@ export class VipSelfServiceService {
       throw new NotFoundException(`Lieu ${item.vipLocationId} introuvable`);
 
     if (item.maxThreshold) {
+      const delta = item.maxThreshold - item.quantity;
+      if (delta > 0) {
+        await this.inventoryService.decrementBranchStock(
+          item.productId,
+          location.branchId,
+          location.companyId,
+          delta,
+          zone,
+        );
+      }
       item.quantity = item.maxThreshold;
       await this.locationProductRepo.save(item);
     }

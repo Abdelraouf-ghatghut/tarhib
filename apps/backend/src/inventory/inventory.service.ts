@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, IsNull, Repository } from 'typeorm';
+import { EntityManager, FindOptionsWhere, IsNull, Repository } from 'typeorm';
 import { InventoryItem, StockZone } from './entities/inventory-item.entity.js';
 import {
   CreateInventoryItemDto,
@@ -19,6 +19,10 @@ import {
 } from './dto/inventory-adjustment.dto.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { Branch } from '../branches/entities/branch.entity.js';
+import {
+  InventoryTransfer,
+  TransferStatus,
+} from '../inventory-transfers/entities/inventory-transfer.entity.js';
 
 @Injectable()
 export class InventoryService {
@@ -29,6 +33,8 @@ export class InventoryService {
     private readonly repo: Repository<InventoryItem>,
     @InjectRepository(Branch)
     private readonly branchRepo: Repository<Branch>,
+    @InjectRepository(InventoryTransfer)
+    private readonly transferRepo: Repository<InventoryTransfer>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -70,12 +76,14 @@ export class InventoryService {
     companyId?: string,
     branchId?: string,
     zone?: StockZone,
+    skip = 0,
+    take = 200,
   ): Promise<InventoryItemDto[]> {
     const where: FindOptionsWhere<InventoryItem> = {};
     if (companyId) where.companyId = companyId;
     if (branchId) where.branchId = branchId;
     if (zone) where.zone = zone;
-    const entities = await this.repo.find({ where });
+    const entities = await this.repo.find({ where, skip, take });
     return entities.map((e) => this.toDto(e));
   }
 
@@ -227,6 +235,117 @@ export class InventoryService {
       });
     }
     await this.repo.save(item);
+  }
+
+  /**
+   * Utilisé par OrdersService (décrémentation recette, toujours zone BRANCH —
+   * §9 CLAUDE.md) et par VipSelfServiceService lors d'une réappro VIP, où la
+   * zone source est choisie par l'agent (le stock VIP peut être réapprovisionné
+   * depuis CENTRAL/BRANCH/KITCHEN) — décrémente la zone source d'autant que ce
+   * qui est déplacé, pour que le stock entrepôt reste correct (sinon double
+   * comptage — la quantité apparaît à la fois dans la zone source et dans
+   * l'emplacement VIP).
+   */
+  /**
+   * `manager` optionnel : permet à l'appelant (ex. décrémentation multi-lignes
+   * d'OrdersService) de faire participer cette décrémentation à une
+   * transaction englobante — sans, une rupture à la ligne N ne défait pas
+   * les décrémentations déjà commises des lignes 1..N-1.
+   */
+  async decrementBranchStock(
+    productId: string,
+    branchId: string,
+    companyId: string,
+    qty: number,
+    zone: StockZone = StockZone.BRANCH,
+    manager?: EntityManager,
+  ): Promise<void> {
+    if (qty <= 0) return;
+    const run = async (m: EntityManager) => {
+      const inventory = m.getRepository(InventoryItem);
+      const item = await inventory.findOne({
+        where: { productId, branchId, companyId, zone },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!item || item.quantity < qty) {
+        throw new BadRequestException('insufficientInventoryStock');
+      }
+      item.quantity -= qty;
+      await inventory.save(item);
+    };
+    if (manager) {
+      await run(manager);
+    } else {
+      await this.repo.manager.transaction(run);
+    }
+  }
+
+  /**
+   * Décrémentation à la préparation d'une commande : les commandes sont
+   * préparées en cuisine, donc le stock CUISINE part en premier. S'il est
+   * insuffisant, le manque est comblé automatiquement depuis la BRANCHE
+   * (réappro implicite) — rupture uniquement si branche + cuisine ne
+   * suffisent pas ensemble. `manager` doit venir d'une transaction englobante
+   * (OrdersService décrémente toutes les lignes d'une commande d'un coup).
+   * Le repli branche→cuisine génère un InventoryTransfer CONFIRMED (§11
+   * CLAUDE.md — toute opération de stock doit être historisée), traçable au
+   * même titre qu'un transfert manuel dans GET /inventory-transfers.
+   */
+  async decrementForPreparation(
+    productId: string,
+    branchId: string,
+    companyId: string,
+    qty: number,
+    manager: EntityManager,
+    preparedBy: string,
+  ): Promise<void> {
+    if (qty <= 0) return;
+    const inventory = manager.getRepository(InventoryItem);
+    const kitchenItem = await inventory.findOne({
+      where: { productId, branchId, companyId, zone: StockZone.KITCHEN },
+      lock: { mode: 'pessimistic_write' },
+    });
+    const kitchenQty = kitchenItem?.quantity ?? 0;
+    if (kitchenQty >= qty) {
+      kitchenItem!.quantity -= qty;
+      await inventory.save(kitchenItem!);
+      return;
+    }
+
+    const deficit = qty - kitchenQty;
+    const branchItem = await inventory.findOne({
+      where: { productId, branchId, companyId, zone: StockZone.BRANCH },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!branchItem || branchItem.quantity < deficit) {
+      throw new BadRequestException('insufficientInventoryStock');
+    }
+    branchItem.quantity -= deficit;
+    await inventory.save(branchItem);
+    if (kitchenItem) {
+      kitchenItem.quantity = 0;
+      await inventory.save(kitchenItem);
+    }
+
+    const transfers = manager.getRepository(InventoryTransfer);
+    const now = new Date();
+    await transfers.save(
+      transfers.create({
+        companyId,
+        branchId,
+        productId,
+        fromZone: StockZone.BRANCH,
+        toZone: StockZone.KITCHEN,
+        quantity: deficit,
+        status: TransferStatus.CONFIRMED,
+        requestedBy: preparedBy,
+        confirmedBy: preparedBy,
+        note: 'Transfert automatique — rupture cuisine à la préparation',
+        confirmedAt: now,
+        cancelledBy: null,
+        cancelledAt: null,
+      }),
+    );
   }
 
   /** Used internally by OrdersService — checks zone=BRANCH stock */

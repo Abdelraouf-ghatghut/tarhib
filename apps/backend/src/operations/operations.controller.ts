@@ -127,7 +127,7 @@ export class OperationsController {
   private async findEmployee(user: JwtPayload): Promise<Employee> {
     const employee = await this.employeeRepo.findOne({
       where: [{ keycloakId: user.sub }, { id: user.sub }],
-      relations: ['additionalRoles'],
+      relations: ['additionalRoles', 'company', 'branch'],
     });
     if (!employee) throw new NotFoundException('Employee not found');
     return employee;

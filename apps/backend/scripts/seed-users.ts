@@ -57,6 +57,38 @@ import {
   PurchaseOrderStatus,
 } from '../src/procurement/entities/purchase-order.entity';
 import { PurchaseOrderLine } from '../src/procurement/entities/purchase-order-line.entity';
+import {
+  CleaningTask,
+  CleaningTaskRecurrence,
+  CleaningTaskStatus,
+} from '../src/cleaning-tasks/entities/cleaning-task.entity';
+import { CleaningProduct } from '../src/cleaning-products/entities/cleaning-product.entity';
+import { CleaningStockItem } from '../src/cleaning-stock/entities/cleaning-stock-item.entity';
+import {
+  CleaningStockRequest,
+  CleaningStockRequestStatus,
+} from '../src/cleaning-stock/entities/cleaning-stock-request.entity';
+import {
+  DeliveryTask,
+  DeliveryTaskStatus,
+} from '../src/delivery/entities/delivery-task.entity';
+import {
+  InventoryReplenishmentRequest,
+  ReplenishmentStatus,
+} from '../src/inventory-replenishments/entities/inventory-replenishment.entity';
+import {
+  InventoryTransfer,
+  TransferStatus,
+} from '../src/inventory-transfers/entities/inventory-transfer.entity';
+import {
+  MeetingPreparation,
+  MeetingPreparationStatus,
+} from '../src/meeting-preparations/entities/meeting-preparation.entity';
+import {
+  BookingStatus,
+  RoomBooking,
+} from '../src/meeting-rooms/entities/room-booking.entity';
+import { Notification } from '../src/notifications/entities/notification.entity';
 
 const logger = new Logger('Seed');
 const DEFAULT_PASSWORD = 'Tarhib@2026!';
@@ -316,6 +348,9 @@ async function main(): Promise<void> {
 
     await ds.query(`
       TRUNCATE TABLE
+        notifications, cleaning_stock_requests, cleaning_stock_items,
+        cleaning_tasks, cleaning_products, meeting_preparations,
+        delivery_tasks, inventory_replenishment_requests,
         order_lines, orders, employee_quota_usage, quotas,
         room_bookings, meeting_service_packages, meeting_rooms,
         vip_replenishment_tasks, inventory_transfers, inventory_items,
@@ -863,6 +898,8 @@ async function main(): Promise<void> {
     companyId: string | null;
     branchId: string | null;
     departmentId: string | null;
+    floor?: string | null;
+    officeNumber?: string | null;
   }
 
   async function upsertUser(u: SeedUser): Promise<void> {
@@ -873,13 +910,17 @@ async function main(): Promise<void> {
         existing.scope !== u.scope ||
         existing.companyId !== u.companyId ||
         existing.branchId !== u.branchId ||
-        existing.departmentId !== u.departmentId;
+        existing.departmentId !== u.departmentId ||
+        existing.floor !== (u.floor ?? existing.floor) ||
+        existing.officeNumber !== (u.officeNumber ?? existing.officeNumber);
       if (changed) {
         existing.roleId = u.role?.id ?? null;
         existing.scope = u.scope;
         existing.companyId = u.companyId;
         existing.branchId = u.branchId;
         existing.departmentId = u.departmentId;
+        existing.floor = u.floor ?? existing.floor;
+        existing.officeNumber = u.officeNumber ?? existing.officeNumber;
         await employeeRepo.save(existing);
         logger.log(`Utilisateur réaligné : ${u.email}`);
       }
@@ -909,6 +950,8 @@ async function main(): Promise<void> {
         companyId: u.companyId,
         branchId: u.branchId,
         departmentId: u.departmentId,
+        floor: u.floor ?? null,
+        officeNumber: u.officeNumber ?? null,
         role: u.role?.nameEn ?? undefined,
         roleId: u.role?.id ?? null,
         scope: u.scope,
@@ -1040,6 +1083,88 @@ async function main(): Promise<void> {
   });
 
   // Externes : employés des sociétés clientes (app mobile uniquement)
+  const extraOperationsUsers: SeedUser[] = [
+    {
+      email: 'direction@tarhib.app',
+      phone: '+218910100009',
+      firstNameAr: 'أحمد',
+      lastNameAr: 'المدير',
+      firstNameEn: 'Ahmed',
+      lastNameEn: 'Director',
+      scope: EmployeeScope.TARHIB,
+      role: await findTarhibRole('General Director'),
+      companyId: null,
+      branchId: null,
+      departmentId: null,
+    },
+    {
+      email: 'sous.direction@tarhib.app',
+      phone: '+218910100010',
+      firstNameAr: 'مريم',
+      lastNameAr: 'النائب',
+      firstNameEn: 'Mariam',
+      lastNameEn: 'Deputy',
+      scope: EmployeeScope.TARHIB,
+      role: await findTarhibRole('Deputy Director'),
+      companyId: oasis.id,
+      branchId: oasisHq.id,
+      departmentId: null,
+    },
+    {
+      email: 'nettoyage.manager@tarhib.app',
+      phone: '+218910100011',
+      firstNameAr: 'سارة',
+      lastNameAr: 'المشرفة',
+      firstNameEn: 'Sara',
+      lastNameEn: 'Cleaning Manager',
+      scope: EmployeeScope.TARHIB,
+      role: await findTarhibRole('Hospitality and Cleaning Manager'),
+      companyId: oasis.id,
+      branchId: oasisHq.id,
+      departmentId: null,
+    },
+    {
+      email: 'hospitalite@tarhib.app',
+      phone: '+218910100012',
+      firstNameAr: 'علي',
+      lastNameAr: 'الضيافة',
+      firstNameEn: 'Ali',
+      lastNameEn: 'Hospitality',
+      scope: EmployeeScope.TARHIB,
+      role: await findTarhibRole('Hospitality Agent'),
+      companyId: oasis.id,
+      branchId: oasisHq.id,
+      departmentId: null,
+    },
+    {
+      email: 'nettoyage@tarhib.app',
+      phone: '+218910100013',
+      firstNameAr: 'خديجة',
+      lastNameAr: 'النظافة',
+      firstNameEn: 'Khadija',
+      lastNameEn: 'Cleaner',
+      scope: EmployeeScope.TARHIB,
+      role: await findTarhibRole('Cleaner'),
+      companyId: oasis.id,
+      branchId: oasisHq.id,
+      departmentId: null,
+    },
+    {
+      email: 'vip@tarhib.app',
+      phone: '+218910100014',
+      firstNameAr: 'يوسف',
+      lastNameAr: 'كبار الضيوف',
+      firstNameEn: 'Youssef',
+      lastNameEn: 'VIP',
+      scope: EmployeeScope.TARHIB,
+      role: await findTarhibRole('VIP Replenishment Agent'),
+      companyId: oasis.id,
+      branchId: oasisHq.id,
+      departmentId: null,
+    },
+  ];
+  for (const user of extraOperationsUsers) await upsertUser(user);
+
   await upsertUser({
     email: 'salma.alfaitouri@alwaha-bank.ly',
     phone: '+218920200001',
@@ -1424,6 +1549,491 @@ async function main(): Promise<void> {
   }
 
   logger.log('Seed terminé ✔ — mot de passe commun : Tarhib@2026!');
+  // Operations 2.0 test fixtures.
+  const cleaner = await employeeRepo.findOne({
+    where: { email: 'nettoyage@tarhib.app' },
+  });
+  const hospitalityAgent = await employeeRepo.findOne({
+    where: { email: 'hospitalite@tarhib.app' },
+  });
+  const cleaningManager = await employeeRepo.findOne({
+    where: { email: 'nettoyage.manager@tarhib.app' },
+  });
+  const stockManager = await employeeRepo.findOne({
+    where: { email: 'stock@tarhib.app' },
+  });
+  const deliveryAgent = await employeeRepo.findOne({
+    where: { email: 'livreur@tarhib.app' },
+  });
+  const clientEmployees = await employeeRepo.find({
+    where: { scope: EmployeeScope.CLIENT },
+  });
+  for (const [index, employee] of clientEmployees.entries()) {
+    employee.floor = `${1 + (index % 6)}`;
+    employee.officeNumber = `${100 + index}`;
+  }
+  await employeeRepo.save(clientEmployees);
+
+  // Complete the mobile procurement state matrix left intentionally active.
+  const procurementActor =
+    (await employeeRepo.findOne({ where: { email: 'achats@tarhib.app' } })) ??
+    stockManager;
+  const procurementSupplier = await supplierRepo.findOne({ where: {} });
+  if (procurementActor && procurementSupplier) {
+    const procurementService = app.get(ProcurementService);
+    for (const status of [
+      PurchaseOrderStatus.DRAFT,
+      PurchaseOrderStatus.PENDING_VALIDATION,
+      PurchaseOrderStatus.VALIDATED,
+      PurchaseOrderStatus.CANCELLED,
+    ]) {
+      if (!(await poRepo.findOne({ where: { status } }))) {
+        const created = await procurementService.create(
+          {
+            companyId: oasis.id,
+            branchId: oasisHq.id,
+            supplierId: procurementSupplier.id,
+            notes: `Seed fixture · ${status}`,
+            lines: [
+              {
+                productId: productByName.get('Water')!.id,
+                orderedQty: 10,
+                unitCost: 28,
+              },
+            ],
+          },
+          procurementActor.keycloakId ?? procurementActor.id,
+        );
+        const order = await poRepo.findOne({ where: { id: created.id } });
+        if (order) {
+          order.status = status;
+          if (status === PurchaseOrderStatus.CANCELLED) {
+            order.cancelledBy = procurementActor.id;
+            order.cancelledAt = new Date();
+          }
+          await poRepo.save(order);
+        }
+      }
+    }
+  }
+
+  for (const productName of ['Black Coffee', 'Water', 'Green Tea']) {
+    const product = productByName.get(productName)!;
+    for (const [zone, quantity] of [
+      [StockZone.CENTRAL, 250],
+      [StockZone.KITCHEN, productName === 'Green Tea' ? 3 : 25],
+    ] as const) {
+      const existing = await inventoryRepo.findOne({
+        where: {
+          companyId: oasis.id,
+          branchId: oasisHq.id,
+          productId: product.id,
+          zone,
+        },
+      });
+      if (!existing)
+        await inventoryRepo.save(
+          inventoryRepo.create({
+            companyId: oasis.id,
+            branchId: oasisHq.id,
+            productId: product.id,
+            zone,
+            quantity,
+            minThreshold: 10,
+            maxThreshold: 300,
+            locationName:
+              zone === StockZone.KITCHEN ? 'Main kitchen' : 'Central warehouse',
+            departmentId: null,
+            assignedEmployeeId: null,
+          }),
+        );
+    }
+  }
+
+  const transferRepo = ds.getRepository(InventoryTransfer);
+  if ((await transferRepo.count()) === 0 && stockManager) {
+    const product = productByName.get('Black Coffee')!;
+    await transferRepo.save([
+      transferRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        productId: product.id,
+        fromZone: StockZone.BRANCH,
+        toZone: StockZone.KITCHEN,
+        quantity: 12,
+        status: TransferStatus.PENDING,
+        requestedBy: stockManager.id,
+        confirmedBy: null,
+        note: 'Kitchen morning replenishment',
+        confirmedAt: null,
+        cancelledBy: null,
+        cancelledAt: null,
+      }),
+      transferRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        productId: product.id,
+        fromZone: StockZone.CENTRAL,
+        toZone: StockZone.BRANCH,
+        quantity: 40,
+        status: TransferStatus.CONFIRMED,
+        requestedBy: stockManager.id,
+        confirmedBy: stockManager.id,
+        note: 'Weekly branch replenishment',
+        confirmedAt: new Date(),
+        cancelledBy: null,
+        cancelledAt: null,
+      }),
+      transferRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        productId: product.id,
+        fromZone: StockZone.BRANCH,
+        toZone: StockZone.KITCHEN,
+        quantity: 5,
+        status: TransferStatus.CANCELLED,
+        requestedBy: stockManager.id,
+        confirmedBy: null,
+        note: 'Duplicate request',
+        confirmedAt: null,
+        cancelledBy: stockManager.id,
+        cancelledAt: new Date(),
+      }),
+    ]);
+  }
+  const replenishmentRepo = ds.getRepository(InventoryReplenishmentRequest);
+  if ((await replenishmentRepo.count()) === 0 && hospitalityAgent) {
+    await replenishmentRepo.save([
+      replenishmentRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        productId: productByName.get('Green Tea')!.id,
+        requestedQty: 20,
+        requestedBy: hospitalityAgent.id,
+        approvedBy: null,
+        transferId: null,
+        status: ReplenishmentStatus.REQUESTED,
+        note: 'Kitchen stock below threshold',
+      }),
+      replenishmentRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        productId: productByName.get('Water')!.id,
+        requestedQty: 30,
+        requestedBy: hospitalityAgent.id,
+        approvedBy: stockManager?.id ?? null,
+        transferId: null,
+        status: ReplenishmentStatus.APPROVED,
+        note: 'Approved for afternoon service',
+      }),
+    ]);
+  }
+
+  const cleaningProductRepo = ds.getRepository(CleaningProduct);
+  const cleaningProductByName = new Map<string, CleaningProduct>();
+  for (const definition of [
+    {
+      nameAr: 'منظف متعدد الاستعمالات',
+      nameEn: 'Multi-purpose cleaner',
+      category: 'Cleaning agents',
+      unit: 'bottle',
+      unitCost: 18,
+    },
+    {
+      nameAr: 'أكياس نفايات',
+      nameEn: 'Waste bags',
+      category: 'Consumables',
+      unit: 'roll',
+      unitCost: 12,
+    },
+    {
+      nameAr: 'مناديل ورقية',
+      nameEn: 'Paper towels',
+      category: 'Consumables',
+      unit: 'pack',
+      unitCost: 9,
+    },
+  ]) {
+    let product = await cleaningProductRepo.findOne({
+      where: { nameEn: definition.nameEn },
+    });
+    if (!product)
+      product = await cleaningProductRepo.save(
+        cleaningProductRepo.create({
+          ...definition,
+          imageUrl: null,
+          active: true,
+        }),
+      );
+    cleaningProductByName.set(product.nameEn, product);
+  }
+  const cleaningStockRepo = ds.getRepository(CleaningStockItem);
+  for (const [index, product] of [
+    ...cleaningProductByName.values(),
+  ].entries()) {
+    if (
+      !(await cleaningStockRepo.findOne({
+        where: {
+          companyId: oasis.id,
+          branchId: oasisHq.id,
+          cleaningProductId: product.id,
+        },
+      }))
+    ) {
+      await cleaningStockRepo.save(
+        cleaningStockRepo.create({
+          companyId: oasis.id,
+          branchId: oasisHq.id,
+          cleaningProductId: product.id,
+          quantity: index === 1 ? 2 : 18,
+          minThreshold: 5,
+          maxThreshold: 30,
+          locationName: 'Facilities store',
+        }),
+      );
+    }
+  }
+  const cleaningRequestRepo = ds.getRepository(CleaningStockRequest);
+  if ((await cleaningRequestRepo.count()) === 0 && cleaner) {
+    await cleaningRequestRepo.save([
+      cleaningRequestRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        cleaningProductId: cleaningProductByName.get('Waste bags')!.id,
+        requestedQty: 10,
+        requestedBy: cleaner.id,
+        status: CleaningStockRequestStatus.REQUESTED,
+        note: 'Low stock for tomorrow',
+      }),
+      cleaningRequestRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        cleaningProductId: cleaningProductByName.get('Paper towels')!.id,
+        requestedQty: 12,
+        requestedBy: cleaner.id,
+        status: CleaningStockRequestStatus.FULFILLED,
+        note: 'Delivered to facilities store',
+      }),
+    ]);
+  }
+
+  const bookingRepo = ds.getRepository(RoomBooking);
+  const preparationRepo = ds.getRepository(MeetingPreparation);
+  const taskRepo = ds.getRepository(CleaningTask);
+  const rooms = await meetingRoomRepo.find({ where: { companyId: oasis.id } });
+  if (
+    (await bookingRepo.count()) === 0 &&
+    rooms.length &&
+    clientEmployees.length
+  ) {
+    const now = Date.now();
+    const definitions = [
+      { offset: 2, status: BookingStatus.CONFIRMED },
+      { offset: 6, status: BookingStatus.CONFIRMED },
+      { offset: 28, status: BookingStatus.CONFIRMED },
+      { offset: -4, status: BookingStatus.COMPLETED },
+      { offset: 48, status: BookingStatus.CANCELLED },
+    ];
+    for (const [index, definition] of definitions.entries()) {
+      const room = rooms[index % rooms.length];
+      const booking = await bookingRepo.save(
+        bookingRepo.create({
+          roomId: room.id,
+          employeeId: clientEmployees[index % clientEmployees.length].id,
+          companyId: oasis.id,
+          startTime: new Date(now + definition.offset * 3_600_000),
+          endTime: new Date(now + (definition.offset + 1) * 3_600_000),
+          status: definition.status,
+          services: {
+            package: index % 2 ? 'BREAKFAST' : 'LUNCH',
+            participants: 6 + index,
+          },
+        }),
+      );
+      if (definition.status === BookingStatus.CONFIRMED) {
+        await preparationRepo.save(
+          preparationRepo.create({
+            bookingId: booking.id,
+            companyId: oasis.id,
+            branchId: room.branchId,
+            assignedEmployeeId:
+              index === 0 ? (hospitalityAgent?.id ?? null) : null,
+            status:
+              index === 0
+                ? MeetingPreparationStatus.ASSIGNED
+                : MeetingPreparationStatus.PENDING,
+            checklist: [
+              { key: 'room', label: 'Room set up', done: false },
+              { key: 'equipment', label: 'Equipment tested', done: false },
+              {
+                key: 'service',
+                label: 'Drinks and service prepared',
+                done: false,
+              },
+              { key: 'control', label: 'Final check', done: false },
+            ],
+            startedAt: null,
+            readyAt: null,
+            completedAt: null,
+            verifiedBy: null,
+          }),
+        );
+      } else if (definition.status === BookingStatus.COMPLETED) {
+        await taskRepo.save(
+          taskRepo.create({
+            companyId: oasis.id,
+            branchId: room.branchId,
+            title: `Meeting room reset · ${room.nameEn}`,
+            description: `${room.nameAr} / ${room.nameEn}`,
+            sourceBookingId: booking.id,
+            roomId: room.id,
+            scheduledStartAt: booking.endTime,
+            scheduledEndAt: new Date(booking.endTime.getTime() + 30 * 60_000),
+            assignedEmployeeId: cleaner?.id ?? null,
+            status: CleaningTaskStatus.DONE,
+            dueDate: booking.endTime.toISOString().slice(0, 10),
+            recurrence: CleaningTaskRecurrence.ONCE,
+            completedAt: new Date(),
+            verifiedByEmployeeId: cleaningManager?.id ?? null,
+            verifiedAt: null,
+            notes: 'Automatic post-meeting task',
+          }),
+        );
+      }
+    }
+  }
+  if ((await taskRepo.count()) < 4) {
+    const today = new Date().toISOString().slice(0, 10);
+    await taskRepo.save([
+      taskRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        title: 'Morning lobby inspection',
+        description: 'Clean and inspect the main lobby',
+        sourceBookingId: null,
+        roomId: null,
+        scheduledStartAt: null,
+        scheduledEndAt: null,
+        assignedEmployeeId: cleaner?.id ?? null,
+        status: CleaningTaskStatus.ASSIGNED,
+        dueDate: today,
+        recurrence: CleaningTaskRecurrence.DAILY,
+        completedAt: null,
+        verifiedByEmployeeId: null,
+        verifiedAt: null,
+        notes: null,
+      }),
+      taskRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        title: 'Executive floor deep clean',
+        description: 'Weekly deep-cleaning rotation',
+        sourceBookingId: null,
+        roomId: null,
+        scheduledStartAt: null,
+        scheduledEndAt: null,
+        assignedEmployeeId: null,
+        status: CleaningTaskStatus.PENDING,
+        dueDate: today,
+        recurrence: CleaningTaskRecurrence.WEEKLY,
+        completedAt: null,
+        verifiedByEmployeeId: null,
+        verifiedAt: null,
+        notes: 'Ready for manager assignment',
+      }),
+      taskRepo.create({
+        companyId: oasis.id,
+        branchId: oasisHq.id,
+        title: 'Cafeteria closing clean',
+        description: 'Completed task awaiting verification',
+        sourceBookingId: null,
+        roomId: null,
+        scheduledStartAt: null,
+        scheduledEndAt: null,
+        assignedEmployeeId: cleaner?.id ?? null,
+        status: CleaningTaskStatus.DONE,
+        dueDate: today,
+        recurrence: CleaningTaskRecurrence.DAILY,
+        completedAt: new Date(),
+        verifiedByEmployeeId: null,
+        verifiedAt: null,
+        notes: null,
+      }),
+    ]);
+  }
+
+  const deliveryRepo = ds.getRepository(DeliveryTask);
+  if ((await deliveryRepo.count()) === 0) {
+    const candidates = await orderRepo.find({
+      take: 4,
+      order: { createdAt: 'DESC' },
+    });
+    for (const [index, order] of candidates.entries()) {
+      order.status = OrderStatus.READY;
+      order.readyAt = new Date(Date.now() - index * 5 * 60_000);
+      await orderRepo.save(order);
+      const statuses = [
+        DeliveryTaskStatus.AVAILABLE,
+        DeliveryTaskStatus.ASSIGNED,
+        DeliveryTaskStatus.OUT_FOR_DELIVERY,
+        DeliveryTaskStatus.ISSUE_REPORTED,
+      ];
+      await deliveryRepo.save(
+        deliveryRepo.create({
+          orderId: order.id,
+          companyId: order.companyId,
+          branchId: order.branchId,
+          assignedEmployeeId: index ? (deliveryAgent?.id ?? null) : null,
+          status: statuses[index],
+          issueReason: index === 3 ? 'Recipient unavailable at office' : null,
+          pickedUpAt: index >= 2 ? new Date() : null,
+          deliveredAt: null,
+        }),
+      );
+    }
+  }
+
+  const notificationRepo = ds.getRepository(Notification);
+  if ((await notificationRepo.count()) === 0) {
+    const recipients = [
+      deliveryAgent,
+      cleaner,
+      stockManager,
+      cleaningManager,
+    ].filter((item): item is Employee => Boolean(item));
+    const domains = ['delivery', 'cleaning', 'stock', 'meeting'];
+    for (const [index, recipient] of recipients.entries()) {
+      await notificationRepo.save(
+        notificationRepo.create({
+          employeeId: recipient.id,
+          domain: domains[index],
+          titleAr: 'إشعار تجريبي',
+          titleEn: 'Demo notification',
+          bodyAr: 'عنصر جديد يحتاج إلى انتباهك',
+          bodyEn: 'A new item requires your attention',
+          referenceId: null,
+          data: { seeded: 'true' },
+          readAt: index % 2 ? new Date() : null,
+        }),
+      );
+    }
+  }
+  const fixtureCounts = {
+    employees: await employeeRepo.count(),
+    orders: await orderRepo.count(),
+    deliveries: await deliveryRepo.count(),
+    purchaseOrders: await poRepo.count(),
+    transfers: await transferRepo.count(),
+    replenishments: await replenishmentRepo.count(),
+    bookings: await bookingRepo.count(),
+    meetingPreparations: await preparationRepo.count(),
+    cleaningTasks: await taskRepo.count(),
+    cleaningProducts: await cleaningProductRepo.count(),
+    cleaningStockRequests: await cleaningRequestRepo.count(),
+    notifications: await notificationRepo.count(),
+  };
+  logger.log(`Fixture summary: ${JSON.stringify(fixtureCounts)}`);
+  logger.log('Operations 2.0 fixtures: modules and workflows ready');
   await app.close();
   // Des handles ouverts (ioredis, socket.io) peuvent maintenir le process
   process.exit(0);

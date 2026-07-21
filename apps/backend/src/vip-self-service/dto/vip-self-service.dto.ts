@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -11,6 +12,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { VipTaskStatus } from '../entities/vip-replenishment-task.entity.js';
+import { StockZone } from '../../inventory/entities/inventory-item.entity.js';
 
 /**
  * DTO plat, un élément par produit — contrat préservé pour l'app mobile
@@ -149,6 +151,27 @@ export class AdjustVipLocationProductDto {
   @Min(1)
   @IsOptional()
   maxThreshold?: number;
+}
+
+/**
+ * Zone d'où provient le stock déplacé vers l'emplacement VIP. CENTRAL
+ * n'est jamais accepté ici : y accéder implique un transfert physique avec
+ * délai (voir inventory-transfers), pas une réappro instantanée — l'agent
+ * doit d'abord faire arriver le stock en BRANCH, puis relancer la réappro.
+ * Entre KITCHEN et BRANCH, la zone effective est en plus bornée par les
+ * permissions stock de l'appelant (VipSelfServiceService.resolveSourceZone).
+ * Défaut KITCHEN si omis.
+ */
+export class ReplenishSourceDto {
+  @ApiPropertyOptional({
+    enum: StockZone,
+    default: StockZone.KITCHEN,
+    description:
+      "CENTRAL refusé (transfert physique avec délai — passer par inventory-transfers d'abord). Restreint en plus aux zones accessibles à l'appelant (stock.kitchen.view seul → KITCHEN uniquement).",
+  })
+  @IsEnum(StockZone)
+  @IsOptional()
+  sourceZone?: StockZone;
 }
 
 export class VipReplenishmentTaskDto {

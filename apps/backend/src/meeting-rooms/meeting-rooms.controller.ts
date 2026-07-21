@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -60,6 +61,7 @@ export class MeetingRoomsController {
 
   @Delete(':id')
   @RequirePermission('branch.manage')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Supprimer une salle de réunion (admin)' })
   deleteRoom(@Param('id') id: string) {
     return this.service.deleteRoom(id);
@@ -112,6 +114,7 @@ export class MeetingRoomsController {
 
   @Delete('bookings/:bookingId')
   @RequirePermission('meeting.book')
+  @HttpCode(204)
   cancelBooking(
     @Param('bookingId') bookingId: string,
     @CurrentUser() caller: JwtPayload,

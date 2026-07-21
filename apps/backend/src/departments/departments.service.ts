@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { Department } from './entities/department.entity.js';
 import { DepartmentDto, CreateDepartmentDto } from './dto/department.dto.js';
 
@@ -16,7 +16,7 @@ export class DepartmentsService {
       companyId: dto.companyId,
       branchId: dto.branchId,
       nameAr: dto.nameAr,
-      nameEn: dto.nameEn?.trim() || dto.nameAr,
+      nameEn: dto.nameEn?.trim() || null,
     });
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
@@ -26,7 +26,7 @@ export class DepartmentsService {
     companyId?: string,
     branchId?: string,
   ): Promise<DepartmentDto[]> {
-    const where: Partial<Department> = {};
+    const where: FindOptionsWhere<Department> = {};
     if (companyId) where.companyId = companyId;
     if (branchId) where.branchId = branchId;
     const entities = await this.repo.find({ where, order: { nameEn: 'ASC' } });
@@ -46,8 +46,7 @@ export class DepartmentsService {
     const entity = await this.repo.findOne({ where: { id } });
     if (!entity) throw new NotFoundException(`Department ${id} not found`);
     if (dto.nameAr !== undefined) entity.nameAr = dto.nameAr;
-    if (dto.nameEn !== undefined)
-      entity.nameEn = dto.nameEn?.trim() || entity.nameAr;
+    if (dto.nameEn !== undefined) entity.nameEn = dto.nameEn?.trim() || null;
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
   }

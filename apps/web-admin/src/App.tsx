@@ -3,6 +3,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ConfigProvider, App as AntApp, theme as antdTheme } from "antd";
 import { RouterProvider } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import dayjs from "dayjs";
+import "dayjs/locale/ar";
 import arEG from "antd/locale/ar_EG";
 import enUS from "antd/locale/en_US";
 import { queryClient } from "./lib/queryClient";
@@ -76,9 +78,12 @@ function AppInner() {
   const palette = isDark ? DARK : LIGHT;
 
   // TARHIB-8/50: sync HTML dir + lang so CSS logical properties and browser layout apply RTL
+  // + dayjs locale so DatePicker/Calendar month & weekday names render in Arabic — antd's
+  // ConfigProvider `locale` prop only covers antd's own UI strings, not dayjs's output.
   useEffect(() => {
     document.documentElement.dir = isAr ? "rtl" : "ltr";
     document.documentElement.lang = isAr ? "ar" : "en";
+    dayjs.locale(isAr ? "ar" : "en");
   }, [isAr]);
 
   return (

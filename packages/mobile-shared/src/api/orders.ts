@@ -29,6 +29,11 @@ export interface OrderLine {
 export interface Order {
   id: string;
   employeeId: string;
+  recipientNameAr?: string | null;
+  recipientNameEn?: string | null;
+  recipientPhone?: string | null;
+  recipientFloor?: string | null;
+  recipientOffice?: string | null;
   branchId: string;
   companyId: string;
   status: OrderStatus;
@@ -74,12 +79,14 @@ export async function fetchMyOrders(status?: OrderStatus): Promise<Order[]> {
 /** Liste Operations/Admin, filtrable comme GET /orders côté backend. */
 export async function fetchOrders(filters?: {
   companyId?: string | null;
+  branchId?: string | null;
   employeeId?: string;
   status?: OrderStatus;
 }): Promise<Order[]> {
   const { data } = await api.get<Order[]>("/orders", {
     params: {
       companyId: filters?.companyId ?? undefined,
+      branchId: filters?.branchId ?? undefined,
       employeeId: filters?.employeeId,
       status: filters?.status,
     },
@@ -114,6 +121,11 @@ export interface DeliveryTask {
     | "RETURNED"
     | "FAILED";
   issueReason: string | null;
+  issueDescription: string | null;
+  createdAt: string;
+  updatedAt: string;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
   order: Order;
   destination: {
     recipientNameAr: string;
@@ -137,11 +149,12 @@ export async function transitionDeliveryTask(
   id: string,
   action: "accept" | "pickup" | "depart" | "deliver" | "issue",
   reason?: string,
+  description?: string,
 ): Promise<DeliveryTask> {
   return (
     await api.patch<DeliveryTask>(
       `/delivery/tasks/${id}/${action}`,
-      reason ? { reason } : undefined,
+      reason ? { reason, ...(description ? { description } : {}) } : undefined,
     )
   ).data;
 }
@@ -169,11 +182,15 @@ export async function markDelivered(orderId: string): Promise<Order> {
   return data;
 }
 
-/** Signale un incident (rupture, produit indisponible...) : rejette la commande avec motif. */
-export async function reportOrderIncident(orderId: string, reason: string): Promise<Order> {
-  const { data } = await api.patch<Order>(`/orders/${orderId}/status`, {
-    status: "REJECTED",
+/** Met la commande en attente et crée un incident opérationnel. */
+export async function reportOrderIncident(
+  orderId: string,
+  reason: string,
+  description: string,
+): Promise<DeliveryTask> {
+  const { data } = await api.patch<DeliveryTask>(`/delivery/orders/${orderId}/issue`, {
     reason,
+    description,
   });
   return data;
 }

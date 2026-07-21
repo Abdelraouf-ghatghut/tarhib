@@ -34,6 +34,7 @@ export class AuditService {
   async findAll(filters: {
     entity?: string;
     userId?: string;
+    entityId?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
@@ -42,6 +43,7 @@ export class AuditService {
     const where: FindOptionsWhere<AuditLog> = {};
     if (filters.entity) where.entity = filters.entity;
     if (filters.userId) where.userId = filters.userId;
+    if (filters.entityId) where.entityId = filters.entityId;
     if (filters.startDate && filters.endDate) {
       where.createdAt = Between(
         new Date(filters.startDate),

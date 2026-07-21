@@ -1,8 +1,8 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 
-import { LoginScreen } from "../AuthScreens";
+import { AcceptInviteScreen, LoginScreen } from "../AuthScreens";
 import { authApi } from "../api/auth";
 import { SplashScreen } from "../screens/SplashScreen";
 import { useAuthStore } from "../store/auth-store";
@@ -37,6 +37,11 @@ export function RootNavigator({
   const restoreSession = useAuthStore((s) => s.restoreSession);
   const login = useAuthStore((s) => s.login);
   const loginWithOtp = useAuthStore((s) => s.loginWithOtp);
+  const acceptInvite = useAuthStore((s) => s.acceptInvite);
+  // Pas d'écran de stack dédié : juste un toggle local dans l'écran non
+  // authentifié (login ↔ acceptation d'invitation), plus simple que de
+  // plomber une route de navigation pour un aller-retour aussi ponctuel.
+  const [authView, setAuthView] = useState<"login" | "acceptInvite">("login");
 
   useEffect(() => {
     void restoreSession(appMode);
@@ -57,17 +62,27 @@ export function RootNavigator({
           <Stack.Screen name="Main">{renderMain}</Stack.Screen>
         ) : (
           <Stack.Screen name="Login">
-            {() => (
-              <LoginScreen
-                lang={lang}
-                theme={theme}
-                onLogin={(email, password) => login(appMode, email, password)}
-                onRequestOtp={(phoneNumber, channel) =>
-                  authApi.requestOtp(phoneNumber, channel, appMode).then(() => undefined)
-                }
-                onOtpLogin={(phoneNumber, code) => loginWithOtp(appMode, phoneNumber, code)}
-              />
-            )}
+            {() =>
+              authView === "acceptInvite" ? (
+                <AcceptInviteScreen
+                  lang={lang}
+                  theme={theme}
+                  onSubmit={(payload) => acceptInvite(appMode, payload)}
+                  onBack={() => setAuthView("login")}
+                />
+              ) : (
+                <LoginScreen
+                  lang={lang}
+                  theme={theme}
+                  onLogin={(email, password) => login(appMode, email, password)}
+                  onRequestOtp={(phoneNumber, channel) =>
+                    authApi.requestOtp(phoneNumber, channel, appMode).then(() => undefined)
+                  }
+                  onOtpLogin={(phoneNumber, code) => loginWithOtp(appMode, phoneNumber, code)}
+                  onHaveInviteCode={() => setAuthView("acceptInvite")}
+                />
+              )
+            }
           </Stack.Screen>
         )}
       </Stack.Navigator>

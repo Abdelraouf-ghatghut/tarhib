@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -15,9 +16,13 @@ import { KeycloakService } from './keycloak/keycloak.service';
 import { EmailService } from './email/email.service';
 import {
   Employee,
+  EmployeeScope,
   EmployeeStatus,
 } from '../employees/entities/employee.entity';
 import { Company } from '../companies/entities/company.entity';
+import { Branch } from '../branches/entities/branch.entity';
+import { Department } from '../departments/entities/department.entity';
+import { Role, RoleScope } from '../roles/entities/role.entity';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { LoginDto } from './dto/login.dto';
 import type { TokenResponseDto } from './dto/token-response.dto';
@@ -27,7 +32,14 @@ import type { PasswordResetDto } from './dto/password-reset.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { InviteEmployeeDto } from './dto/invite-employee.dto';
 import type { AcceptInviteDto } from './dto/accept-invite.dto';
+import type { ApproveRegistrationDto } from './dto/approve-registration.dto';
 import { AccessPolicyService } from '../access/access-policy.service';
+import type { AccessProfile } from '../access/access-policy.service';
+import { AuditService } from '../audit/audit.service';
+import {
+  IMPERSONATE_ROLE_KEY_PREFIX,
+  IMPERSONATION_TTL_SECONDS,
+} from './impersonation.constants';
 
 const LOGIN_ATTEMPTS_PREFIX = 'login_attempts:';
 const LOGIN_BLOCKED_PREFIX = 'login_blocked:';
@@ -36,6 +48,17 @@ const INVITE_PREFIX = 'invite:';
 const MAX_LOGIN_ATTEMPTS = 5;
 const RESET_TOKEN_TTL_SECONDS = 3600;
 const INVITE_TOKEN_TTL_SECONDS = 7 * 24 * 3600; // 7 days
+
+// Sans 0/O/1/I/L (ambiguïté visuelle) — saisi manuellement dans l'app, pas
+// cliqué depuis un lien. 32 symboles divise 256 exactement : `byte % 32` est
+// uniforme, pas de biais modulo.
+const INVITE_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function generateInviteCode(length = 8): string {
+  return Array.from(
+    randomBytes(length),
+    (b) => INVITE_CODE_ALPHABET[b % INVITE_CODE_ALPHABET.length],
+  ).join('');
+}
 
 @Injectable()
 export class AuthService {
@@ -50,7 +73,14 @@ export class AuthService {
     private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
+    @InjectRepository(Branch)
+    private readonly branchRepo: Repository<Branch>,
+    @InjectRepository(Department)
+    private readonly departmentRepo: Repository<Department>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly auditService: AuditService,
   ) {
     this.lockDurationSeconds = config.get<number>(
       'LOGIN_LOCK_DURATION_SECONDS',
@@ -199,6 +229,135 @@ export class AuthService {
     await this.keycloak.revokeRefreshToken(dto.refreshToken);
   }
 
+  // ── Impersonation : tester rôles/permissions sans changer de compte ─────
+  //
+  // Deux modes, cf. plan TARHIB — impersonation :
+  // - "employé" (startEmployeeImpersonation) : identité réelle, jeton Keycloak
+  //   échangé (token-exchange). Utilisé pour reproduire exactement ce qu'une
+  //   personne précise voit. Réservé au personnel interne (scope TARHIB) :
+  //   le web admin est un outil interne, un employé CLIENT ne doit jamais
+  //   pouvoir s'y connecter, même via impersonation (cf. AuthContext.login()
+  //   côté web-admin, qui rejette déjà tout scope !== "TARHIB"). Prévisualiser
+  //   un rôle client se fait exclusivement via le mode "rôle" ci-dessous.
+  // - "rôle" (startRoleImpersonation) : aucune identité changée, seul le
+  //   résultat de AccessPolicyService.resolve() est substitué à chaque
+  //   requête via un indicateur Redis lu par JwtStrategy. Utilisé pour tester
+  //   un rôle sans employé précis.
+  // Dans les deux cas : jamais de rôle/compte contenant `company.manage`
+  // (garde anti-escalade), et une entrée d'audit dédiée (jamais loguée
+  // automatiquement par l'intercepteur générique sous "POST:AUTH", ce qui
+  // serait indiscernable d'un login normal).
+
+  async startEmployeeImpersonation(
+    actor: JwtPayload,
+    targetEmployeeId: string,
+    ipAddress?: string,
+  ): Promise<TokenResponseDto> {
+    if (targetEmployeeId === actor.employeeId) {
+      throw new BadRequestException('cannotImpersonateSelf');
+    }
+    const target = await this.employeeRepo.findOne({
+      where: { id: targetEmployeeId },
+    });
+    if (!target) throw new NotFoundException('employeeNotFound');
+    if (!target.active || !target.keycloakId) {
+      throw new BadRequestException('employeeNotImpersonable');
+    }
+    if (target.scope === EmployeeScope.CLIENT) {
+      throw new ForbiddenException('cannotImpersonateClientEmployee');
+    }
+
+    const tokens = await this.keycloak.impersonate(target.keycloakId);
+    const enriched = await this.enrichTokens(tokens, target.email);
+
+    if (enriched.permissions?.includes('company.manage')) {
+      await this.keycloak.revokeRefreshToken(tokens.refreshToken);
+      throw new ForbiddenException('cannotImpersonateSuperadmin');
+    }
+
+    await this.auditService.log({
+      userId: actor.sub,
+      userEmail: actor.email,
+      action: 'IMPERSONATE_EMPLOYEE_START',
+      entity: 'employee',
+      entityId: targetEmployeeId,
+      metadata: { targetEmail: target.email },
+      ipAddress,
+    });
+
+    return enriched;
+  }
+
+  async logImpersonationStop(
+    actor: JwtPayload,
+    action: 'IMPERSONATE_EMPLOYEE_STOP',
+    ipAddress?: string,
+  ): Promise<void> {
+    await this.auditService.log({
+      userId: actor.sub,
+      userEmail: actor.email,
+      action,
+      entity: 'employee',
+      ipAddress,
+    });
+  }
+
+  async startRoleImpersonation(
+    actor: JwtPayload,
+    targetRoleId: string,
+    ipAddress?: string,
+  ): Promise<AccessProfile> {
+    if (!actor.employeeId) throw new UnauthorizedException();
+    const employee = await this.employeeRepo.findOne({
+      where: { id: actor.employeeId },
+    });
+    if (!employee) throw new UnauthorizedException();
+
+    const access = await this.accessPolicy.resolveAsRole(
+      employee,
+      targetRoleId,
+    );
+    if (access.permissions.includes('company.manage')) {
+      throw new ForbiddenException('cannotImpersonateSuperadminRole');
+    }
+
+    await this.redis.set(
+      `${IMPERSONATE_ROLE_KEY_PREFIX}${employee.id}`,
+      targetRoleId,
+      IMPERSONATION_TTL_SECONDS,
+    );
+    await this.auditService.log({
+      userId: actor.sub,
+      userEmail: actor.email,
+      action: 'IMPERSONATE_ROLE_START',
+      entity: 'role',
+      entityId: targetRoleId,
+      ipAddress,
+    });
+
+    return access;
+  }
+
+  async stopRoleImpersonation(
+    actor: JwtPayload,
+    ipAddress?: string,
+  ): Promise<AccessProfile | null> {
+    if (!actor.employeeId) throw new UnauthorizedException();
+    await this.redis.del(`${IMPERSONATE_ROLE_KEY_PREFIX}${actor.employeeId}`);
+    await this.auditService.log({
+      userId: actor.sub,
+      userEmail: actor.email,
+      action: 'IMPERSONATE_ROLE_STOP',
+      entity: 'role',
+      ipAddress,
+    });
+    const employee = await this.employeeRepo.findOne({
+      where: { id: actor.employeeId },
+      relations: ['additionalRoles'],
+    });
+    return employee ? this.accessPolicy.resolve(employee) : null;
+  }
+
   // ── Signup: auto-inscription employé ─────────────────────────────────────
   async register(dto: RegisterDto): Promise<void> {
     const company = await this.companyRepo.findOne({
@@ -241,6 +400,39 @@ export class AuthService {
     });
     if (existing) throw new BadRequestException('emailAlreadyRegistered');
 
+    // Filtrage backend (CLAUDE.md §4) : la branche et le rôle assignés
+    // doivent appartenir à la société choisie dans le formulaire admin.
+    const [branch, role] = await Promise.all([
+      this.branchRepo.findOne({
+        where: { id: dto.branchId, companyId: dto.companyId },
+      }),
+      this.roleRepo.findOne({ where: { id: dto.roleId } }),
+    ]);
+    if (!branch) throw new BadRequestException('branchNotFoundForCompany');
+    if (!role || (role.companyId && role.companyId !== dto.companyId)) {
+      throw new BadRequestException('roleNotFoundForCompany');
+    }
+
+    // Le scope (CLIENT/TARHIB) de l'employé suit celui du rôle assigné —
+    // source unique de vérité, jamais un champ séparé fourni par le formulaire.
+    let departmentId: string | null = null;
+    if (role.scope === RoleScope.CLIENT) {
+      if (!dto.departmentId) {
+        throw new BadRequestException('departmentRequiredForClientRole');
+      }
+      const department = await this.departmentRepo.findOne({
+        where: {
+          id: dto.departmentId,
+          branchId: dto.branchId,
+          companyId: dto.companyId,
+        },
+      });
+      if (!department) {
+        throw new BadRequestException('departmentNotFoundForBranch');
+      }
+      departmentId = department.id;
+    }
+
     const employee = this.employeeRepo.create({
       email: dto.email,
       phoneNumber: `+00${Date.now()}`, // placeholder
@@ -250,33 +442,34 @@ export class AuthService {
       lastNameEn: '',
       companyId: dto.companyId,
       branchId: dto.branchId,
-      departmentId: dto.departmentId ?? null,
-      roleId: dto.roleId ?? null,
+      departmentId,
+      roleId: role.id,
       role: 'employee',
+      scope:
+        role.scope === RoleScope.CLIENT
+          ? EmployeeScope.CLIENT
+          : EmployeeScope.TARHIB,
       status: EmployeeStatus.INVITED,
       active: false,
     });
     await this.employeeRepo.save(employee);
 
-    const token = randomBytes(32).toString('hex');
+    // Code court (saisie manuelle dans l'app mobile, pas de lien web — cf.
+    // sendInviteEmail) plutôt que le token hexadécimal long de resetPassword.
+    const code = generateInviteCode();
     await this.redis.set(
-      `${INVITE_PREFIX}${token}`,
+      `${INVITE_PREFIX}${code}`,
       employee.id,
       INVITE_TOKEN_TTL_SECONDS,
     );
-
-    const appUrl = this.config.get<string>('APP_URL', 'http://localhost:5173');
-    await this.email.sendPasswordResetEmail(
-      dto.email,
-      token, // reuse the reset email template — link points to /accept-invite?token=
-    );
-    // In production, a dedicated "accept invite" email template should be used
-    void appUrl;
+    await this.email.sendInviteEmail(dto.email, code);
   }
 
   // ── Acceptation invitation ────────────────────────────────────────────────
   async acceptInvite(dto: AcceptInviteDto): Promise<TokenResponseDto> {
-    const key = `${INVITE_PREFIX}${dto.token}`;
+    // Code saisi manuellement (cf. generateInviteCode) : tolérant à la casse
+    // et aux espaces (copier-coller depuis l'email).
+    const key = `${INVITE_PREFIX}${dto.token.trim().toUpperCase()}`;
     const employeeId = await this.redis.get(key);
     if (!employeeId)
       throw new UnauthorizedException('inviteTokenInvalidOrExpired');
@@ -316,12 +509,46 @@ export class AuthService {
     return this.employeeRepo.find({ where });
   }
 
-  async approveRegistration(id: string): Promise<void> {
+  async approveRegistration(
+    id: string,
+    dto: ApproveRegistrationDto,
+  ): Promise<void> {
     const employee = await this.employeeRepo.findOne({ where: { id } });
     if (!employee) throw new NotFoundException('Employee not found');
     if (employee.status !== EmployeeStatus.PENDING) {
       throw new BadRequestException('employeeNotPending');
     }
+
+    // Filtrage backend, jamais seulement le formulaire admin (CLAUDE.md §4) :
+    // la branche/le département/le rôle assignés doivent appartenir à la
+    // société de l'employé qui s'est auto-inscrit.
+    const [branch, department, role] = await Promise.all([
+      this.branchRepo.findOne({
+        where: { id: dto.branchId, companyId: employee.companyId ?? undefined },
+      }),
+      this.departmentRepo.findOne({
+        where: {
+          id: dto.departmentId,
+          branchId: dto.branchId,
+          companyId: employee.companyId ?? undefined,
+        },
+      }),
+      this.roleRepo.findOne({ where: { id: dto.roleId } }),
+    ]);
+    if (!branch) throw new BadRequestException('branchNotFoundForCompany');
+    if (!department)
+      throw new BadRequestException('departmentNotFoundForBranch');
+    if (
+      !role ||
+      role.scope !== RoleScope.CLIENT ||
+      (role.companyId && role.companyId !== employee.companyId)
+    ) {
+      throw new BadRequestException('roleNotFoundForCompany');
+    }
+
+    employee.branchId = dto.branchId;
+    employee.departmentId = dto.departmentId;
+    employee.roleId = dto.roleId;
 
     const tmpPassword = await this.redis.get(`pending_pwd:${id}`);
     if (tmpPassword) {

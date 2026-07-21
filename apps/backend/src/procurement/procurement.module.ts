@@ -7,6 +7,7 @@ import { ProcurementController } from './procurement.controller.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { Branch } from '../branches/entities/branch.entity.js';
 import { Employee } from '../employees/entities/employee.entity.js';
+import { Product } from '../products/entities/product.entity.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 
 @Module({
@@ -16,6 +17,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
       PurchaseOrderLine,
       Branch,
       Employee,
+      Product,
     ]),
     InventoryModule,
     NotificationsModule,

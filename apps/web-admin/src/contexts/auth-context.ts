@@ -16,6 +16,13 @@ export interface AuthState {
   lastNameEn: string | null;
 }
 
+/** Mode "test RBAC" actif : identité réelle changée (employee) ou seules les
+ * permissions simulées (role) — voir AuthContext.tsx pour le détail. */
+export interface Impersonation {
+  mode: "employee" | "role";
+  label: string;
+}
+
 export interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -24,6 +31,10 @@ export interface AuthContextValue extends AuthState {
   isBooting: boolean;
   hasPermission: (key: string) => boolean;
   isSuperadmin: boolean;
+  impersonation: Impersonation | null;
+  startEmployeeImpersonation: (employeeId: string, label: string) => Promise<void>;
+  startRoleImpersonation: (roleId: string, label: string) => Promise<void>;
+  stopImpersonation: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

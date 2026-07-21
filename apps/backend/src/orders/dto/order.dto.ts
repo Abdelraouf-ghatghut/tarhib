@@ -82,6 +82,21 @@ export class OrderDto {
   @IsUUID()
   employeeId!: string;
 
+  @ApiPropertyOptional({ nullable: true })
+  recipientNameAr!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  recipientNameEn!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  recipientPhone!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  recipientFloor!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  recipientOffice!: string | null;
+
   @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0853' })
   @IsUUID()
   branchId!: string;
@@ -89,6 +104,13 @@ export class OrderDto {
   @ApiProperty({ example: 'd290f1ee-6c54-4b01-90e6-d701748f0854' })
   @IsUUID()
   companyId!: string;
+
+  @ApiProperty({
+    example: 42,
+    description:
+      'Numéro court, propre à la société (affiché à la place de `id`)',
+  })
+  orderNumber!: number;
 
   @ApiProperty({ enum: OrderStatus })
   @IsEnum(OrderStatus)

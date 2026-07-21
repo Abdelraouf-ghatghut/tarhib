@@ -225,10 +225,12 @@ export class CreateRoleQuotaDto {
   @IsUUID()
   productId!: string;
 
-  @ApiProperty({ enum: ['DAILY', 'WEEKLY', 'MONTHLY'] })
-  @IsString()
-  periodType!: string;
+  @ApiProperty({ enum: QuotaPeriodType })
+  @IsEnum(QuotaPeriodType)
+  periodType!: QuotaPeriodType;
 
   @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
   maxQuantity!: number;
 }

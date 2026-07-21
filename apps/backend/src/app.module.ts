@@ -2,10 +2,12 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import * as path from 'path';
 import { EnrichUserInterceptor } from './auth/interceptors/enrich-user.interceptor.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from './auth/guards/permissions.guard.js';
+import { AppThrottlerGuard } from './common/guards/app-throttler.guard.js';
 import { Employee } from './employees/entities/employee.entity.js';
 import { Role } from './roles/entities/role.entity.js';
 
@@ -43,6 +45,9 @@ import { PrioritySlaModule } from './priority-sla/priority-sla.module.js';
 import { AccessModule } from './access/access.module.js';
 import { MobileModule } from './mobile/mobile.module.js';
 import { OperationsModule } from './operations/operations.module.js';
+import { FinanceModule } from './finance/finance.module.js';
+import { AccountingModule } from './accounting/accounting.module.js';
+import { HrModule } from './hr/hr.module.js';
 
 @Module({
   imports: [
@@ -51,6 +56,14 @@ import { OperationsModule } from './operations/operations.module.js';
       envFilePath: '../../.env',
       expandVariables: true,
     }),
+
+    // Défense en profondeur contre l'abus/DoS sur TOUTE l'API. Quota par
+    // utilisateur authentifié (AppThrottlerGuard), pas par IP — dimensionné
+    // pour 1500+ employés répartis sur plusieurs branches : chacun a son
+    // propre budget, indépendant des autres employés derrière le même NAT
+    // d'entreprise. Les endpoints publics sensibles (auth) resserrent par
+    // IP via @Throttle par route (voir auth.controller.ts).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 600 }]),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -107,6 +120,9 @@ import { OperationsModule } from './operations/operations.module.js';
     CleaningStockModule,
     AuditModule,
     PrioritySlaModule,
+    AccountingModule,
+    HrModule,
+    FinanceModule,
   ],
   controllers: [AppController],
   providers: [
@@ -122,6 +138,10 @@ import { OperationsModule } from './operations/operations.module.js';
     {
       provide: APP_GUARD,
       useClass: PermissionsGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AppThrottlerGuard,
     },
     {
       provide: APP_INTERCEPTOR,

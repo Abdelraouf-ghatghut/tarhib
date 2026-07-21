@@ -5,6 +5,7 @@ import {
   Platform,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type StyleProp,
   type ViewStyle,
@@ -27,21 +28,38 @@ const outlineIcon = (icon: IconName): IconName => {
   return Object.prototype.hasOwnProperty.call(Ionicons.glyphMap, candidate) ? candidate : icon;
 };
 
-export const Screen = ({ children, theme }: { children: React.ReactNode; theme: SnowTheme }) => (
-  <View style={[styles.viewport, { backgroundColor: theme.background }]}>
-    <View
-      style={[
-        styles.screen,
-        {
-          backgroundColor: theme.background,
-          borderColor: theme.border,
-        },
-      ]}
-    >
-      {children}
+export const Screen = ({ children, theme }: { children: React.ReactNode; theme: SnowTheme }) => {
+  const { width, height } = useWindowDimensions();
+  const shortestSide = Math.min(width, height);
+  const isTablet = shortestSide >= 600;
+  const isLandscapePhone = width > height && !isTablet;
+  const maxWidth = isTablet ? 900 : isLandscapePhone ? 680 : 480;
+  const horizontalPadding = isTablet
+    ? 30
+    : width <= 360
+      ? 14
+      : theme.app === "operations"
+        ? 20
+        : spacing.lg;
+
+  return (
+    <View style={[styles.viewport, { backgroundColor: theme.background }]}>
+      <View
+        style={[
+          styles.screen,
+          {
+            maxWidth,
+            backgroundColor: theme.background,
+            borderColor: theme.border,
+            paddingHorizontal: horizontalPadding,
+          },
+        ]}
+      >
+        {children}
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 /**
  * Conteneur plat : plus de fond/bordure/ombre — le contenu s'affiche
@@ -56,7 +74,25 @@ export const Card = ({
   children: React.ReactNode;
   theme: SnowTheme;
   style?: StyleProp<ViewStyle>;
-}) => <View style={[styles.card, style]}>{children}</View>;
+}) => (
+  <View
+    style={[
+      styles.card,
+      theme.app === "operations"
+        ? {
+            padding: spacing.md,
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            borderWidth: 1,
+            borderRadius: 12,
+          }
+        : null,
+      style,
+    ]}
+  >
+    {children}
+  </View>
+);
 
 export const IconBubble = ({
   icon,
@@ -128,6 +164,7 @@ export const PrimaryButton = ({
       onPress={disabled ? undefined : onPress}
       style={({ pressed }) => [
         styles.primaryButton,
+        theme.app === "operations" ? { minHeight: 44, borderRadius: 8 } : null,
         pill ? { borderRadius: 999 } : null,
         variant === "outline" ? { borderWidth: 1, borderColor: theme.primary } : null,
         {
@@ -214,9 +251,10 @@ export const MetricCard = ({
     <View
       style={[
         styles.statCard,
+        theme.app === "operations" ? { minHeight: 92, borderRadius: 12, padding: 12 } : null,
         {
-          backgroundColor: toneStyle.card,
-          borderWidth: isDark ? 1 : 0,
+          backgroundColor: theme.app === "operations" ? theme.surface : toneStyle.card,
+          borderWidth: theme.app === "operations" || isDark ? 1 : 0,
           borderColor: theme.border,
         },
       ]}
@@ -225,6 +263,7 @@ export const MetricCard = ({
         <View
           style={[
             styles.statIcon,
+            theme.app === "operations" ? { width: 34, height: 34, borderRadius: 9 } : null,
             compact ? styles.statIconCompact : null,
             { backgroundColor: toneStyle.iconBg },
             isDark && toneStyle.glow
@@ -323,7 +362,6 @@ const styles = createSnowStyles({
   screen: {
     flex: 1,
     width: "100%",
-    maxWidth: 430,
     paddingHorizontal: spacing.lg,
     borderLeftWidth: Platform.OS === "web" ? 1 : 0,
     borderRightWidth: Platform.OS === "web" ? 1 : 0,
@@ -464,7 +502,7 @@ const styles = createSnowStyles({
     left: 0,
     right: 0,
     bottom: 0,
-    minHeight: 72,
+    minHeight: 84,
     borderRadius: 0,
     borderWidth: 0,
     borderTopWidth: 1,

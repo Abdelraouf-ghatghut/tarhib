@@ -13,7 +13,7 @@ const { Title } = Typography;
 interface ServicePackage {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
   type: "BREAKFAST" | "LUNCH" | "CUSTOM";
   descriptionAr: string | null;
   descriptionEn: string | null;
@@ -24,7 +24,7 @@ interface ServicePackage {
 interface NamedEntity {
   id: string;
   nameAr: string;
-  nameEn: string;
+  nameEn: string | null;
 }
 
 const TYPE_COLORS = { BREAKFAST: "orange", LUNCH: "blue", CUSTOM: "default" } as const;
