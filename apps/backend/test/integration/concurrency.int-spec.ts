@@ -8,6 +8,8 @@ import {
 } from './harness';
 import { consumeQuotaAtomic } from '../../src/quotas/quota-consumption';
 import {
+  consumeReservationsForOrder,
+  releaseReservationsForOrder,
   reserveInventoryAtomic,
   reserveStockForProduct,
 } from '../../src/inventory/stock-reservation';
@@ -327,6 +329,108 @@ describe('Concurrence — intégrité commandes/stock/quotas (baseline rouge)', 
     );
     expect(okCount).toBe(6);
     expect(totalReserved).toBe(6);
+  });
+
+  // ── Cycle de vie des réservations : consommation à la préparation.
+  async function seedReservedOrder(
+    tag: string,
+    branchId: string,
+  ): Promise<{ orderId: string; itemId: string; productId: string }> {
+    const companyId = await seedCompany(tag);
+    const productId = await seedProduct();
+    const [item] = await ds.query<Array<{ id: string }>>(
+      `INSERT INTO inventory_items (company_id, branch_id, product_id, zone, quantity, reserved)
+       VALUES ($1, $2, $3, 'BRANCH', 5, 3) RETURNING id`,
+      [companyId, branchId, productId],
+    );
+    const [order] = await ds.query<Array<{ id: string }>>(
+      `INSERT INTO orders (employee_id, branch_id, company_id, order_number, status, priority, sla_deadline)
+       VALUES ($1, $2, $3, 1, 'APPROVED', 'P5', NOW() + INTERVAL '1 hour') RETURNING id`,
+      ['dddddddd-dddd-dddd-dddd-dddddddddddd', branchId, companyId],
+    );
+    const [line] = await ds.query<Array<{ id: string }>>(
+      `INSERT INTO order_lines (order_id, product_id, quantity) VALUES ($1, $2, 3) RETURNING id`,
+      [order.id, productId],
+    );
+    await ds.query(
+      `INSERT INTO inventory_reservations
+         (order_id, order_line_id, inventory_item_id, ordered_product_id, stock_product_id, zone, quantity, status)
+       VALUES ($1, $2, $3, $4, $4, 'BRANCH', 3, 'HELD')`,
+      [order.id, line.id, item.id, productId],
+    );
+    return { orderId: order.id, itemId: item.id, productId };
+  }
+
+  it('consommation : quantity et reserved décrémentés, réservation CONSUMED', async () => {
+    await truncate(ds, [
+      'inventory_reservations',
+      'order_lines',
+      'orders',
+      'inventory_items',
+      'products',
+      'companies',
+    ]);
+    const { orderId, itemId } = await seedReservedOrder(
+      'cons',
+      'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    );
+
+    await ds.transaction((m) => consumeReservationsForOrder(m, orderId));
+
+    const quantity = await count(
+      ds,
+      `SELECT quantity FROM inventory_items WHERE id = $1`,
+      [itemId],
+    );
+    const reserved = await count(
+      ds,
+      `SELECT reserved FROM inventory_items WHERE id = $1`,
+      [itemId],
+    );
+    const consumedCount = await count(
+      ds,
+      `SELECT COUNT(*) FROM inventory_reservations WHERE order_id = $1 AND status = 'CONSUMED'`,
+      [orderId],
+    );
+    expect(quantity).toBe(2); // 5 - 3
+    expect(reserved).toBe(0); // 3 - 3
+    expect(consumedCount).toBe(1);
+  });
+
+  it('release : reserved décrémenté, quantity inchangée, réservation RELEASED', async () => {
+    await truncate(ds, [
+      'inventory_reservations',
+      'order_lines',
+      'orders',
+      'inventory_items',
+      'products',
+      'companies',
+    ]);
+    const { orderId, itemId } = await seedReservedOrder(
+      'rel',
+      'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+    );
+
+    await ds.transaction((m) => releaseReservationsForOrder(m, orderId));
+
+    const quantity = await count(
+      ds,
+      `SELECT quantity FROM inventory_items WHERE id = $1`,
+      [itemId],
+    );
+    const reserved = await count(
+      ds,
+      `SELECT reserved FROM inventory_items WHERE id = $1`,
+      [itemId],
+    );
+    const releasedCount = await count(
+      ds,
+      `SELECT COUNT(*) FROM inventory_reservations WHERE order_id = $1 AND status = 'RELEASED'`,
+      [orderId],
+    );
+    expect(quantity).toBe(5); // inchangée (rien consommé)
+    expect(reserved).toBe(0); // 3 - 3
+    expect(releasedCount).toBe(1);
   });
 
   // Nécessite l'idempotence (PR-0.4) :

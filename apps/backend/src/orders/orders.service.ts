@@ -41,6 +41,11 @@ import {
   StockZone,
 } from '../inventory/entities/inventory-item.entity.js';
 import { InventoryService } from '../inventory/inventory.service.js';
+import {
+  reserveStockForProduct,
+  consumeReservationsForOrder,
+  releaseReservationsForOrder,
+} from '../inventory/stock-reservation.js';
 import { QuotasService } from '../quotas/quotas.service.js';
 import { computeQuotaPeriod } from '../quotas/quota-period.js';
 import { consumeQuotaAtomic } from '../quotas/quota-consumption.js';
@@ -187,9 +192,12 @@ export class OrdersService {
     ]);
     const stockByProduct = new Map<string, number>();
     for (const row of stockRows) {
+      // Disponibilité advisory = available (quantity - reserved), pas le stock
+      // physique — cohérent avec la réservation qui fait autorité (D1=B).
       stockByProduct.set(
         row.productId,
-        (stockByProduct.get(row.productId) ?? 0) + row.quantity,
+        (stockByProduct.get(row.productId) ?? 0) +
+          (row.quantity - (row.reserved ?? 0)),
       );
     }
     const stocks = [...stockByProduct.entries()].map(
@@ -283,19 +291,42 @@ export class OrdersService {
         string,
         { periodStart: string; periodEnd: string; quantity: number }
       >();
-      const quotaRejected = new Set<string>();
+      const stockAllocations = new Map<
+        string,
+        Array<{
+          inventoryItemId: string;
+          stockProductId: string;
+          zone: string;
+          quantity: number;
+        }>
+      >();
+      const rejected = new Map<string, string>(); // productId → motif
 
-      for (const line of lines) {
+      for (const [index, line] of lines.entries()) {
         if (advisoryByProduct.get(line.productId)?.decision !== 'APPROVED') {
-          continue; // déjà rejeté (produit/rôle/branche/stock)
+          continue; // déjà rejeté (produit/rôle/branche)
         }
+
+        // Savepoint par ligne : quota ET stock réussissent ensemble, sinon
+        // ROLLBACK TO SAVEPOINT annule les DEUX pour cette ligne (both-or-neither),
+        // sans toucher aux lignes déjà validées (panier partiel).
+        await manager.query(`SAVEPOINT sp_${index}`);
+        let ok = true;
+        let reason: string | null = null;
+
+        // 1) Quota (role-based atomique ; legacy additif advisory).
         const quota = effectiveQuotas.get(line.productId);
+        let consumption: {
+          periodStart: string;
+          periodEnd: string;
+          quantity: number;
+        } | null = null;
         if (caller.roleId && quota) {
           const { periodStart, periodEnd } = computeQuotaPeriod(
             quota.periodType,
             now,
           );
-          const ok = await consumeQuotaAtomic(manager, {
+          const quotaOk = await consumeQuotaAtomic(manager, {
             employeeId: caller.sub,
             productId: line.productId,
             companyId: caller.companyId,
@@ -304,17 +335,13 @@ export class OrdersService {
             quantity: line.quantity,
             maxQuantity: quota.maxQuantity,
           });
-          if (ok) {
-            consumed.set(line.productId, {
-              periodStart,
-              periodEnd,
-              quantity: line.quantity,
-            });
+          if (quotaOk) {
+            consumption = { periodStart, periodEnd, quantity: line.quantity };
           } else {
-            quotaRejected.add(line.productId);
+            ok = false;
+            reason = 'QUOTA_EXCEEDED';
           }
         } else if (!caller.roleId) {
-          // Legacy (employé sans rôle) : incrément additif sur la table `quotas`.
           await this.incrementLegacyQuota(
             manager,
             caller.sub,
@@ -322,13 +349,65 @@ export class OrdersService {
             line.quantity,
           );
         }
-        // roleId sans role_quota pour ce produit → illimité (D3), rien à consommer.
+
+        // 2) Réservation de stock (D1=B) : ingrédients si recette, sinon le
+        // produit. Toute rupture d'un besoin rejette la ligne.
+        const allocations: Array<{
+          inventoryItemId: string;
+          stockProductId: string;
+          zone: string;
+          quantity: number;
+        }> = [];
+        if (ok) {
+          const recipesForLine = recipeLines.filter(
+            (r) => r.productId === line.productId,
+          );
+          const needs =
+            recipesForLine.length > 0
+              ? recipesForLine.map((r) => ({
+                  productId: r.ingredientProductId,
+                  quantity: r.quantity * line.quantity,
+                }))
+              : [{ productId: line.productId, quantity: line.quantity }];
+          for (const need of needs) {
+            const res = await reserveStockForProduct(manager, {
+              productId: need.productId,
+              branchId: caller.branchId ?? '',
+              companyId: caller.companyId,
+              quantity: need.quantity,
+            });
+            if (!res.ok) {
+              ok = false;
+              reason = 'INSUFFICIENT_STOCK';
+              break;
+            }
+            for (const a of res.allocations) {
+              allocations.push({
+                inventoryItemId: a.inventoryItemId,
+                stockProductId: need.productId,
+                zone: a.zone,
+                quantity: a.quantity,
+              });
+            }
+          }
+        }
+
+        if (ok) {
+          await manager.query(`RELEASE SAVEPOINT sp_${index}`);
+          if (consumption) consumed.set(line.productId, consumption);
+          if (allocations.length > 0) {
+            stockAllocations.set(line.productId, allocations);
+          }
+        } else {
+          await manager.query(`ROLLBACK TO SAVEPOINT sp_${index}`);
+          rejected.set(line.productId, reason ?? 'INSUFFICIENT_STOCK');
+        }
       }
 
       const orderLines = lines.map((line) => {
         const advisory = advisoryByProduct.get(line.productId);
-        const rejectedForQuota = quotaRejected.has(line.productId);
-        const approved = advisory?.decision === 'APPROVED' && !rejectedForQuota;
+        const rejectReason = rejected.get(line.productId);
+        const approved = advisory?.decision === 'APPROVED' && !rejectReason;
         return this.lineRepo.create({
           productId: line.productId,
           quantity: line.quantity,
@@ -337,9 +416,7 @@ export class OrdersService {
             : LineValidationStatus.REJECTED,
           rejectionReason: approved
             ? null
-            : rejectedForQuota
-              ? 'QUOTA_EXCEEDED'
-              : (advisory?.reason ?? null),
+            : (rejectReason ?? advisory?.reason ?? null),
         });
       });
 
@@ -384,10 +461,14 @@ export class OrdersService {
       });
       const savedOrder = await manager.save(Order, order);
 
-      // Registre de consommation (D12) — FK order/line valides après le save.
+      // Registres (FK order/line valides après le save) : consommation quota
+      // (D12) + réservations de stock (HELD).
       for (const savedLine of savedOrder.lines) {
+        if (savedLine.validationStatus !== LineValidationStatus.APPROVED) {
+          continue;
+        }
         const c = consumed.get(savedLine.productId);
-        if (c && savedLine.validationStatus === LineValidationStatus.APPROVED) {
+        if (c) {
           await manager.query(
             `INSERT INTO order_quota_consumptions
                (order_id, order_line_id, employee_id, product_id, company_id, period_start, period_end, quantity)
@@ -401,6 +482,22 @@ export class OrdersService {
               c.periodStart,
               c.periodEnd,
               c.quantity,
+            ],
+          );
+        }
+        for (const a of stockAllocations.get(savedLine.productId) ?? []) {
+          await manager.query(
+            `INSERT INTO inventory_reservations
+               (order_id, order_line_id, inventory_item_id, ordered_product_id, stock_product_id, zone, quantity, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'HELD')`,
+            [
+              savedOrder.id,
+              savedLine.id,
+              a.inventoryItemId,
+              savedLine.productId,
+              a.stockProductId,
+              a.zone,
+              a.quantity,
             ],
           );
         }
@@ -581,11 +678,6 @@ export class OrdersService {
     } else if (status === OrderStatus.IN_PROGRESS) {
       order.prepStartedAt = now;
       order.preparedBy = caller.sub;
-      // Décrémente le stock (ingrédients pour un produit composé, produit
-      // lui-même sinon) au moment réel de préparation, pas à la confirmation
-      // (le stock a pu changer entre-temps). Rupture bloque la transition —
-      // le statut n'est pas persisté si decrementForPreparation rejette.
-      await this.decrementRecipeIngredients(order, caller.sub);
     } else if (status === OrderStatus.READY) {
       order.readyAt = now;
       order.readyBy = caller.sub;
@@ -593,7 +685,20 @@ export class OrdersService {
       order.deliveredAt = now;
       order.deliveredBy = caller.sub;
     }
-    const saved = await this.orderRepo.save(order);
+
+    // Réservations de stock (D1=B), dans la MÊME transaction que le changement
+    // de statut. IN_PROGRESS : consomme les HELD (quantity/reserved -=, CONSUMED)
+    // — plus jamais de rupture à la préparation, le stock était réservé à
+    // l'approbation. REJECTED : libère les HELD (reserved -=, RELEASED) ; no-op
+    // si déjà consommé (filtre sur le statut de réservation, E3).
+    const saved = await this.orderRepo.manager.transaction(async (manager) => {
+      if (status === OrderStatus.IN_PROGRESS) {
+        await consumeReservationsForOrder(manager, order.id);
+      } else if (status === OrderStatus.REJECTED) {
+        await releaseReservationsForOrder(manager, order.id);
+      }
+      return manager.save(Order, order);
+    });
 
     // Notify employee via SMS + push FCM (TARHIB-9) — fire-and-forget,
     // don't block the response. orders.employee_id porte l'identité Keycloak

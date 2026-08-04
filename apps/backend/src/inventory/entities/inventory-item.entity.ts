@@ -35,6 +35,10 @@ export class InventoryItem {
   @Column({ type: 'int', default: 0 })
   quantity!: number;
 
+  /** Stock réservé par des commandes approuvées (D1=B). available = quantity - reserved. */
+  @Column({ type: 'int', default: 0 })
+  reserved!: number;
+
   @Column({ name: 'min_threshold', type: 'int', default: 0 })
   minThreshold!: number;
 

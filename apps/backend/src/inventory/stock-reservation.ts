@@ -83,6 +83,66 @@ export async function reserveStockForProduct(
   return { ok: true, allocations };
 }
 
+/**
+ * Consomme les réservations HELD d'une commande à la préparation : décrémente le
+ * stock physique (quantity) ET le réservé (reserved) de la quantité réservée,
+ * passe la réservation à CONSUMED. La réservation elle-même trace le mouvement
+ * (§11) — pas d'InventoryTransfer séparé.
+ */
+export async function consumeReservationsForOrder(
+  manager: EntityManager,
+  orderId: string,
+): Promise<void> {
+  const held = await manager.query<
+    Array<{ id: string; inventory_item_id: string; quantity: number }>
+  >(
+    `SELECT id, inventory_item_id, quantity FROM inventory_reservations
+       WHERE order_id = $1 AND status = 'HELD' FOR UPDATE`,
+    [orderId],
+  );
+  for (const r of held) {
+    await manager.query(
+      `UPDATE inventory_items
+         SET quantity = quantity - $2::int, reserved = reserved - $2::int
+       WHERE id = $1`,
+      [r.inventory_item_id, r.quantity],
+    );
+    await manager.query(
+      `UPDATE inventory_reservations SET status = 'CONSUMED', consumed_at = now() WHERE id = $1`,
+      [r.id],
+    );
+  }
+}
+
+/**
+ * Libère les réservations HELD d'une commande (rejet/annulation AVANT
+ * préparation) : reserved -= q, réservation → RELEASED. Le stock physique n'est
+ * pas touché (rien n'a été consommé). Filtré sur le statut de RÉSERVATION (E3) →
+ * un rejet après consommation ne libère rien (déjà CONSUMED).
+ */
+export async function releaseReservationsForOrder(
+  manager: EntityManager,
+  orderId: string,
+): Promise<void> {
+  const held = await manager.query<
+    Array<{ id: string; inventory_item_id: string; quantity: number }>
+  >(
+    `SELECT id, inventory_item_id, quantity FROM inventory_reservations
+       WHERE order_id = $1 AND status = 'HELD' FOR UPDATE`,
+    [orderId],
+  );
+  for (const r of held) {
+    await manager.query(
+      `UPDATE inventory_items SET reserved = reserved - $2::int WHERE id = $1`,
+      [r.inventory_item_id, r.quantity],
+    );
+    await manager.query(
+      `UPDATE inventory_reservations SET status = 'RELEASED', released_at = now() WHERE id = $1`,
+      [r.id],
+    );
+  }
+}
+
 export async function reserveInventoryAtomic(
   manager: EntityManager,
   inventoryItemId: string,
