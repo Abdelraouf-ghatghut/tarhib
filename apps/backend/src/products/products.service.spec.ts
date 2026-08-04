@@ -9,6 +9,7 @@ import { ProductSupplierPrice } from './entities/product-supplier-price.entity.j
 import { ProductType } from './dto/product.dto.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
 import { Supplier } from '../suppliers/entities/supplier.entity.js';
+import { RedisService } from '../redis/redis.service.js';
 
 const mockRepo = () => ({
   create: jest.fn(),
@@ -37,8 +38,15 @@ const makeQb = (results: Product[]) => ({
   where: jest.fn().mockReturnThis(),
   andWhere: jest.fn().mockReturnThis(),
   orderBy: jest.fn().mockReturnThis(),
+  select: jest.fn().mockReturnThis(),
+  getRawOne: jest.fn().mockResolvedValue({ updatedAt: new Date(0) }),
   getMany: jest.fn().mockResolvedValue(results),
 });
+
+const redisMock = {
+  get: jest.fn(),
+  set: jest.fn(),
+};
 
 describe('ProductsService', () => {
   let service: ProductsService;
@@ -63,6 +71,7 @@ describe('ProductsService', () => {
           useFactory: mockRepo,
         },
         { provide: getRepositoryToken(Supplier), useFactory: mockRepo },
+        { provide: RedisService, useValue: redisMock },
       ],
     }).compile();
 
@@ -75,6 +84,85 @@ describe('ProductsService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('catalog snapshot cache', () => {
+    beforeEach(() => {
+      redisMock.get.mockReset();
+      redisMock.set.mockReset();
+    });
+
+    it('reuses the cached snapshot for the same version and audience', async () => {
+      const cached = {
+        version: '2026-07-26T09:30:00.000Z',
+        updatedAt: '2026-07-26T09:30:00.000Z',
+        products: [{ id: 'prod-1' }],
+      };
+      redisMock.get
+        .mockResolvedValueOnce(cached.version)
+        .mockResolvedValueOnce(JSON.stringify(cached));
+
+      await expect(
+        service.getCatalogSnapshot('EMPLOYEE', 'role-1', 'branch-1'),
+      ).resolves.toEqual(cached);
+      expect(repo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('publishes a new version after a product mutation', async () => {
+      repo.create.mockImplementation((value: unknown) => value);
+      const updatedAt = new Date('2026-07-26T10:00:00.000Z');
+      repo.save.mockImplementation((value: unknown) =>
+        Promise.resolve({ ...(value as object), updatedAt }),
+      );
+
+      await service.create({
+        nameAr: 'قهوة',
+        category: 'beverages',
+        type: ProductType.COMMANDABLE,
+      });
+
+      expect(redisMock.set).toHaveBeenCalledWith(
+        'catalog:version',
+        updatedAt.toISOString(),
+        30 * 24 * 60 * 60,
+      );
+    });
+
+    it('coalesces concurrent cache-miss requests into a single findAll() (single-flight, PR-1.6)', async () => {
+      redisMock.get.mockResolvedValue(null); // miss on every read: version key and snapshot key alike
+      let resolveGetMany!: (products: unknown[]) => void;
+      const getManyPromise = new Promise<unknown[]>((resolve) => {
+        resolveGetMany = resolve;
+      });
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ updatedAt: new Date(0) }),
+        getMany: jest.fn(() => getManyPromise),
+      };
+      repo.createQueryBuilder.mockReturnValue(qb);
+
+      const call1 = service.getCatalogSnapshot(
+        'EMPLOYEE',
+        'role-1',
+        'branch-1',
+      );
+      const call2 = service.getCatalogSnapshot(
+        'EMPLOYEE',
+        'role-1',
+        'branch-1',
+      );
+
+      resolveGetMany([]);
+      const [result1, result2] = await Promise.all([call1, call2]);
+
+      // Un seul findAll() malgré 2 appelants concurrents en cache-miss —
+      // sans single-flight, chacun aurait relancé son propre getMany().
+      expect(qb.getMany).toHaveBeenCalledTimes(1);
+      expect(result1).toEqual(result2);
+    });
   });
 
   describe('create/update — isPurchased/isSold/isVipSelfService dérivés de type', () => {

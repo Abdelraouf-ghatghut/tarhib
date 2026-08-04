@@ -65,6 +65,14 @@ export class ProductDto {
   @IsBoolean()
   active!: boolean;
 
+  @ApiPropertyOptional({
+    example: 'https://cdn.example.com/products/coffee-a8f92c.webp',
+    nullable: true,
+  })
+  @IsString()
+  @IsOptional()
+  imageUrl?: string | null;
+
   @ApiProperty({ example: true, description: 'Acheté auprès d’un fournisseur' })
   @IsBoolean()
   isPurchased!: boolean;
@@ -233,6 +241,25 @@ export class ProductAvailabilityDto {
   @ApiProperty({ example: true })
   @IsBoolean()
   available!: boolean;
+}
+
+export class CatalogVersionDto {
+  @ApiProperty({
+    example: '2026-07-26T09:30:00.000Z',
+    description:
+      'Version opaque du catalogue. Elle change à chaque création, modification ou désactivation de produit.',
+  })
+  @IsString()
+  version!: string;
+
+  @ApiProperty({ example: '2026-07-26T09:30:00.000Z' })
+  @IsString()
+  updatedAt!: string;
+}
+
+export class CatalogSnapshotDto extends CatalogVersionDto {
+  @ApiProperty({ type: [ProductDto] })
+  products!: ProductDto[];
 }
 
 /**

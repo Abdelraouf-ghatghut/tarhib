@@ -9,6 +9,8 @@ import { Product } from './entities/product.entity.js';
 import { ProductFavorite } from './entities/product-favorite.entity.js';
 import { ProductRecipeLine } from './entities/product-recipe-line.entity.js';
 import {
+  CatalogSnapshotDto,
+  CatalogVersionDto,
   CreateProductDto,
   CreateRecipeLineDto,
   ProductAdminDto,
@@ -21,9 +23,22 @@ import {
   InventoryItem,
   StockZone,
 } from '../inventory/entities/inventory-item.entity.js';
+import { RedisService } from '../redis/redis.service.js';
+
+const CATALOG_VERSION_KEY = 'catalog:version';
+const CATALOG_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 @Injectable()
 export class ProductsService {
+  // Single-flight (PR-1.6) : juste après une invalidation (ou pendant une
+  // panne Redis), plusieurs requêtes concurrentes manquent le cache en même
+  // temps — sans ceci, chacune relançait indépendamment le calcul (requête
+  // MAX(updatedAt) ou findAll() complet) au lieu de partager le même calcul
+  // en cours. Portée process (une seule instance backend) : suffisant, le
+  // pire cas sans coordination inter-instance reste un cache write dupliqué,
+  // jamais une incohérence.
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+
   constructor(
     @InjectRepository(Product)
     private readonly repo: Repository<Product>,
@@ -33,7 +48,39 @@ export class ProductsService {
     private readonly inventoryRepo: Repository<InventoryItem>,
     @InjectRepository(ProductRecipeLine)
     private readonly recipeRepo: Repository<ProductRecipeLine>,
+    private readonly redis: RedisService,
   ) {}
+
+  private singleFlight<T>(key: string, compute: () => Promise<T>): Promise<T> {
+    const existing = this.inFlight.get(key);
+    if (existing) return existing as Promise<T>;
+    const promise = compute().finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, promise);
+    return promise;
+  }
+
+  private async readRedis(key: string): Promise<string | null> {
+    try {
+      return await this.redis.get(key);
+    } catch {
+      // Le catalogue reste disponible si Redis est momentanément indisponible.
+      return null;
+    }
+  }
+
+  private async writeRedis(key: string, value: string): Promise<void> {
+    try {
+      await this.redis.set(key, value, CATALOG_CACHE_TTL_SECONDS);
+    } catch {
+      // Cache best-effort : PostgreSQL reste la source de vérité.
+    }
+  }
+
+  private async publishCatalogVersion(updatedAt?: Date): Promise<string> {
+    const version = (updatedAt ?? new Date()).toISOString();
+    await this.writeRedis(CATALOG_VERSION_KEY, version);
+    return version;
+  }
 
   /**
    * isPurchased/isSold/isVipSelfService dérivés de `type` si non fournis —
@@ -70,7 +117,60 @@ export class ProductsService {
       ...this.deriveFlags(dto),
     });
     const saved = await this.repo.save(entity);
+    await this.publishCatalogVersion(saved.updatedAt);
     return this.toDto(saved);
+  }
+
+  async getCatalogVersion(): Promise<CatalogVersionDto> {
+    const cached = await this.readRedis(CATALOG_VERSION_KEY);
+    const version = cached
+      ? cached
+      : await this.singleFlight(CATALOG_VERSION_KEY, async () => {
+          const raw = await this.repo
+            .createQueryBuilder('p')
+            .select('MAX(p.updatedAt)', 'updatedAt')
+            .getRawOne<{ updatedAt?: Date | string | null }>();
+          const updatedAt = raw?.updatedAt
+            ? new Date(raw.updatedAt)
+            : new Date(0);
+          const computed = updatedAt.toISOString();
+          await this.writeRedis(CATALOG_VERSION_KEY, computed);
+          return computed;
+        });
+
+    return { version, updatedAt: version };
+  }
+
+  async getCatalogSnapshot(
+    callerRole?: string,
+    callerRoleId?: string,
+    callerBranchId?: string,
+  ): Promise<CatalogSnapshotDto> {
+    const { version, updatedAt } = await this.getCatalogVersion();
+    const audience = [
+      callerRole ?? 'anonymous',
+      callerRoleId ?? 'no-role',
+      callerBranchId ?? 'no-branch',
+    ].join(':');
+    const cacheKey = `catalog:snapshot:${version}:${audience}`;
+    const cached = await this.readRedis(cacheKey);
+    if (cached) {
+      try {
+        return JSON.parse(cached) as CatalogSnapshotDto;
+      } catch {
+        // Une entrée de cache illisible est simplement reconstruite.
+      }
+    }
+
+    return this.singleFlight(cacheKey, async () => {
+      const snapshot: CatalogSnapshotDto = {
+        version,
+        updatedAt,
+        products: await this.findAll(callerRole, callerRoleId, callerBranchId),
+      };
+      await this.writeRedis(cacheKey, JSON.stringify(snapshot));
+      return snapshot;
+    });
   }
 
   /**
@@ -206,6 +306,7 @@ export class ProductsService {
     if (dto.unitsPerPurchase !== undefined)
       entity.unitsPerPurchase = dto.unitsPerPurchase;
     const saved = await this.repo.save(entity);
+    await this.publishCatalogVersion(saved.updatedAt);
     return this.toDto(saved);
   }
 
@@ -213,7 +314,8 @@ export class ProductsService {
     const entity = await this.repo.findOne({ where: { id } });
     if (!entity) throw new NotFoundException(`Product ${id} not found`);
     entity.active = false;
-    await this.repo.save(entity);
+    const saved = await this.repo.save(entity);
+    await this.publishCatalogVersion(saved.updatedAt);
   }
 
   /**
@@ -233,17 +335,28 @@ export class ProductsService {
         where: { active: true, isSold: true },
       }),
       this.inventoryRepo.find({
-        where: { companyId, branchId, zone: StockZone.BRANCH },
+        where: {
+          companyId,
+          branchId,
+          zone: In([StockZone.KITCHEN, StockZone.BRANCH]),
+        },
       }),
     ]);
-    const stockByProduct = new Map(
-      stocks.map((s) => [s.productId, s.quantity]),
-    );
+    // Disponibilité = available (quantity - reserved) sommé cuisine + branche,
+    // cohérent avec la réservation à la commande (D1=B).
+    const availableByProduct = new Map<string, number>();
+    for (const s of stocks) {
+      availableByProduct.set(
+        s.productId,
+        (availableByProduct.get(s.productId) ?? 0) +
+          (s.quantity - (s.reserved ?? 0)),
+      );
+    }
 
     return products.map((p) => {
       const dto = new ProductAvailabilityDto();
       dto.productId = p.id;
-      dto.quantity = stockByProduct.get(p.id) ?? 0;
+      dto.quantity = availableByProduct.get(p.id) ?? 0;
       dto.available = dto.quantity > 0;
       return dto;
     });
@@ -270,6 +383,7 @@ export class ProductsService {
     dto.type = e.type;
     dto.allowedRoles = e.allowedRoles ?? undefined;
     dto.allowedBranches = e.allowedBranches ?? undefined;
+    dto.imageUrl = e.imageUrl;
     dto.active = e.active;
     dto.isPurchased = e.isPurchased;
     dto.isSold = e.isSold;
@@ -290,6 +404,7 @@ export class ProductsService {
     dto.type = e.type;
     dto.allowedRoles = e.allowedRoles ?? undefined;
     dto.allowedBranches = e.allowedBranches ?? undefined;
+    dto.imageUrl = e.imageUrl;
     dto.active = e.active;
     dto.isPurchased = e.isPurchased;
     dto.isSold = e.isSold;
