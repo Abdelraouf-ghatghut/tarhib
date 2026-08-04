@@ -6,23 +6,20 @@ import {
   runConcurrently,
   truncate,
 } from './harness';
+import { consumeQuotaAtomic } from '../../src/quotas/quota-consumption';
 
 /**
- * Tests « rouges » PR-0.0 — reproduisent, contre un VRAI PostgreSQL, les bugs
- * de concurrence/intégrité du code ACTUEL (avant les correctifs Phase 0).
+ * Tests d'intégrité/concurrence sur un VRAI PostgreSQL.
  *
- * Chaque test affirme le comportement CORRECT attendu, mais est déclaré en
- * `it.failing` : tant que le bug existe, le test échoue → `it.failing` PASSE
- * (CI verte, bug documenté et prouvé sur un vrai Postgres). Quand le correctif
- * (PR-0.2/0.3/0.1…) rend le comportement correct, le test réussit → `it.failing`
- * ÉCHOUE : c'est le signal pour retirer `.failing` et acter la garantie.
+ * P01/P02 (quota) : CORRIGÉS par PR-0.2 — ils appellent le vrai
+ * `consumeQuotaAtomic` et sont des `it` verts (garantie actée).
  *
- * Le SQL exécuté reproduit fidèlement le motif du code de production (référence
- * de fichier en commentaire au-dessus de chaque cas). Reproductions rendues
- * DÉTERMINISTES (barrière/deux phases) pour ne pas devenir des tests flaky.
+ * P03/P06 : baseline encore `it.failing` — reproduisent le bug du code actuel
+ * (rebranchés sur le vrai service quand PR-0.3 / la contrainte EXCLUDE de PR-0.1
+ * les corrigent ; `it.failing` bascule alors et signale le flip vers `it`).
+ *
+ * Reproductions déterministes (barrière/deux phases) pour éviter le flaky.
  */
-
-const PERIOD = ["'2020-01-01'", "'2999-12-31'"]; // fenêtre toujours active
 
 describe('Concurrence — intégrité commandes/stock/quotas (baseline rouge)', () => {
   let ds: DataSource;
@@ -50,100 +47,67 @@ describe('Concurrence — intégrité commandes/stock/quotas (baseline rouge)', 
     return row.id;
   }
 
-  // ── P01 — orders.service.ts:661 : orUpdate(['used_quantity']) ÉCRASE ──────
-  // Le ON CONFLICT DO UPDATE SET used_quantity = EXCLUDED.used_quantity remplace
-  // au lieu d'additionner. 4 puis 3 unités → devrait donner 7, donne 3.
-  it.failing(
-    "P01 — la consommation de quota doit s'additionner (pas s'écraser)",
-    async () => {
-      await truncate(ds, ['employee_quota_usage', 'products', 'companies']);
-      const companyId = await seedCompany('p01');
-      const productId = await seedProduct();
-      const employeeId = '11111111-1111-1111-1111-111111111111';
+  // ── P01 — consumeQuotaAtomic additionne (corrige l'écrasement orUpdate).
+  // 4 puis 3 unités → used = 7 (au lieu de 3 avant correction).
+  it("P01 — la consommation de quota s'additionne (corrigé)", async () => {
+    await truncate(ds, ['employee_quota_usage', 'products', 'companies']);
+    const companyId = await seedCompany('p01');
+    const productId = await seedProduct();
+    const employeeId = '11111111-1111-1111-1111-111111111111';
+    const base = {
+      employeeId,
+      productId,
+      companyId,
+      periodStart: '2020-01-01',
+      periodEnd: '2999-12-31',
+      maxQuantity: 10,
+    };
 
-      const buggyUpsert = (qty: number) =>
-        ds.query(
-          `INSERT INTO employee_quota_usage
-           (employee_id, product_id, company_id, period_start, period_end, used_quantity)
-         VALUES ($1, $2, $3, ${PERIOD[0]}, ${PERIOD[1]}, $4)
-         ON CONFLICT (employee_id, product_id, company_id, period_start, period_end)
-         DO UPDATE SET used_quantity = EXCLUDED.used_quantity`,
-          [employeeId, productId, companyId, qty],
-        );
+    expect(await consumeQuotaAtomic(ds.manager, { ...base, quantity: 4 })).toBe(
+      true,
+    );
+    expect(await consumeQuotaAtomic(ds.manager, { ...base, quantity: 3 })).toBe(
+      true,
+    );
 
-      await buggyUpsert(4);
-      await buggyUpsert(3);
+    const used = await count(
+      ds,
+      `SELECT used_quantity FROM employee_quota_usage WHERE employee_id = $1`,
+      [employeeId],
+    );
+    expect(used).toBe(7);
+  });
 
-      const used = await count(
-        ds,
-        `SELECT used_quantity FROM employee_quota_usage WHERE employee_id = $1`,
-        [employeeId],
-      );
-      expect(used).toBe(7); // ROUGE aujourd'hui : vaut 3 (écrasement)
-    },
-  );
+  // ── P02 — consumeQuotaAtomic garde le max dans UNE instruction (corrige le
+  // check-then-write). Quota=1, 20 appels concurrents → exactement 1 consommé.
+  it("P02 — un quota de 1 n'approuve qu'UNE commande sous concurrence (corrigé)", async () => {
+    await truncate(ds, ['employee_quota_usage', 'products', 'companies']);
+    const companyId = await seedCompany('p02');
+    const productId = await seedProduct();
+    const employeeId = '22222222-2222-2222-2222-222222222222';
+    const base = {
+      employeeId,
+      productId,
+      companyId,
+      periodStart: '2020-01-01',
+      periodEnd: '2999-12-31',
+      quantity: 1,
+      maxQuantity: 1,
+    };
 
-  // ── P02 — orders.service.ts / quotas.service.ts : check-then-write NON atomique
-  // Le snapshot du quota est lu hors transaction, l'incrément est séparé et sans
-  // verrou → sous concurrence, plusieurs commandes passent le contrôle max.
-  it.failing(
-    "P02 — un quota de 1 ne doit approuver qu'UNE commande sous concurrence",
-    async () => {
-      await truncate(ds, ['employee_quota_usage', 'products', 'companies']);
-      const companyId = await seedCompany('p02');
-      const productId = await seedProduct();
-      const employeeId = '22222222-2222-2222-2222-222222222222';
-      const MAX = 1;
-      await ds.query(
-        `INSERT INTO employee_quota_usage
-         (employee_id, product_id, company_id, period_start, period_end, used_quantity)
-       VALUES ($1, $2, $3, ${PERIOD[0]}, ${PERIOD[1]}, 0)`,
-        [employeeId, productId, companyId],
-      );
+    const results = await runConcurrently(20, () =>
+      consumeQuotaAtomic(ds.manager, base),
+    );
 
-      // Motif actuel : lire used (hors verrou) → décider → écrire, en 3 temps.
-      // Reproduction DÉTERMINISTE du pire entrelacement : les 20 transactions
-      // lisent toutes le snapshot AVANT que la moindre écriture n'ait lieu (ce
-      // que la concurrence réelle produit), puis chacune décide et incrémente.
-      const N = 20;
-      const opened = await Promise.all(
-        Array.from({ length: N }, async () => {
-          const runner = ds.createQueryRunner();
-          await runner.connect();
-          await runner.startTransaction();
-          const rows = (await runner.query(
-            `SELECT used_quantity FROM employee_quota_usage
-             WHERE employee_id = $1 AND product_id = $2 AND company_id = $3`,
-            [employeeId, productId, companyId],
-          )) as unknown as Array<{ used_quantity: number }>;
-          return { runner, used: Number(rows[0].used_quantity) };
-        }),
-      );
-
-      let approvals = 0;
-      for (const { runner, used } of opened) {
-        const approved = used + 1 <= MAX; // décision sur le snapshot lu (0)
-        if (approved) {
-          approvals += 1;
-          await runner.query(
-            `UPDATE employee_quota_usage SET used_quantity = used_quantity + 1
-             WHERE employee_id = $1 AND product_id = $2 AND company_id = $3`,
-            [employeeId, productId, companyId],
-          );
-        }
-        await runner.commitTransaction();
-        await runner.release();
-      }
-
-      const finalUsed = await count(
-        ds,
-        `SELECT used_quantity FROM employee_quota_usage WHERE employee_id = $1`,
-        [employeeId],
-      );
-      expect(approvals).toBe(1); // ROUGE : plusieurs passent le contrôle
-      expect(finalUsed).toBeLessThanOrEqual(MAX); // ROUGE : used dépasse le max
-    },
-  );
+    const approvals = results.filter((r) => r.ok && r.value === true).length;
+    const used = await count(
+      ds,
+      `SELECT used_quantity FROM employee_quota_usage WHERE employee_id = $1`,
+      [employeeId],
+    );
+    expect(approvals).toBe(1);
+    expect(used).toBe(1);
+  });
 
   // ── P03 — orders.service.ts:453 : updateStatus lit la commande SANS verrou,
   // et la décrémentation de stock est une transaction séparée → deux « démarrer »
@@ -209,56 +173,53 @@ describe('Concurrence — intégrité commandes/stock/quotas (baseline rouge)', 
     },
   );
 
-  // ── P06 — meeting-rooms.service.ts:135 : find-then-insert sans contrainte
-  // d'exclusion → deux réservations chevauchantes concurrentes réussissent.
-  it.failing(
-    'P06 — deux réservations chevauchantes de la même salle : une seule doit réussir',
-    async () => {
-      await truncate(ds, ['room_bookings', 'meeting_rooms', 'companies']);
-      const companyId = await seedCompany('p06');
-      const [room] = await ds.query<Array<{ id: string }>>(
-        `INSERT INTO meeting_rooms (branch_id, company_id, name_ar, name_en)
+  // ── P06 — CORRIGÉ par la contrainte EXCLUDE de PR-0.1 : la 2e insertion
+  // chevauchante est rejetée par la base → une seule réservation CONFIRMED.
+  it('P06 — deux réservations chevauchantes de la même salle : une seule réussit (corrigé)', async () => {
+    await truncate(ds, ['room_bookings', 'meeting_rooms', 'companies']);
+    const companyId = await seedCompany('p06');
+    const [room] = await ds.query<Array<{ id: string }>>(
+      `INSERT INTO meeting_rooms (branch_id, company_id, name_ar, name_en)
        VALUES ($1, $2, 'r', 'r') RETURNING id`,
-        ['55555555-5555-5555-5555-555555555555', companyId],
-      );
-      const start = "'2026-09-01T10:00:00Z'";
-      const end = "'2026-09-01T11:00:00Z'";
+      ['55555555-5555-5555-5555-555555555555', companyId],
+    );
+    const start = "'2026-09-01T10:00:00Z'";
+    const end = "'2026-09-01T11:00:00Z'";
 
-      await runConcurrently(2, async (i) => {
-        const runner = ds.createQueryRunner();
-        await runner.connect();
-        await runner.startTransaction();
-        try {
-          const conflict = await runner.query<unknown[]>(
-            `SELECT 1 FROM room_bookings
+    await runConcurrently(2, async (i) => {
+      const runner = ds.createQueryRunner();
+      await runner.connect();
+      await runner.startTransaction();
+      try {
+        const conflict = await runner.query<unknown[]>(
+          `SELECT 1 FROM room_bookings
              WHERE room_id = $1 AND status = 'CONFIRMED'
                AND start_time < ${end} AND end_time > ${start}`,
-            [room.id],
-          );
-          if (conflict.length === 0) {
-            await runner.query(
-              `INSERT INTO room_bookings (room_id, employee_id, company_id, start_time, end_time, status)
+          [room.id],
+        );
+        if (conflict.length === 0) {
+          await runner.query(
+            `INSERT INTO room_bookings (room_id, employee_id, company_id, start_time, end_time, status)
              VALUES ($1, $2, $3, ${start}, ${end}, 'CONFIRMED')`,
-              [room.id, `66666666-6666-6666-6666-66666666666${i}`, companyId],
-            );
-          }
-          await runner.commitTransaction();
-        } catch (e) {
-          await runner.rollbackTransaction();
-          throw e;
-        } finally {
-          await runner.release();
+            [room.id, `66666666-6666-6666-6666-66666666666${i}`, companyId],
+          );
         }
-      });
+        await runner.commitTransaction();
+      } catch (e) {
+        await runner.rollbackTransaction();
+        throw e;
+      } finally {
+        await runner.release();
+      }
+    });
 
-      const confirmed = await count(
-        ds,
-        `SELECT COUNT(*) FROM room_bookings WHERE room_id = $1 AND status = 'CONFIRMED'`,
-        [room.id],
-      );
-      expect(confirmed).toBe(1); // ROUGE : vaut 2 (double réservation)
-    },
-  );
+    const confirmed = await count(
+      ds,
+      `SELECT COUNT(*) FROM room_bookings WHERE room_id = $1 AND status = 'CONFIRMED'`,
+      [room.id],
+    );
+    expect(confirmed).toBe(1); // contrainte EXCLUDE : la 2e est rejetée
+  });
 
   // Nécessitent le schéma de PR-0.1/0.1c (colonnes/tables pas encore créées) :
   it.todo(
