@@ -21,6 +21,12 @@ Store these values in the deployment secret manager and EAS Secrets, never in Gi
 6. Promote web and mobile update channels only after the smoke suite succeeds.
 7. Keep the previous backend image available for rollback. Database rollback requires an explicitly reviewed down migration or a tested restore; never run automatic destructive rollback.
 
+## One-off ops scripts
+
+Some schema changes cannot run inside a TypeORM migration transaction and ship as standalone `apps/backend/scripts/ops-*.sql`, applied once by hand via `psql` outside a deployment window that needs to block. Applied so far:
+
+- `ops-add-orders-indexes.sql` (PR-1.2) — `CREATE INDEX CONCURRENTLY` on `orders` (company+branch+created_at, employee+created_at, company+created_at). Idempotent (`IF NOT EXISTS`), safe to re-run.
+
 ## Backup policy
 
 - nightly custom-format PostgreSQL backup;
