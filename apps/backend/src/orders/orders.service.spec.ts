@@ -77,6 +77,7 @@ const makeOrder = (priority: OrderPriority): Order => ({
 describe('OrdersService', () => {
   let service: OrdersService;
   let orderRepo: ReturnType<typeof mockRepo>;
+  let lineRepo: ReturnType<typeof mockRepo>;
   let productRepo: ReturnType<typeof mockRepo>;
   let roleQuotaRepo: ReturnType<typeof mockRepo>;
   let inventoryService: { decrementForPreparation: jest.Mock };
@@ -138,6 +139,7 @@ describe('OrdersService', () => {
 
     service = module.get<OrdersService>(OrdersService);
     orderRepo = module.get(getRepositoryToken(Order));
+    lineRepo = module.get(getRepositoryToken(OrderLine));
     productRepo = module.get(getRepositoryToken(Product));
     roleQuotaRepo = module.get(getRepositoryToken(RoleQuota));
     inventoryService = module.get(InventoryService);
@@ -334,6 +336,66 @@ describe('OrdersService', () => {
           where: { employeeId: 'emp-1', status: OrderStatus.DELIVERED },
         }),
       );
+    });
+  });
+
+  describe('dashboardStats — agrégation SQL (PR-1.4)', () => {
+    // Un seul faux QueryBuilder chaînable, réutilisé pour les 3 requêtes
+    // d'agrégation (status counts, moyenne SLA, top produits).
+    const fakeQb = (resolved: unknown) => {
+      const qb: Record<string, jest.Mock> = {};
+      qb.select = jest.fn(() => qb);
+      qb.addSelect = jest.fn(() => qb);
+      qb.innerJoin = jest.fn(() => qb);
+      qb.where = jest.fn(() => qb);
+      qb.andWhere = jest.fn(() => qb);
+      qb.groupBy = jest.fn(() => qb);
+      qb.orderBy = jest.fn(() => qb);
+      qb.limit = jest.fn(() => qb);
+      qb.getRawMany = jest.fn().mockResolvedValue(resolved);
+      qb.getRawOne = jest.fn().mockResolvedValue(resolved);
+      return qb;
+    };
+
+    it('computes counts/avg/top-products from SQL aggregation results, never loading full orders', async () => {
+      orderRepo.createQueryBuilder
+        .mockReturnValueOnce(
+          fakeQb([
+            { status: OrderStatus.PENDING, count: '2' },
+            { status: OrderStatus.APPROVED, count: '1' },
+            { status: OrderStatus.DELIVERED, count: '3' },
+          ]),
+        )
+        .mockReturnValueOnce(fakeQb({ avg: '15.5' }));
+      lineRepo.createQueryBuilder.mockReturnValue(
+        fakeQb([{ productId: 'prod-1', total: '7' }]),
+      );
+      productRepo.find.mockResolvedValue([
+        { id: 'prod-1', nameEn: 'Coffee', nameAr: 'قهوة' },
+      ]);
+
+      const result = await service.dashboardStats(caller());
+
+      expect(result.todayOrders).toBe(6);
+      expect(result.pendingCount).toBe(3); // PENDING + APPROVED
+      expect(result.deliveredToday).toBe(3);
+      expect(result.avgSlaMinutes).toBe(15.5);
+      expect(result.mostOrdered).toEqual([
+        { productId: 'prod-1', name: 'Coffee', count: 7 },
+      ]);
+      expect(orderRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('returns zero avg when no order was ever delivered today', async () => {
+      orderRepo.createQueryBuilder
+        .mockReturnValueOnce(fakeQb([]))
+        .mockReturnValueOnce(fakeQb({ avg: null }));
+      lineRepo.createQueryBuilder.mockReturnValue(fakeQb([]));
+
+      const result = await service.dashboardStats(caller());
+
+      expect(result.avgSlaMinutes).toBe(0);
+      expect(result.mostOrdered).toEqual([]);
     });
   });
 

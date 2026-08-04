@@ -9,12 +9,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
-  Between,
   EntityManager,
   FindOptionsWhere,
   In,
   QueryFailedError,
   Repository,
+  SelectQueryBuilder,
 } from 'typeorm';
 import { Order } from './entities/order.entity.js';
 import {
@@ -574,73 +574,91 @@ export class OrdersService {
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
 
-    const where: FindOptionsWhere<Order> = {
-      createdAt: Between(start, end),
+    const scoped = this.isPlatformAdmin(caller)
+      ? {}
+      : {
+          companyId: caller.companyId || undefined,
+          branchId: caller.branchId || undefined,
+        };
+
+    // Agrégation en SQL (PR-1.4) : l'ancienne version chargeait toutes les
+    // commandes du jour + leurs lignes en mémoire pour ne produire que des
+    // compteurs/moyennes — coût qui croît avec le volume de commandes/jour
+    // pour rien, PostgreSQL fait ce travail nativement.
+    const applyScope = <T extends object>(qb: SelectQueryBuilder<T>) => {
+      qb.where('o.createdAt >= :start AND o.createdAt < :end', {
+        start,
+        end,
+      });
+      if (scoped.companyId) qb.andWhere('o.companyId = :companyId', scoped);
+      if (scoped.branchId) qb.andWhere('o.branchId = :branchId', scoped);
+      return qb;
     };
-    if (!this.isPlatformAdmin(caller)) {
-      if (caller.companyId) where.companyId = caller.companyId;
-      if (caller.branchId) where.branchId = caller.branchId;
-    }
 
-    const orders = await this.orderRepo.find({
-      where,
-      order: { createdAt: 'DESC' },
-      relations: ['lines'],
-    });
+    const statusCounts = await applyScope(
+      this.orderRepo
+        .createQueryBuilder('o')
+        .select('o.status', 'status')
+        .addSelect('COUNT(*)', 'count'),
+    )
+      .groupBy('o.status')
+      .getRawMany<{ status: OrderStatus; count: string }>();
 
-    const delivered = orders.filter(
-      (order) => order.status === OrderStatus.DELIVERED,
+    const countByStatus = new Map(
+      statusCounts.map((row) => [row.status, Number(row.count)]),
     );
-    const pending = orders.filter((order) =>
-      [OrderStatus.PENDING, OrderStatus.APPROVED].includes(order.status),
+    const todayOrders = statusCounts.reduce(
+      (sum, row) => sum + Number(row.count),
+      0,
     );
+    const pendingCount =
+      (countByStatus.get(OrderStatus.PENDING) ?? 0) +
+      (countByStatus.get(OrderStatus.APPROVED) ?? 0);
+    const deliveredToday = countByStatus.get(OrderStatus.DELIVERED) ?? 0;
 
-    const deliveryDurations = delivered
-      .map((order) =>
-        order.prepStartedAt && order.deliveredAt
-          ? (order.deliveredAt.getTime() - order.prepStartedAt.getTime()) /
-            60_000
-          : null,
-      )
-      .filter(
-        (duration): duration is number =>
-          typeof duration === 'number' && Number.isFinite(duration),
-      );
+    const avgRow = await applyScope(
+      this.orderRepo
+        .createQueryBuilder('o')
+        .select(
+          'AVG(EXTRACT(EPOCH FROM (o.deliveredAt - o.prepStartedAt)) / 60)',
+          'avg',
+        ),
+    )
+      .andWhere('o.status = :delivered', { delivered: OrderStatus.DELIVERED })
+      .andWhere('o.prepStartedAt IS NOT NULL')
+      .andWhere('o.deliveredAt IS NOT NULL')
+      .getRawOne<{ avg: string | null }>();
 
-    const productCounts = new Map<string, number>();
-    for (const order of orders) {
-      for (const line of order.lines ?? []) {
-        productCounts.set(
-          line.productId,
-          (productCounts.get(line.productId) ?? 0) + Number(line.quantity ?? 0),
-        );
-      }
-    }
+    const topLines = await applyScope(
+      this.lineRepo
+        .createQueryBuilder('l')
+        .innerJoin('l.order', 'o')
+        .select('l.productId', 'productId')
+        .addSelect('SUM(l.quantity)', 'total'),
+    )
+      .groupBy('l.productId')
+      .orderBy('total', 'DESC')
+      .limit(5)
+      .getRawMany<{ productId: string; total: string }>();
 
-    const topProductIds = [...productCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([productId]) => productId);
-
-    const products = topProductIds.length
-      ? await this.productRepo.find({ where: { id: In(topProductIds) } })
+    const products = topLines.length
+      ? await this.productRepo.find({
+          where: { id: In(topLines.map((row) => row.productId)) },
+        })
       : [];
     const namesById = new Map(
       products.map((product) => [product.id, product.nameEn || product.nameAr]),
     );
 
     return {
-      todayOrders: orders.length,
-      pendingCount: pending.length,
-      deliveredToday: delivered.length,
-      avgSlaMinutes: deliveryDurations.length
-        ? deliveryDurations.reduce((sum, value) => sum + value, 0) /
-          deliveryDurations.length
-        : 0,
-      mostOrdered: topProductIds.map((productId) => ({
-        productId,
-        name: namesById.get(productId) ?? productId,
-        count: productCounts.get(productId) ?? 0,
+      todayOrders,
+      pendingCount,
+      deliveredToday,
+      avgSlaMinutes: avgRow?.avg ? Number(avgRow.avg) : 0,
+      mostOrdered: topLines.map((row) => ({
+        productId: row.productId,
+        name: namesById.get(row.productId) ?? row.productId,
+        count: Number(row.total),
       })),
     };
   }
