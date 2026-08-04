@@ -7,7 +7,10 @@ import {
   truncate,
 } from './harness';
 import { consumeQuotaAtomic } from '../../src/quotas/quota-consumption';
-import { reserveInventoryAtomic } from '../../src/inventory/stock-reservation';
+import {
+  reserveInventoryAtomic,
+  reserveStockForProduct,
+} from '../../src/inventory/stock-reservation';
 
 /**
  * Tests d'intégrité/concurrence sur un VRAI PostgreSQL.
@@ -253,6 +256,77 @@ describe('Concurrence — intégrité commandes/stock/quotas (baseline rouge)', 
     expect(reservedOk).toBe(5);
     expect(reserved).toBe(5);
     expect(reserved).toBeLessThanOrEqual(quantity);
+  });
+
+  // ── Allocation multi-zone : cuisine 3 + branche 4, réserver 5 → cuisine 3
+  // (épuisée) + branche 2 (déficit).
+  it("réservation multi-zone : cuisine d'abord, déficit en branche", async () => {
+    await truncate(ds, ['inventory_items', 'products', 'companies']);
+    const companyId = await seedCompany('mz');
+    const productId = await seedProduct();
+    const branchId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    await ds.query(
+      `INSERT INTO inventory_items (company_id, branch_id, product_id, zone, quantity, reserved)
+       VALUES ($1, $2, $3, 'KITCHEN', 3, 0), ($1, $2, $3, 'BRANCH', 4, 0)`,
+      [companyId, branchId, productId],
+    );
+
+    const res = await ds.transaction((m) =>
+      reserveStockForProduct(m, {
+        productId,
+        branchId,
+        companyId,
+        quantity: 5,
+      }),
+    );
+
+    expect(res.ok).toBe(true);
+    const kitchen = await count(
+      ds,
+      `SELECT reserved FROM inventory_items WHERE product_id = $1 AND zone = 'KITCHEN'`,
+      [productId],
+    );
+    const branch = await count(
+      ds,
+      `SELECT reserved FROM inventory_items WHERE product_id = $1 AND zone = 'BRANCH'`,
+      [productId],
+    );
+    expect(kitchen).toBe(3);
+    expect(branch).toBe(2);
+  });
+
+  // ── Réservations multi-zone concurrentes : stock total 6 (cuisine 3 + branche
+  // 3), 20 réservations de 1 → exactement 6, jamais de sur-réservation.
+  it('réservations concurrentes multi-zone ne sur-réservent pas', async () => {
+    await truncate(ds, ['inventory_items', 'products', 'companies']);
+    const companyId = await seedCompany('mzc');
+    const productId = await seedProduct();
+    const branchId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+    await ds.query(
+      `INSERT INTO inventory_items (company_id, branch_id, product_id, zone, quantity, reserved)
+       VALUES ($1, $2, $3, 'KITCHEN', 3, 0), ($1, $2, $3, 'BRANCH', 3, 0)`,
+      [companyId, branchId, productId],
+    );
+
+    const results = await runConcurrently(20, () =>
+      ds.transaction((m) =>
+        reserveStockForProduct(m, {
+          productId,
+          branchId,
+          companyId,
+          quantity: 1,
+        }),
+      ),
+    );
+
+    const okCount = results.filter((r) => r.ok && r.value.ok === true).length;
+    const totalReserved = await count(
+      ds,
+      `SELECT COALESCE(SUM(reserved), 0) FROM inventory_items WHERE product_id = $1`,
+      [productId],
+    );
+    expect(okCount).toBe(6);
+    expect(totalReserved).toBe(6);
   });
 
   // Nécessite l'idempotence (PR-0.4) :
