@@ -27,16 +27,27 @@ export class AppController {
   @Public()
   @Get('health/ready')
   async ready() {
+    // PostgreSQL est la seule dépendance qui rend le service réellement
+    // indisponible (source de vérité — commandes/stock/quotas). Redis n'est
+    // qu'un cache/best-effort (PR-0.5) : sa panne ne doit jamais faire échouer
+    // le readiness ni déclencher un redémarrage par l'orchestrateur — elle est
+    // juste rapportée en "degraded" pour la supervision.
     try {
-      await Promise.all([this.dataSource.query('SELECT 1'), this.redis.ping()]);
-      return {
-        status: 'ready',
-        database: 'ok',
-        redis: 'ok',
-        timestamp: new Date().toISOString(),
-      };
+      await this.dataSource.query('SELECT 1');
     } catch {
-      throw new ServiceUnavailableException('dependenciesUnavailable');
+      throw new ServiceUnavailableException('databaseUnavailable');
     }
+
+    const redisOk = await this.redis
+      .ping()
+      .then(() => true)
+      .catch(() => false);
+
+    return {
+      status: 'ready',
+      database: 'ok',
+      redis: redisOk ? 'ok' : 'degraded',
+      timestamp: new Date().toISOString(),
+    };
   }
 }

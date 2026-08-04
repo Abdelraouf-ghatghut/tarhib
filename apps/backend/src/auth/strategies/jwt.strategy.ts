@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,6 +13,8 @@ import { IMPERSONATE_ROLE_KEY_PREFIX } from '../impersonation.constants.js';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
+  private readonly logger = new Logger(JwtStrategy.name);
+
   constructor(
     config: ConfigService,
     @InjectRepository(Employee)
@@ -85,9 +87,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // POST /auth/impersonate/role/:roleId, substitue les permissions réelles
     // par celles du rôle simulé — sub/employeeId restent ceux de l'employé
     // réel, seule cette couche est affectée (traçabilité d'audit intacte).
-    const overrideRoleId = await this.redis.get(
-      `${IMPERSONATE_ROLE_KEY_PREFIX}${employee.id}`,
-    );
+    //
+    // PR-0.5 : Redis n'est jamais la source de vérité de l'authentification —
+    // une panne Redis ne doit JAMAIS casser la connexion d'un employé déjà
+    // authentifié par un JWT valide. Si l'appel échoue (panne, timeout — cf.
+    // config fail-fast de RedisModule), on dégrade silencieusement vers
+    // "pas d'impersonation active" plutôt que de laisser l'erreur remonter et
+    // faire échouer TOUTE requête authentifiée.
+    const overrideRoleId = await this.redis
+      .get(`${IMPERSONATE_ROLE_KEY_PREFIX}${employee.id}`)
+      .catch((err: unknown) => {
+        this.logger.warn(
+          `Redis indisponible pour la vérification d'impersonation (dégradé, pas d'impersonation active) : ${String(err)}`,
+        );
+        return null;
+      });
     const effective = overrideRoleId
       ? await this.accessPolicy.resolveAsRole(employee, overrideRoleId)
       : access;
