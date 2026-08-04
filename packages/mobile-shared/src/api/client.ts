@@ -10,7 +10,12 @@ const DEFAULT_BASE_URL = Platform.select({
 // LAN IP of the backend when testing on a physical device / pilot branch.
 export const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_BASE_URL;
 
-export const api = axios.create({ baseURL: BASE_URL });
+// Sans timeout, axios attend indéfiniment (pas de défaut côté lib) — sur
+// réseau mobile dégradé (signal faible, bascule wifi/cellulaire), une requête
+// pendante bloquait l'UI (spinner infini) sans jamais déclencher le retry/
+// l'état d'erreur (PR-1.8). 15s couvre large les endpoints les plus lourds
+// mesurés (rapports < 10ms côté serveur, marge pour la latence réseau).
+export const api = axios.create({ baseURL: BASE_URL, timeout: 15_000 });
 
 type TokenHandlers = {
   getAccessToken: () => string | null;
@@ -62,7 +67,11 @@ async function refreshAccessToken(): Promise<string | null> {
     const refreshToken = handlers.getRefreshToken();
     if (!refreshToken) return null;
     try {
-      const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+      const { data } = await axios.post(
+        `${BASE_URL}/auth/refresh`,
+        { refreshToken },
+        { timeout: 15_000 },
+      );
       handlers.onTokensRefreshed(data.accessToken, data.refreshToken, data.expiresIn);
       return data.accessToken as string;
     } catch {

@@ -7,6 +7,7 @@ export * from "./i18n";
 export * from "./notifications";
 export * from "./realtime";
 export * from "./theme";
+export * from "./query-client";
 export * from "./api/client";
 export * from "./api/auth";
 export * from "./api/catalog";
