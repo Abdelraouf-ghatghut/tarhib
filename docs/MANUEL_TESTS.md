@@ -21,8 +21,8 @@ Vérifie que les deux containers sont `Up` :
 
 ```bash
 docker ps
-# tarhib-postgres   Up   0.0.0.0:5432->5432/tcp
-# tarhib-redis      Up   0.0.0.0:6379->6379/tcp
+# tarhib-postgres   Up   127.0.0.1:5432->5432/tcp
+# tarhib-redis      Up   127.0.0.1:6379->6379/tcp
 ```
 
 ### 1.2 Lancer les migrations TypeORM

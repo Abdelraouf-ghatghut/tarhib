@@ -1,3 +1,16 @@
+# ⚠️  DEV ONLY — NE JAMAIS utiliser ce fichier sur le VPS/en production.
+#
+# Ports publiés sur 127.0.0.1 uniquement (jamais accessibles depuis le
+# réseau), mais Postgres/Redis tournent SANS TLS et Keycloak est en mode
+# `start-dev` (non durci) — c'est volontaire pour le développement local,
+# jamais acceptable en prod. Le déploiement réel utilise
+# docker-compose.prod.yml (cf. PRODUCTION_DEPLOYMENT_GUIDE.md), qui n'expose
+# aucun de ces ports et ne définit aucun mot de passe par défaut.
+#
+# Secrets ci-dessous : valeurs de dev faibles volontairement, remplaçables
+# via le `.env` racine (jamais commité, cf. .gitignore) sans modifier ce
+# fichier. Si `tarhib_dev` ou `tarhibnewapp1234` ont un jour été réutilisés
+# en dehors du dev local, les faire tourner immédiatement là où c'est le cas.
 version: "3.9"
 
 services:
@@ -6,11 +19,11 @@ services:
     container_name: tarhib-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: tarhib
-      POSTGRES_PASSWORD: tarhib_dev
-      POSTGRES_DB: tarhib_dev
+      POSTGRES_USER: ${POSTGRES_USER:-tarhib}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tarhib_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-tarhib_dev}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - tarhib_pg_data:/var/lib/postgresql/data
 
@@ -19,7 +32,7 @@ services:
     container_name: tarhib-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
@@ -27,10 +40,10 @@ services:
     restart: unless-stopped
     command: ["start-dev", "--import-realm", "--features=token-exchange"]
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: tarhibnewapp1234
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-tarhibnewapp1234}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./keycloak:/opt/keycloak/data/import
       - tarhib_keycloak_data:/opt/keycloak/data
