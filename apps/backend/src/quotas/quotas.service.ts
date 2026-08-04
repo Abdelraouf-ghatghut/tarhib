@@ -1,9 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Quota } from './entities/quota.entity.js';
 import { CreateQuotaDto, QuotaDto, UpdateQuotaDto } from './dto/quota.dto.js';
-import { RoleQuota } from '../roles/entities/role-quota.entity.js';
+import {
+  QuotaPeriodType,
+  RoleQuota,
+} from '../roles/entities/role-quota.entity.js';
 import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
 
 /**
@@ -101,6 +104,45 @@ export class QuotasService {
       maxQuantity: q.maxQuantity,
       usedQuantity: q.usedQuantity,
     }));
+  }
+
+  /**
+   * Quota effectif du rôle PRIMAIRE (D2) par produit : periodType + maxQuantity,
+   * pour la consommation atomique dans OrdersService.create().
+   *
+   * ponytail: un seul quota par produit (le premier si plusieurs period_type
+   * sont configurés pour le même produit) — cohérent avec le comportement
+   * actuel de snapshotsFor. Multi-période par produit = à ajouter (relâcher
+   * l'unique de order_quota_consumptions + savepoint par ligne) si un vrai
+   * besoin apparaît.
+   */
+  async effectiveRoleQuotas(
+    caller: QuotaCaller,
+    productIds: string[],
+  ): Promise<
+    Map<string, { periodType: QuotaPeriodType; maxQuantity: number }>
+  > {
+    const map = new Map<
+      string,
+      { periodType: QuotaPeriodType; maxQuantity: number }
+    >();
+    if (!caller.roleId || productIds.length === 0) return map;
+    const rows = await this.roleQuotaRepo.find({
+      where: {
+        roleId: caller.roleId,
+        companyId: caller.companyId ?? undefined,
+        productId: In(productIds),
+      },
+    });
+    for (const rq of rows) {
+      if (!map.has(rq.productId)) {
+        map.set(rq.productId, {
+          periodType: rq.periodType,
+          maxQuantity: rq.maxQuantity,
+        });
+      }
+    }
+    return map;
   }
 
   async create(dto: CreateQuotaDto): Promise<QuotaDto> {

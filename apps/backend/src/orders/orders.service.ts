@@ -41,9 +41,9 @@ import {
   StockZone,
 } from '../inventory/entities/inventory-item.entity.js';
 import { InventoryService } from '../inventory/inventory.service.js';
-import { Quota } from '../quotas/entities/quota.entity.js';
 import { QuotasService } from '../quotas/quotas.service.js';
-import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
+import { computeQuotaPeriod } from '../quotas/quota-period.js';
+import { consumeQuotaAtomic } from '../quotas/quota-consumption.js';
 import { PrioritySlaService } from '../priority-sla/priority-sla.service.js';
 import { Role } from '../roles/entities/role.entity.js';
 
@@ -141,7 +141,20 @@ export class OrdersService {
   }
 
   async create(dto: CreateOrderDto, caller: JwtPayload): Promise<OrderDto> {
-    const productIds = dto.lines.map((l) => l.productId);
+    // Agrégation du panier : plusieurs lignes d'un même produit sont fusionnées
+    // → quota et stock validés sur la SOMME, jamais indépendamment par ligne.
+    const aggregated = new Map<string, number>();
+    for (const l of dto.lines) {
+      aggregated.set(
+        l.productId,
+        (aggregated.get(l.productId) ?? 0) + l.quantity,
+      );
+    }
+    const lines = [...aggregated.entries()].map(([productId, quantity]) => ({
+      productId,
+      quantity,
+    }));
+    const productIds = [...aggregated.keys()];
 
     // Nomenclature (§3 CLAUDE.md) : un produit composé n'a pas de stock
     // propre — le stock à vérifier est celui de ses ingrédients.
@@ -187,12 +200,23 @@ export class OrdersService {
       }),
     );
 
-    // Quota system: prefer new role-based quotas, fallback to legacy per-employee quotas
-    const quotaSnapshots = await this.quotasService.snapshotsFor(
+    // Quota effectif du rôle primaire (D2) : periodType + max par produit. La
+    // consommation est ATOMIQUE dans la transaction (consumeQuotaAtomic), pas un
+    // simple contrôle advisory → corrige P01 (additif) et P02 (garde du max).
+    const effectiveQuotas = await this.quotasService.effectiveRoleQuotas(
       caller,
       productIds,
     );
+    // Chemin legacy uniquement (employé sans rôle) : quota advisory via la table
+    // `quotas`. Le chemin role-based ne charge rien ici (quota traité
+    // atomiquement dans la transaction).
+    const quotaSnapshots = caller.roleId
+      ? []
+      : await this.quotasService.snapshotsFor(caller, productIds);
 
+    // Validation advisory §3.3 étapes 1-2 (produit/rôle/branche/stock) sur les
+    // lignes agrégées. Le quota (étape 3) est traité atomiquement plus bas →
+    // quotas:[] ici pour ne pas rejeter sur un snapshot périmé.
     const ctx: ValidationContext = {
       employeeId: caller.sub,
       companyId: caller.companyId || '',
@@ -219,15 +243,24 @@ export class OrdersService {
       })),
     };
 
-    const validation = this.validationEngine.validateCart(ctx, dto.lines);
+    const validation = this.validationEngine.validateCart(ctx, lines);
+    const advisoryByProduct = new Map<
+      string,
+      { decision: string; reason: string | null }
+    >();
+    for (const v of validation.lines) {
+      advisoryByProduct.set(v.productId, {
+        decision: v.decision,
+        reason: v.reason ?? null,
+      });
+    }
 
-    const rejectedLines = validation.lines.filter(
-      (l) => l.decision === 'REJECTED',
-    );
-    if (rejectedLines.length === dto.lines.length) {
+    if (validation.lines.every((v) => v.decision === 'REJECTED')) {
       throw new UnprocessableEntityException({
         message: 'orderValidationFailed',
-        rejectedLines,
+        rejectedLines: validation.lines.filter(
+          (v) => v.decision === 'REJECTED',
+        ),
       });
     }
 
@@ -237,74 +270,140 @@ export class OrdersService {
       caller.companyId,
       priority,
     );
-    const slaDeadline = new Date(Date.now() + slaMinutes * 60_000);
-
-    // Moteur de validation (CLAUDE.md §3.3) : rejet automatique de la ligne
-    // fautive (rôle non autorisé, stock insuffisant, quota dépassé — quota
-    // vérifié uniquement s'il existe pour l'employé), jamais de blocage du
-    // panier entier pour une seule ligne en faute. La décision est
-    // entièrement automatique — aucune ligne rejetée n'attend l'arbitrage
-    // d'un Department Manager : la commande est validée immédiatement dès
-    // qu'il reste au moins une ligne valide, les lignes rejetées restent
-    // visibles avec leur motif (l'employé les retire de ses prochains
-    // paniers, cf. affichage mobile order_line_tile.dart).
     const now = new Date();
+    const slaDeadline = new Date(now.getTime() + slaMinutes * 60_000);
 
-    const order = this.orderRepo.create({
-      employeeId: caller.sub,
-      companyId: caller.companyId,
-      branchId: caller.branchId,
-      priority,
-      slaDeadline,
-      note: dto.note?.trim() || null,
-      status: OrderStatus.APPROVED,
-      approvedAt: now,
-      lines: dto.lines.map((l) => {
-        const validationLine = validation.lines.find(
-          (v) => v.productId === l.productId,
-        );
-        const line = this.lineRepo.create({
-          productId: l.productId,
-          quantity: l.quantity,
-          validationStatus:
-            validationLine?.decision === 'REJECTED'
-              ? LineValidationStatus.REJECTED
-              : LineValidationStatus.APPROVED,
-          rejectionReason: validationLine?.reason ?? null,
-        });
-        return line;
-      }),
-    });
-
-    // Une seule transaction : la commande et l'incrément de quota doivent
-    // réussir ou échouer ensemble, sinon un échec de l'incrément laisserait
-    // une commande APPROVED dont la consommation de quota n'est pas comptée.
+    // Transaction (R1) : consommation de quota atomique → décision finale des
+    // lignes → insertion commande/lignes → registre de consommation (D12).
+    // « Consume puis décide puis écris » garantit qu'une ligne rejetée par le
+    // quota sous concurrence n'est jamais persistée APPROVED ; 0 ligne approuvée
+    // rollback la consommation déjà faite.
     const saved = await this.orderRepo.manager.transaction(async (manager) => {
-      // Incrément atomique par société (§ numéro de commande court) : upsert
-      // + retour de l'ancienne valeur, sans risque de doublon sous concurrence.
+      const consumed = new Map<
+        string,
+        { periodStart: string; periodEnd: string; quantity: number }
+      >();
+      const quotaRejected = new Set<string>();
+
+      for (const line of lines) {
+        if (advisoryByProduct.get(line.productId)?.decision !== 'APPROVED') {
+          continue; // déjà rejeté (produit/rôle/branche/stock)
+        }
+        const quota = effectiveQuotas.get(line.productId);
+        if (caller.roleId && quota) {
+          const { periodStart, periodEnd } = computeQuotaPeriod(
+            quota.periodType,
+            now,
+          );
+          const ok = await consumeQuotaAtomic(manager, {
+            employeeId: caller.sub,
+            productId: line.productId,
+            companyId: caller.companyId,
+            periodStart,
+            periodEnd,
+            quantity: line.quantity,
+            maxQuantity: quota.maxQuantity,
+          });
+          if (ok) {
+            consumed.set(line.productId, {
+              periodStart,
+              periodEnd,
+              quantity: line.quantity,
+            });
+          } else {
+            quotaRejected.add(line.productId);
+          }
+        } else if (!caller.roleId) {
+          // Legacy (employé sans rôle) : incrément additif sur la table `quotas`.
+          await this.incrementLegacyQuota(
+            manager,
+            caller.sub,
+            line.productId,
+            line.quantity,
+          );
+        }
+        // roleId sans role_quota pour ce produit → illimité (D3), rien à consommer.
+      }
+
+      const orderLines = lines.map((line) => {
+        const advisory = advisoryByProduct.get(line.productId);
+        const rejectedForQuota = quotaRejected.has(line.productId);
+        const approved = advisory?.decision === 'APPROVED' && !rejectedForQuota;
+        return this.lineRepo.create({
+          productId: line.productId,
+          quantity: line.quantity,
+          validationStatus: approved
+            ? LineValidationStatus.APPROVED
+            : LineValidationStatus.REJECTED,
+          rejectionReason: approved
+            ? null
+            : rejectedForQuota
+              ? 'QUOTA_EXCEEDED'
+              : (advisory?.reason ?? null),
+        });
+      });
+
+      if (
+        !orderLines.some(
+          (l) => l.validationStatus === LineValidationStatus.APPROVED,
+        )
+      ) {
+        // Rollback : annule les consommations de quota déjà faites dans la tx.
+        throw new UnprocessableEntityException({
+          message: 'orderValidationFailed',
+          rejectedLines: orderLines.map((l) => ({
+            productId: l.productId,
+            quantity: l.quantity,
+            decision: 'REJECTED',
+            reason: l.rejectionReason,
+          })),
+        });
+      }
+
+      // Numéro de commande atomique par société (upsert, pas de doublon concurrent).
       const [{ assigned }] = await manager.query<{ assigned: number }[]>(
         `INSERT INTO company_order_counters (company_id, next_number)
          VALUES ($1, 2)
          ON CONFLICT (company_id)
          DO UPDATE SET next_number = company_order_counters.next_number + 1
          RETURNING next_number - 1 AS assigned`,
-        [order.companyId],
+        [caller.companyId],
       );
-      order.orderNumber = assigned;
 
+      const order = this.orderRepo.create({
+        employeeId: caller.sub,
+        companyId: caller.companyId,
+        branchId: caller.branchId,
+        orderNumber: assigned,
+        priority,
+        slaDeadline,
+        note: dto.note?.trim() || null,
+        status: OrderStatus.APPROVED,
+        approvedAt: now,
+        lines: orderLines,
+      });
       const savedOrder = await manager.save(Order, order);
-      const approvedLines = savedOrder.lines.filter(
-        (l) => l.validationStatus === LineValidationStatus.APPROVED,
-      );
-      if (approvedLines.length > 0) {
-        await this.incrementQuotaUsage(
-          caller,
-          approvedLines.map((l) => ({
-            productId: l.productId,
-            quantity: l.quantity,
-          })),
-          manager,
-        );
+
+      // Registre de consommation (D12) — FK order/line valides après le save.
+      for (const savedLine of savedOrder.lines) {
+        const c = consumed.get(savedLine.productId);
+        if (c && savedLine.validationStatus === LineValidationStatus.APPROVED) {
+          await manager.query(
+            `INSERT INTO order_quota_consumptions
+               (order_id, order_line_id, employee_id, product_id, company_id, period_start, period_end, quantity)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+              savedOrder.id,
+              savedLine.id,
+              caller.sub,
+              savedLine.productId,
+              caller.companyId,
+              c.periodStart,
+              c.periodEnd,
+              c.quantity,
+            ],
+          );
+        }
       }
       return savedOrder;
     });
@@ -630,70 +729,23 @@ export class OrdersService {
     return orders.map((order) => this.toDto(order));
   }
 
-  private async incrementQuotaUsage(
-    caller: JwtPayload,
-    lines: Array<{ productId: string; quantity: number }>,
+  /**
+   * Consommation de quota LEGACY (employé sans rôle, table `quotas`) : incrément
+   * additif dans la transaction de commande, gardé advisory par le moteur de
+   * validation en amont (le chemin role-based passe par consumeQuotaAtomic).
+   */
+  private async incrementLegacyQuota(
     manager: EntityManager,
+    employeeId: string,
+    productId: string,
+    quantity: number,
   ): Promise<void> {
-    const quotaUsageRepo = manager.getRepository(EmployeeQuotaUsage);
-    const quotaRepo = manager.getRepository(Quota);
-    const today = new Date();
-    const periodStart = today.toISOString().slice(0, 10);
-    // Period end: end of current month
-    const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-      .toISOString()
-      .slice(0, 10);
-
-    if (caller.roleId) {
-      for (const line of lines) {
-        await quotaUsageRepo
-          .createQueryBuilder()
-          .insert()
-          .into(EmployeeQuotaUsage)
-          .values({
-            employeeId: caller.sub,
-            productId: line.productId,
-            companyId: caller.companyId,
-            periodStart,
-            periodEnd,
-            usedQuantity: line.quantity,
-          })
-          .orUpdate(
-            ['used_quantity'],
-            [
-              'employee_id',
-              'product_id',
-              'company_id',
-              'period_start',
-              'period_end',
-            ],
-          )
-          .execute()
-          .catch(() =>
-            quotaUsageRepo.query(
-              `UPDATE employee_quota_usage SET used_quantity = used_quantity + $1
-               WHERE employee_id = $2 AND product_id = $3 AND company_id = $4
-                 AND period_start <= CURRENT_DATE AND period_end >= CURRENT_DATE`,
-              [line.quantity, caller.sub, line.productId, caller.companyId],
-            ),
-          );
-      }
-      return;
-    }
-
-    // Legacy fallback
-    for (const line of lines) {
-      await quotaRepo
-        .createQueryBuilder()
-        .update()
-        .set({ usedQuantity: () => 'used_quantity + :qty' })
-        .where('employee_id = :empId', { empId: caller.sub })
-        .andWhere('product_id = :productId', { productId: line.productId })
-        .andWhere('period_start <= CURRENT_DATE')
-        .andWhere('period_end >= CURRENT_DATE')
-        .setParameter('qty', line.quantity)
-        .execute();
-    }
+    await manager.query(
+      `UPDATE quotas SET used_quantity = used_quantity + $1
+       WHERE employee_id = $2 AND product_id = $3
+         AND period_start <= CURRENT_DATE AND period_end >= CURRENT_DATE`,
+      [quantity, employeeId, productId],
+    );
   }
 
   private toDto(o: Order, employee?: Employee): OrderDto {

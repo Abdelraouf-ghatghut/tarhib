@@ -39,7 +39,9 @@ export interface QuotaPeriod {
 }
 
 export function computeQuotaPeriod(
-  periodType: QuotaPeriodType,
+  // accepte le varchar de role_quotas.period_type (l'enum aval s'y assigne sans
+  // cast) ; toute valeur inconnue retombe sur MONTHLY.
+  periodType: string,
   at: Date,
 ): QuotaPeriod {
   const [y, m, d] = localYmd(at).split('-').map(Number);
