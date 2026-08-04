@@ -58,25 +58,27 @@ export class CreateVipLocationEntities1782500380000 implements MigrationInterfac
 
     // Données existantes : chaque inventory_item VIP devient une location
     // (id réutilisé) + son unique produit dans vip_location_products (id
-    // réutilisé aussi — cf. astuce ci-dessus). products.id est UUID natif,
-    // d'où le cast pour le JOIN sur inventory_items.product_id (varchar).
+    // réutilisé aussi — cf. astuce ci-dessus). inventory_items.company_id/
+    // branch_id/product_id sont UUID ; les colonnes vip_* sont VARCHAR
+    // (convention conservée pour la compat aval) → cast uuid→text à l'INSERT,
+    // et JOIN uuid = uuid (sans cast) sur products.id.
     await qr.query(`
       INSERT INTO vip_locations
         (id, company_id, branch_id, department_id, assigned_employee_id, location_name, created_at, updated_at)
-      SELECT ii.id, ii.company_id, ii.branch_id, ii.department_id, ii.assigned_employee_id,
+      SELECT ii.id, ii.company_id::text, ii.branch_id::text, ii.department_id, ii.assigned_employee_id,
              ii.location_name, ii.updated_at, ii.updated_at
       FROM inventory_items ii
-      JOIN products p ON p.id::varchar = ii.product_id
+      JOIN products p ON p.id = ii.product_id
       WHERE p.type = 'LIBRE_SERVICE_VIP'
     `);
 
     await qr.query(`
       INSERT INTO vip_location_products
         (id, vip_location_id, product_id, quantity, min_threshold, max_threshold, created_at, updated_at)
-      SELECT ii.id, ii.id, ii.product_id, ii.quantity, ii.min_threshold, ii.max_threshold,
+      SELECT ii.id, ii.id, ii.product_id::text, ii.quantity, ii.min_threshold, ii.max_threshold,
              ii.updated_at, ii.updated_at
       FROM inventory_items ii
-      JOIN products p ON p.id::varchar = ii.product_id
+      JOIN products p ON p.id = ii.product_id
       WHERE p.type = 'LIBRE_SERVICE_VIP'
     `);
 
@@ -86,7 +88,7 @@ export class CreateVipLocationEntities1782500380000 implements MigrationInterfac
     await qr.query(`
       DELETE FROM inventory_items ii
       USING products p
-      WHERE p.id::varchar = ii.product_id AND p.type = 'LIBRE_SERVICE_VIP'
+      WHERE p.id = ii.product_id AND p.type = 'LIBRE_SERVICE_VIP'
     `);
 
     // Renommage pur (mêmes valeurs, cf. astuce d'id ci-dessus) : aucune
@@ -110,7 +112,7 @@ export class CreateVipLocationEntities1782500380000 implements MigrationInterfac
     await qr.query(`
       INSERT INTO inventory_items
         (id, company_id, branch_id, product_id, zone, quantity, min_threshold, max_threshold, location_name, department_id, assigned_employee_id, updated_at)
-      SELECT lp.id, l.company_id, l.branch_id, lp.product_id, 'BRANCH', lp.quantity, lp.min_threshold,
+      SELECT lp.id, l.company_id::uuid, l.branch_id::uuid, lp.product_id::uuid, 'BRANCH', lp.quantity, lp.min_threshold,
              lp.max_threshold, l.location_name, l.department_id, l.assigned_employee_id, lp.updated_at
       FROM vip_location_products lp
       JOIN vip_locations l ON l.id = lp.vip_location_id
