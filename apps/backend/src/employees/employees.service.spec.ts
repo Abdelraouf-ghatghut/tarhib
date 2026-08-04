@@ -12,6 +12,7 @@ import {
 } from '../finance/entities/finance-expense.entity.js';
 import { FinancePeriod } from '../finance/entities/finance-period.entity.js';
 import { currentYearMonth } from '../finance/payroll-period.util.js';
+import { AccessCacheService } from '../access/access-cache.service.js';
 
 const mockRepo = () => ({
   create: jest.fn(),
@@ -58,6 +59,10 @@ describe('EmployeesService', () => {
         { provide: getRepositoryToken(FinanceExpense), useFactory: mockRepo },
         { provide: getRepositoryToken(FinancePeriod), useFactory: mockRepo },
         { provide: KeycloakService, useFactory: mockKeycloak },
+        {
+          provide: AccessCacheService,
+          useValue: { invalidate: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 

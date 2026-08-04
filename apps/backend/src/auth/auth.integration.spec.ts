@@ -37,6 +37,7 @@ import { AuthModule } from './auth.module';
 import { AuthService } from './auth.service';
 import { OtpService } from './otp/otp.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { AccessCacheService } from '../access/access-cache.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
@@ -122,6 +123,15 @@ describe('Auth guards (integration)', () => {
       .useValue({})
       .overrideProvider(JwtStrategy)
       .useClass(TestJwtStrategy)
+      // AccessModule instancie réellement ses providers même si JwtStrategy
+      // (son seul consommateur ici) est remplacé — AccessCacheService a besoin
+      // de RedisService (@Global en prod, absent de cet arbre de test minimal).
+      .overrideProvider(AccessCacheService)
+      .useValue({
+        get: () => Promise.resolve(null),
+        set: () => Promise.resolve(undefined),
+        invalidate: () => Promise.resolve(undefined),
+      })
       .overrideProvider(getRepositoryToken(Employee))
       .useValue(repoStub)
       .overrideProvider(getRepositoryToken(Company))

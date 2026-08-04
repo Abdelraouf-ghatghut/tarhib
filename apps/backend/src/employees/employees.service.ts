@@ -26,6 +26,7 @@ import {
   currentYearMonth,
 } from '../finance/payroll-period.util.js';
 import { isPeriodClosed } from '../finance/period-lock.util.js';
+import { AccessCacheService } from '../access/access-cache.service.js';
 
 @Injectable()
 export class EmployeesService {
@@ -41,6 +42,7 @@ export class EmployeesService {
     @InjectRepository(FinancePeriod)
     private readonly periodRepo: Repository<FinancePeriod>,
     private readonly keycloakService: KeycloakService,
+    private readonly accessCache: AccessCacheService,
   ) {}
 
   async create(
@@ -212,6 +214,9 @@ export class EmployeesService {
     }
     if (dto.hireDate !== undefined) entity.hireDate = dto.hireDate ?? null;
     const saved = await this.repo.save(entity);
+    // Rôle/société/branche/statut ont pu changer : le profil d'accès mis en
+    // cache (PR-1.0) serait sinon périmé jusqu'à son TTL.
+    await this.accessCache.invalidate(saved.keycloakId);
     await this.syncCurrentMonthSalaryExpense(saved);
     return this.toDto(saved);
   }
@@ -221,6 +226,7 @@ export class EmployeesService {
     if (!entity) throw new NotFoundException(`Employee ${id} not found`);
     entity.active = false;
     await this.repo.save(entity);
+    await this.accessCache.invalidate(entity.keycloakId);
   }
 
   async deactivate(id: string): Promise<EmployeeDto> {
@@ -228,6 +234,7 @@ export class EmployeesService {
     if (!entity) throw new NotFoundException(`Employee ${id} not found`);
     entity.active = false;
     const saved = await this.repo.save(entity);
+    await this.accessCache.invalidate(saved.keycloakId);
 
     // TARHIB-32: révocation des sessions Keycloak — fire-and-forget, non-fatal
     this.keycloakService

@@ -8,6 +8,10 @@ import { passportJwtSecret } from 'jwks-rsa';
 import { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 import { Employee } from '../../employees/entities/employee.entity.js';
 import { AccessPolicyService } from '../../access/access-policy.service.js';
+import {
+  AccessCacheService,
+  CachedAccessProfile,
+} from '../../access/access-cache.service.js';
 import { RedisService } from '../../redis/redis.service.js';
 import { IMPERSONATE_ROLE_KEY_PREFIX } from '../impersonation.constants.js';
 
@@ -20,6 +24,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly accessCache: AccessCacheService,
     private readonly redis: RedisService,
   ) {
     const keycloakUrl = config.get<string>(
@@ -60,6 +65,43 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       iat: payload.iat,
       exp: payload.exp,
     };
+
+    // PR-1.0 : chemin rapide sur cache Redis, keyé par keycloakId (connu AVANT
+    // toute requête DB) — un hit évite le lookup Employee ET la résolution des
+    // rôles/permissions. La vérification d'impersonation reste TOUJOURS faite
+    // en clair depuis Redis (jamais mise en cache elle-même, cf. plus bas) :
+    // un admin qui active l'impersonation doit voir l'effet immédiatement, pas
+    // après expiration d'un profil déjà en cache.
+    if (payload.sub) {
+      const cached = await this.accessCache.get(payload.sub);
+      if (cached) {
+        const overrideRoleId = await this.redis
+          .get(`${IMPERSONATE_ROLE_KEY_PREFIX}${cached.employeeId}`)
+          .catch(() => null);
+        if (!overrideRoleId) {
+          return {
+            ...base,
+            employeeId: cached.employeeId,
+            email: cached.email,
+            companyId: cached.companyId,
+            branchId: cached.branchId,
+            roleId: cached.roleId,
+            roleIds: cached.roleIds,
+            roleName: cached.roleName,
+            roleNames: cached.roleNames,
+            scope: cached.scope,
+            role: cached.role,
+            permissions: cached.permissions,
+            capabilities: cached.capabilities,
+            modules: cached.modules,
+            dataScope: cached.dataScope,
+          };
+        }
+        // Impersonation active mais on n'a que le profil réel en cache (jamais
+        // l'impersonation elle-même, cf. plus bas) → chemin complet ci-dessous
+        // pour résoudre le rôle simulé (nécessite l'entité Employee complète).
+      }
+    }
 
     let employee: Employee | null = null;
     if (payload.sub) {
@@ -123,6 +165,30 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     base.capabilities = effective.capabilities;
     base.modules = effective.modules.map((m) => m.key);
     base.dataScope = effective.dataScope;
+
+    // Ne JAMAIS mettre en cache un profil impersonné : sinon l'admin resterait
+    // "coincé" dans le rôle simulé jusqu'à expiration du TTL après avoir arrêté
+    // de tester ce rôle. Le cache ne représente que l'accès RÉEL de l'employé.
+    if (!overrideRoleId && base.employeeId) {
+      const toCache: CachedAccessProfile = {
+        employeeId: base.employeeId,
+        email: base.email,
+        companyId: base.companyId,
+        branchId: base.branchId,
+        roleId: base.roleId,
+        roleIds: base.roleIds,
+        roleName: base.roleName,
+        roleNames: base.roleNames,
+        scope: base.scope,
+        role: base.role,
+        permissions: base.permissions,
+        capabilities: base.capabilities,
+        modules: base.modules,
+        dataScope: base.dataScope,
+      };
+      await this.accessCache.set(payload.sub, toCache);
+    }
+
     return base;
   }
 }

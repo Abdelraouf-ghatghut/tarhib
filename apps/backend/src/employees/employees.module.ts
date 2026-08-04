@@ -4,6 +4,7 @@ import { EmployeesService } from './employees.service.js';
 import { EmployeesController } from './employees.controller.js';
 import { Employee } from './entities/employee.entity.js';
 import { AuthModule } from '../auth/auth.module.js';
+import { AccessModule } from '../access/access.module.js';
 import { Role } from '../roles/entities/role.entity.js';
 import { FinanceExpense } from '../finance/entities/finance-expense.entity.js';
 import { FinancePeriod } from '../finance/entities/finance-period.entity.js';
@@ -12,6 +13,7 @@ import { FinancePeriod } from '../finance/entities/finance-period.entity.js';
   imports: [
     TypeOrmModule.forFeature([Employee, Role, FinanceExpense, FinancePeriod]),
     AuthModule,
+    AccessModule,
   ],
   providers: [EmployeesService],
   controllers: [EmployeesController],
