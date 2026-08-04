@@ -512,6 +512,7 @@ export class OrdersService {
       orderId: saved.id,
       branchId: saved.branchId,
       employeeId: saved.employeeId,
+      companyId: saved.companyId,
     });
 
     return this.toDto(saved);
@@ -764,6 +765,7 @@ export class OrdersService {
       status: saved.status,
       branchId: saved.branchId,
       employeeId: saved.employeeId,
+      companyId: saved.companyId,
     });
 
     // `saved` vient du QueryBuilder verrouillé (sans les lignes) — on recharge

@@ -14,11 +14,20 @@ import { Server, Socket } from 'socket.io';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { isAllowedOrigin } from '../common/cors-origin.js';
 import { createWsTokenVerifier } from './ws-auth.js';
+import {
+  AccessPolicyService,
+  type DataScope,
+} from '../access/access-policy.service.js';
+import { AccessCacheService } from '../access/access-cache.service.js';
 
 interface SocketData {
   employeeId: string;
   companyId: string | null;
   branchId: string | null;
+  /** GLOBAL/COMPANY : détermine les rooms manager: additionnelles (PR-0.6b) —
+   * BRANCH n'ajoute rien de plus que la room `branch:` déjà rejointe par
+   * quiconque dans cette branche. */
+  dataScope?: DataScope;
 }
 
 /**
@@ -58,6 +67,8 @@ export class NotificationsGateway
     private readonly config: ConfigService,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
+    private readonly accessPolicy: AccessPolicyService,
+    private readonly accessCache: AccessCacheService,
   ) {}
 
   afterInit(server: Server): void {
@@ -82,15 +93,27 @@ export class NotificationsGateway
         .then(async ({ sub }) => {
           const employee = await this.employeeRepo.findOne({
             where: { keycloakId: sub },
+            relations: ['additionalRoles'],
           });
           if (!employee) {
             next(new Error('unauthorized'));
             return;
           }
+          // dataScope détermine les rooms manager: (PR-0.6b). Lecture cache-first
+          // (PR-1.0, réduit la charge DB lors d'une reconnexion en masse — E6) ;
+          // sur un miss, résolution directe SANS écriture dans le cache : cette
+          // lecture ne construit que {permissions,dataScope}, pas le profil complet
+          // qu'écrit JwtStrategy — y écrire une entrée partielle corromprait le
+          // profil que lirait ensuite une requête HTTP pour ce même employé.
+          const cached = await this.accessCache.get(sub);
+          const dataScope = cached
+            ? cached.dataScope
+            : (await this.accessPolicy.resolve(employee)).dataScope;
           const data: SocketData = {
             employeeId: employee.id,
             companyId: employee.companyId,
             branchId: employee.branchId,
+            dataScope,
           };
           socket.data = data;
           next();
@@ -107,6 +130,15 @@ export class NotificationsGateway
     const rooms = [`employee:${data.employeeId}`];
     if (data.companyId) rooms.push(`company:${data.companyId}`);
     if (data.branchId) rooms.push(`branch:${data.branchId}`);
+    // PR-0.6b : un superviseur société/plateforme n'appartient pas forcément
+    // à UNE branche unique — sans ces rooms, il ne verrait aucun événement de
+    // commande en dehors de sa propre branche (voire aucune du tout s'il n'en
+    // a pas). BRANCH n'ajoute rien : la room `branch:` ci-dessus suffit déjà.
+    if (data.dataScope === 'GLOBAL') {
+      rooms.push('manager:global');
+    } else if (data.dataScope === 'COMPANY' && data.companyId) {
+      rooms.push(`manager:company:${data.companyId}`);
+    }
     void socket.join(rooms);
   }
 
@@ -125,9 +157,13 @@ export class NotificationsGateway
   }
 
   /**
-   * Diffusion ciblée : la branche (file opérateurs/cuisine) ET l'employé
-   * propriétaire (suivi "mes commandes") — jamais globale. Socket.IO dédoublonne
-   * automatiquement si un même socket est membre des deux rooms.
+   * Diffusion ciblée : la branche (file opérateurs/cuisine), l'employé
+   * propriétaire (suivi "mes commandes"), et les superviseurs société/
+   * plateforme (PR-0.6b) — jamais globale à tous les clients connectés.
+   * Cible les 4 rooms inconditionnellement : Socket.IO dédoublonne pour un
+   * socket membre de plusieurs, et cibler une room sans membre est un no-op
+   * — l'appartenance décidée à la connexion (handleConnection) fait le tri,
+   * pas cette méthode.
    */
   emitOrderUpdate(
     event: 'order:new' | 'order:status',
@@ -136,9 +172,15 @@ export class NotificationsGateway
       status?: string;
       branchId: string;
       employeeId: string;
+      companyId: string;
     },
   ): void {
-    const rooms = [`branch:${data.branchId}`, `employee:${data.employeeId}`];
+    const rooms = [
+      `branch:${data.branchId}`,
+      `employee:${data.employeeId}`,
+      `manager:company:${data.companyId}`,
+      'manager:global',
+    ];
     this.server.to(rooms).emit(event, data);
   }
 

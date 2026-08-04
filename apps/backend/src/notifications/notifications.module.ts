@@ -5,9 +5,10 @@ import { NotificationsGateway } from './notifications.gateway.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { Notification } from './entities/notification.entity.js';
 import { NotificationsController } from './notifications.controller.js';
+import { AccessModule } from '../access/access.module.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Employee, Notification])],
+  imports: [TypeOrmModule.forFeature([Employee, Notification]), AccessModule],
   controllers: [NotificationsController],
   providers: [NotificationsService, NotificationsGateway],
   exports: [NotificationsService, NotificationsGateway],
