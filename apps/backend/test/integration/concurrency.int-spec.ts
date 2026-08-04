@@ -17,12 +17,12 @@ import {
 /**
  * Tests d'intégrité/concurrence sur un VRAI PostgreSQL.
  *
- * P01/P02 (quota) : CORRIGÉS par PR-0.2 — ils appellent le vrai
- * `consumeQuotaAtomic` et sont des `it` verts (garantie actée).
- *
- * P03/P06 : baseline encore `it.failing` — reproduisent le bug du code actuel
- * (rebranchés sur le vrai service quand PR-0.3 / la contrainte EXCLUDE de PR-0.1
- * les corrigent ; `it.failing` bascule alors et signale le flip vers `it`).
+ * P01/P02 (quota) : CORRIGÉS par PR-0.2 — appellent le vrai `consumeQuotaAtomic`.
+ * P03 : CORRIGÉ par PR-0.3 — reproduit le motif verrou→consommation
+ * d'orders.service.ts (SELECT...FOR UPDATE, sans jointure, puis
+ * consumeReservationsForOrder dans la même transaction).
+ * P06 : CORRIGÉ par la contrainte EXCLUDE de PR-0.1.
+ * Tous des `it` verts (garanties actées, prouvées sur PostgreSQL réel).
  *
  * Reproductions déterministes (barrière/deux phases) pour éviter le flaky.
  */
@@ -115,69 +115,72 @@ describe('Concurrence — intégrité commandes/stock/quotas (baseline rouge)', 
     expect(used).toBe(1);
   });
 
-  // ── P03 — orders.service.ts:453 : updateStatus lit la commande SANS verrou,
-  // et la décrémentation de stock est une transaction séparée → deux « démarrer »
-  // concurrents passent tous deux le gate APPROVED et décrémentent deux fois.
-  it.failing(
-    "P03 — démarrer deux fois la même commande ne doit décrémenter le stock qu'une fois",
-    async () => {
-      await truncate(ds, [
-        'orders',
-        'inventory_items',
-        'products',
-        'companies',
-      ]);
-      const companyId = await seedCompany('p03');
-      const productId = await seedProduct();
-      const branchId = '33333333-3333-3333-3333-333333333333';
-      const [order] = await ds.query<Array<{ id: string }>>(
-        `INSERT INTO orders (employee_id, branch_id, company_id, status, priority, sla_deadline)
-       VALUES ($1, $2, $3, 'APPROVED', 'P5', NOW() + INTERVAL '1 hour') RETURNING id`,
-        ['44444444-4444-4444-4444-444444444444', branchId, companyId],
-      );
-      await ds.query(
-        `INSERT INTO inventory_items (company_id, branch_id, product_id, zone, quantity)
-       VALUES ($1, $2, $3, 'BRANCH', 2)`,
-        [companyId, branchId, productId],
-      );
+  // ── P03 — CORRIGÉ (PR-0.3) : updateStatus verrouille la commande (FOR UPDATE,
+  // sans jointure) et consomme les réservations DANS la même transaction. Deux
+  // « démarrer » concurrents : le verrou sérialise, le perdant relit le nouveau
+  // statut (IN_PROGRESS) sous le verrou et sort en no-op idempotent — reproduit
+  // ici le motif exact d'orders.service.ts (lock → check statut → consume).
+  it("P03 — démarrer deux fois la même commande ne consomme les réservations qu'une fois (corrigé)", async () => {
+    await truncate(ds, [
+      'inventory_reservations',
+      'order_lines',
+      'orders',
+      'inventory_items',
+      'products',
+      'companies',
+    ]);
+    const { orderId, itemId } = await seedReservedOrder(
+      'p03',
+      '33333333-3333-3333-3333-333333333333',
+    );
 
-      await runConcurrently(2, async () => {
-        const runner = ds.createQueryRunner();
-        await runner.connect();
-        await runner.startTransaction();
-        try {
-          const rows = (await runner.query(
-            `SELECT status FROM orders WHERE id = $1`,
-            [order.id],
-          )) as unknown as Array<{ status: string }>;
-          if (rows[0].status === 'APPROVED') {
-            await runner.query(
-              `UPDATE inventory_items SET quantity = quantity - 1
-               WHERE product_id = $1 AND branch_id = $2 AND zone = 'BRANCH' AND quantity >= 1`,
-              [productId, branchId],
-            );
-            await runner.query(
-              `UPDATE orders SET status = 'IN_PROGRESS' WHERE id = $1`,
-              [order.id],
-            );
-          }
-          await runner.commitTransaction();
-        } catch (e) {
-          await runner.rollbackTransaction();
-          throw e;
-        } finally {
-          await runner.release();
+    const startAttempt = async () => {
+      const runner = ds.createQueryRunner();
+      await runner.connect();
+      await runner.startTransaction();
+      try {
+        const rows = (await runner.query(
+          `SELECT status FROM orders WHERE id = $1 FOR UPDATE`,
+          [orderId],
+        )) as unknown as Array<{ status: string }>;
+        if (rows[0].status === 'APPROVED') {
+          await consumeReservationsForOrder(runner.manager, orderId);
+          await runner.query(
+            `UPDATE orders SET status = 'IN_PROGRESS' WHERE id = $1`,
+            [orderId],
+          );
         }
-      });
+        // sinon : déjà IN_PROGRESS sous le verrou → no-op idempotent.
+        await runner.commitTransaction();
+      } catch (e) {
+        await runner.rollbackTransaction();
+        throw e;
+      } finally {
+        await runner.release();
+      }
+    };
 
-      const qty = await count(
-        ds,
-        `SELECT quantity FROM inventory_items WHERE product_id = $1 AND branch_id = $2`,
-        [productId, branchId],
-      );
-      expect(qty).toBe(1); // ROUGE : vaut 0 (décrémenté deux fois pour une commande)
-    },
-  );
+    await runConcurrently(20, startAttempt);
+
+    const quantity = await count(
+      ds,
+      `SELECT quantity FROM inventory_items WHERE id = $1`,
+      [itemId],
+    );
+    const reserved = await count(
+      ds,
+      `SELECT reserved FROM inventory_items WHERE id = $1`,
+      [itemId],
+    );
+    const consumedCount = await count(
+      ds,
+      `SELECT COUNT(*) FROM inventory_reservations WHERE order_id = $1 AND status = 'CONSUMED'`,
+      [orderId],
+    );
+    expect(quantity).toBe(2); // 5 - 3, UNE seule fois
+    expect(reserved).toBe(0); // 3 - 3, UNE seule fois
+    expect(consumedCount).toBe(1); // pas 20
+  });
 
   // ── P06 — CORRIGÉ par la contrainte EXCLUDE de PR-0.1 : la 2e insertion
   // chevauchante est rejetée par la base → une seule réservation CONFIRMED.

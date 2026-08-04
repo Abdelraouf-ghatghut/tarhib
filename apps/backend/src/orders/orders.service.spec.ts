@@ -189,6 +189,18 @@ describe('OrdersService', () => {
         if (entity === Quota) return quotaRepo;
         return mockRepo();
       }),
+      // updateStatus() verrouille la commande via un QueryBuilder — le stub
+      // chaîne where/setLock et résout getOne() sur le mock orderRepo.findOne.
+      createQueryBuilder: jest.fn(() => {
+        const qb: Record<string, jest.Mock> = {};
+        qb.where = jest.fn(() => qb);
+        qb.setLock = jest.fn(() => qb);
+        qb.getOne = jest.fn(
+          async (): Promise<Order | null> =>
+            (await orderRepo.findOne()) as Order | null,
+        );
+        return qb;
+      }),
     };
     (orderRepo as unknown as { manager: unknown }).manager = fakeManager;
   });

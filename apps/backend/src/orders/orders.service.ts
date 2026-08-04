@@ -646,57 +646,63 @@ export class OrdersService {
     caller: JwtPayload,
     reason?: string,
   ): Promise<OrderDto> {
-    const order = await this.orderRepo.findOne({
-      where: { id },
-      relations: ['lines'],
-    });
-    if (!order) throw new NotFoundException(`Order ${id} not found`);
-
-    const allowed = this.allowedTransitions(caller, order.status);
-    if (!allowed.includes(status)) {
-      throw new BadRequestException(
-        `Role ${caller.role} cannot transition ${order.status} → ${status}`,
-      );
-    }
-    // Un admin plateforme (superadmin) n'a aucune société assignée
-    // (caller.companyId est null) : il gère toutes les sociétés et ne doit
-    // donc jamais être bloqué par la vérification multi-tenant — même règle
-    // que RolesService.findAll (cf. isTarhibAdmin).
-    if (!this.isPlatformAdmin(caller) && order.companyId !== caller.companyId) {
-      throw new ForbiddenException('crossTenantAccessDenied');
-    }
-
-    order.status = status;
-    if (reason?.trim()) order.note = reason.trim();
-    const now = new Date();
-    if (status === OrderStatus.APPROVED) {
-      order.approvedAt = now;
-      order.approvedBy = caller.sub;
-    } else if (status === OrderStatus.REJECTED) {
-      order.rejectedAt = now;
-      order.rejectedBy = caller.sub;
-    } else if (status === OrderStatus.IN_PROGRESS) {
-      order.prepStartedAt = now;
-      order.preparedBy = caller.sub;
-    } else if (status === OrderStatus.READY) {
-      order.readyAt = now;
-      order.readyBy = caller.sub;
-    } else if (status === OrderStatus.DELIVERED) {
-      order.deliveredAt = now;
-      order.deliveredBy = caller.sub;
-    }
-
-    // Réservations de stock (D1=B), dans la MÊME transaction que le changement
-    // de statut. IN_PROGRESS : consomme les HELD (quantity/reserved -=, CONSUMED)
-    // — plus jamais de rupture à la préparation, le stock était réservé à
-    // l'approbation. REJECTED : libère les HELD (reserved -=, RELEASED) ; no-op
-    // si déjà consommé (filtre sur le statut de réservation, E3).
+    // Tout dans UNE transaction, sur une commande VERROUILLÉE : sérialise les
+    // transitions concurrentes (fixe le double-démarrage P03). Le verrou est
+    // pris SANS jointure — Order.lines est eager, mais un QueryBuilder ne charge
+    // pas les relations eager, donc FOR UPDATE porte sur `orders` seul (pas
+    // d'outer join qui invaliderait le verrou).
     const saved = await this.orderRepo.manager.transaction(async (manager) => {
-      if (status === OrderStatus.IN_PROGRESS) {
-        await consumeReservationsForOrder(manager, order.id);
-      } else if (status === OrderStatus.REJECTED) {
-        await releaseReservationsForOrder(manager, order.id);
+      const order = await manager
+        .createQueryBuilder(Order, 'o')
+        .where('o.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!order) throw new NotFoundException(`Order ${id} not found`);
+
+      // Transition recalculée depuis le statut VERROUILLÉ : le perdant d'une
+      // course voit le nouveau statut et sort en no-op idempotent.
+      const allowed = this.allowedTransitions(caller, order.status);
+      if (!allowed.includes(status)) {
+        if (order.status === status) return order; // déjà dans l'état cible
+        throw new BadRequestException(
+          `Role ${caller.role} cannot transition ${order.status} → ${status}`,
+        );
       }
+      // Un admin plateforme n'a aucune société assignée : jamais bloqué par la
+      // vérification multi-tenant (même règle que allowedTransitions).
+      if (
+        !this.isPlatformAdmin(caller) &&
+        order.companyId !== caller.companyId
+      ) {
+        throw new ForbiddenException('crossTenantAccessDenied');
+      }
+
+      order.status = status;
+      if (reason?.trim()) order.note = reason.trim();
+      const now = new Date();
+      if (status === OrderStatus.APPROVED) {
+        order.approvedAt = now;
+        order.approvedBy = caller.sub;
+      } else if (status === OrderStatus.REJECTED) {
+        order.rejectedAt = now;
+        order.rejectedBy = caller.sub;
+        // Libère les réservations HELD (reserved -=, RELEASED) ; no-op si déjà
+        // consommé (filtre sur le statut de réservation, E3).
+        await releaseReservationsForOrder(manager, order.id);
+      } else if (status === OrderStatus.IN_PROGRESS) {
+        order.prepStartedAt = now;
+        order.preparedBy = caller.sub;
+        // Consomme les réservations HELD (quantity/reserved -=, CONSUMED) — plus
+        // jamais de rupture à la préparation, le stock était réservé à l'approbation.
+        await consumeReservationsForOrder(manager, order.id);
+      } else if (status === OrderStatus.READY) {
+        order.readyAt = now;
+        order.readyBy = caller.sub;
+      } else if (status === OrderStatus.DELIVERED) {
+        order.deliveredAt = now;
+        order.deliveredBy = caller.sub;
+      }
+
       return manager.save(Order, order);
     });
 
@@ -705,13 +711,13 @@ export class OrdersService {
     // de l'appelant (cf. create), d'où la recherche keycloakId OU id.
     this.employeeRepo
       .findOne({
-        where: [{ keycloakId: order.employeeId }, { id: order.employeeId }],
+        where: [{ keycloakId: saved.employeeId }, { id: saved.employeeId }],
       })
       .then(async (employee) => {
         if (!employee) return;
         if (employee.phoneNumber) {
           await this.notificationsService.notifyOrderStatusChanged(
-            order.id,
+            saved.id,
             status,
             employee.phoneNumber,
           );
@@ -720,14 +726,14 @@ export class OrdersService {
           await this.notificationsService.sendPush(
             employee.fcmToken,
             'Tarhib',
-            `Commande #${order.id.slice(0, 8)} — nouveau statut : ${status}`,
-            { orderId: order.id, type: 'order-status' },
+            `Commande #${saved.id.slice(0, 8)} — nouveau statut : ${status}`,
+            { orderId: saved.id, type: 'order-status' },
           );
         }
       })
       .catch((err: unknown) =>
         this.logger.error(
-          `Notification failed for order ${order.id}: ${String(err)}`,
+          `Notification failed for order ${saved.id}: ${String(err)}`,
         ),
       );
 
@@ -737,7 +743,13 @@ export class OrdersService {
       branchId: saved.branchId,
     });
 
-    return this.toDto(saved);
+    // `saved` vient du QueryBuilder verrouillé (sans les lignes) — on recharge
+    // les lignes pour le DTO de retour.
+    const withLines = await this.orderRepo.findOne({
+      where: { id: saved.id },
+      relations: ['lines'],
+    });
+    return this.toDto(withLines ?? saved);
   }
 
   /**
