@@ -50,7 +50,10 @@ import {
 import { QuotasService } from '../quotas/quotas.service.js';
 import { computeQuotaPeriod } from '../quotas/quota-period.js';
 import { computeOrderRequestHash } from './order-request-hash.js';
-import { consumeQuotaAtomic } from '../quotas/quota-consumption.js';
+import {
+  consumeQuotaAtomic,
+  restoreQuotaConsumptionsForOrder,
+} from '../quotas/quota-consumption.js';
 import { PrioritySlaService } from '../priority-sla/priority-sla.service.js';
 import { Role } from '../roles/entities/role.entity.js';
 
@@ -662,7 +665,11 @@ export class OrdersService {
 
       // Transition recalculée depuis le statut VERROUILLÉ : le perdant d'une
       // course voit le nouveau statut et sort en no-op idempotent.
-      const allowed = this.allowedTransitions(caller, order.status);
+      const allowed = this.allowedTransitions(
+        caller,
+        order.status,
+        order.employeeId,
+      );
       if (!allowed.includes(status)) {
         if (order.status === status) return order; // déjà dans l'état cible
         throw new BadRequestException(
@@ -690,6 +697,20 @@ export class OrdersService {
         // Libère les réservations HELD (reserved -=, RELEASED) ; no-op si déjà
         // consommé (filtre sur le statut de réservation, E3).
         await releaseReservationsForOrder(manager, order.id);
+        // Quota restitué SEULEMENT si la préparation n'a jamais démarré (D12 :
+        // "non rendu si IN_PROGRESS+" — un rejet pour rupture en cours de
+        // préparation ne rend pas le quota déjà consommé).
+        if (!order.prepStartedAt) {
+          await restoreQuotaConsumptionsForOrder(manager, order.id);
+        }
+      } else if (status === OrderStatus.CANCELLED) {
+        order.cancelledAt = now;
+        order.cancelledBy = caller.sub;
+        // CANCELLED n'est atteignable QUE depuis PENDING/APPROVED (branche
+        // propriétaire d'allowedTransitions) → prepStartedAt est TOUJOURS null
+        // ici, contrairement à REJECTED : pas de garde à dupliquer.
+        await releaseReservationsForOrder(manager, order.id);
+        await restoreQuotaConsumptionsForOrder(manager, order.id);
       } else if (status === OrderStatus.IN_PROGRESS) {
         order.prepStartedAt = now;
         order.preparedBy = caller.sub;
@@ -768,7 +789,28 @@ export class OrdersService {
     );
   }
 
+  /**
+   * D13 : l'employé propriétaire peut annuler SA commande (PENDING/APPROVED
+   * → CANCELLED), tant que la préparation n'a pas démarré — grant ADDITIF,
+   * indépendant des permissions/rôle (superposé au résultat de
+   * roleBasedTransitions, jamais à la place).
+   */
   private allowedTransitions(
+    caller: JwtPayload,
+    current: OrderStatus,
+    orderEmployeeId: string,
+  ): OrderStatus[] {
+    const roleBased = this.roleBasedTransitions(caller, current);
+    const isOwner = caller.sub === orderEmployeeId;
+    const cancellable =
+      current === OrderStatus.PENDING || current === OrderStatus.APPROVED;
+    if (isOwner && cancellable) {
+      return [...new Set([...roleBased, OrderStatus.CANCELLED])];
+    }
+    return roleBased;
+  }
+
+  private roleBasedTransitions(
     caller: JwtPayload,
     current: OrderStatus,
   ): OrderStatus[] {
@@ -794,6 +836,7 @@ export class OrdersService {
         [OrderStatus.READY]: [OrderStatus.DELIVERED, OrderStatus.REJECTED],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
+        [OrderStatus.CANCELLED]: [],
       };
       return full[current] ?? [];
     }
@@ -806,6 +849,7 @@ export class OrdersService {
         [OrderStatus.READY]: [],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
+        [OrderStatus.CANCELLED]: [],
       };
       return approver[current] ?? [];
     }
@@ -822,6 +866,7 @@ export class OrdersService {
         [OrderStatus.READY]: canDeliver ? [OrderStatus.DELIVERED] : [],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
+        [OrderStatus.CANCELLED]: [],
       };
       return agent[current] ?? [];
     }

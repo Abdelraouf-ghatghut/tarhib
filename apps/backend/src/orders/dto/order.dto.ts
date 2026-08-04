@@ -22,6 +22,9 @@ export enum OrderStatus {
   READY = 'READY',
   DELIVERED = 'DELIVERED',
   REJECTED = 'REJECTED',
+  /** Annulation VOLONTAIRE par l'employé propriétaire, avant IN_PROGRESS —
+   * distinct de REJECTED (rejet métier/stock/quota/opérationnel), D13. */
+  CANCELLED = 'CANCELLED',
 }
 
 export enum OrderPriority {
@@ -156,6 +159,12 @@ export class OrderDto {
 
   @ApiProperty({ nullable: true })
   rejectedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  cancelledAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  cancelledBy!: string | null;
 
   @ApiProperty({ nullable: true })
   prepStartedAt!: Date | null;

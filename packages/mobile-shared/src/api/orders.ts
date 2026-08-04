@@ -7,7 +7,8 @@ export type OrderStatus =
   | "IN_PROGRESS"
   | "READY"
   | "DELIVERED"
-  | "REJECTED";
+  | "REJECTED"
+  | "CANCELLED";
 
 export type LineValidationStatus = "APPROVED" | "REJECTED" | "PENDING_APPROVAL";
 

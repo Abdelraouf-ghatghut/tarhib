@@ -61,6 +61,14 @@ export class Order {
   @Column({ name: 'rejected_by', type: 'uuid', nullable: true })
   rejectedBy!: string | null;
 
+  /** Annulation volontaire de l'employé propriétaire (D13) — distincte de
+   * rejected_at/by pour ne pas fausser un rapport filtré sur les rejets. */
+  @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
+  cancelledAt!: Date | null;
+
+  @Column({ name: 'cancelled_by', type: 'uuid', nullable: true })
+  cancelledBy!: string | null;
+
   @Column({ name: 'prep_started_at', type: 'timestamptz', nullable: true })
   prepStartedAt!: Date | null;
 

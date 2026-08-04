@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { OrdersService } from './orders.service.js';
 import { Order } from './entities/order.entity.js';
@@ -175,8 +179,8 @@ describe('OrdersService', () => {
     employeeRepo.findOne.mockResolvedValue(null);
 
     // orderRepo.manager.transaction(...) est utilisé par create() et
-    // decrementRecipeIngredients() — le mock exécute simplement le callback
-    // avec un faux manager qui route vers les repos mockés existants.
+    // updateStatus() — le mock exécute simplement le callback avec un faux
+    // manager qui route vers les repos mockés existants.
     const quotaUsageRepo: ReturnType<typeof mockRepo> = module.get(
       getRepositoryToken(EmployeeQuotaUsage),
     );
@@ -649,6 +653,81 @@ describe('OrdersService', () => {
       );
 
       expect(result.status).toBe(OrderStatus.REJECTED);
+    });
+  });
+
+  describe('updateStatus — annulation par le propriétaire (D13)', () => {
+    it('lets the owner cancel their own PENDING order', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.PENDING;
+      order.employeeId = 'emp-1'; // === caller().sub
+      orderRepo.findOne.mockResolvedValue(order);
+      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
+
+      const result = await service.updateStatus(
+        'ord-1',
+        OrderStatus.CANCELLED,
+        caller(),
+      );
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it('lets the owner cancel their own APPROVED order', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.employeeId = 'emp-1';
+      orderRepo.findOne.mockResolvedValue(order);
+      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
+
+      const result = await service.updateStatus(
+        'ord-1',
+        OrderStatus.CANCELLED,
+        caller(),
+      );
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it("rejects cancellation of someone else's order by a plain employee", async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.employeeId = 'emp-OTHER';
+      orderRepo.findOne.mockResolvedValue(order);
+
+      await expect(
+        service.updateStatus('ord-1', OrderStatus.CANCELLED, caller()),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects cancellation once the order is IN_PROGRESS (owner or not)', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.IN_PROGRESS;
+      order.employeeId = 'emp-1';
+      orderRepo.findOne.mockResolvedValue(order);
+
+      await expect(
+        service.updateStatus('ord-1', OrderStatus.CANCELLED, caller()),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('releases reservations and restores quota consumptions on cancellation', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.employeeId = 'emp-1';
+      orderRepo.findOne.mockResolvedValue(order);
+      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
+
+      const fakeManager = (
+        orderRepo as unknown as { manager: { query: jest.Mock } }
+      ).manager;
+      fakeManager.query.mockClear();
+
+      await service.updateStatus('ord-1', OrderStatus.CANCELLED, caller());
+
+      const queries = fakeManager.query.mock.calls.map(
+        (call: unknown[]) => call[0] as string,
+      );
+      expect(queries.some((q) => q.includes("status = 'RELEASED'"))).toBe(true);
+      expect(queries.some((q) => q.includes("status = 'RESTORED'"))).toBe(true);
     });
   });
 });
