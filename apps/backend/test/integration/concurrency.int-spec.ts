@@ -7,6 +7,7 @@ import {
   truncate,
 } from './harness';
 import { consumeQuotaAtomic } from '../../src/quotas/quota-consumption';
+import { reserveInventoryAtomic } from '../../src/inventory/stock-reservation';
 
 /**
  * Tests d'intégrité/concurrence sur un VRAI PostgreSQL.
@@ -221,11 +222,41 @@ describe('Concurrence — intégrité commandes/stock/quotas (baseline rouge)', 
     expect(confirmed).toBe(1); // contrainte EXCLUDE : la 2e est rejetée
   });
 
-  // Nécessitent le schéma de PR-0.1/0.1c (colonnes/tables pas encore créées) :
+  // ── Sur-réservation — reserveInventoryAtomic (D1=B) garde l'available :
+  // 20 réservations concurrentes de 1 sur un stock de 5 → exactement 5, et
+  // `reserved` ne dépasse jamais `quantity`.
+  it('sur-réservation de stock impossible (reserved <= quantity)', async () => {
+    await truncate(ds, ['inventory_items', 'products', 'companies']);
+    const companyId = await seedCompany('rsv');
+    const productId = await seedProduct();
+    const [item] = await ds.query<Array<{ id: string }>>(
+      `INSERT INTO inventory_items (company_id, branch_id, product_id, zone, quantity, reserved)
+       VALUES ($1, $2, $3, 'BRANCH', 5, 0) RETURNING id`,
+      [companyId, '77777777-7777-7777-7777-777777777777', productId],
+    );
+
+    const results = await runConcurrently(20, () =>
+      reserveInventoryAtomic(ds.manager, item.id, 1),
+    );
+
+    const reservedOk = results.filter((r) => r.ok && r.value === true).length;
+    const reserved = await count(
+      ds,
+      `SELECT reserved FROM inventory_items WHERE id = $1`,
+      [item.id],
+    );
+    const quantity = await count(
+      ds,
+      `SELECT quantity FROM inventory_items WHERE id = $1`,
+      [item.id],
+    );
+    expect(reservedOk).toBe(5);
+    expect(reserved).toBe(5);
+    expect(reserved).toBeLessThanOrEqual(quantity);
+  });
+
+  // Nécessite l'idempotence (PR-0.4) :
   it.todo(
-    "P04 — deux POST idempotents (même clé) ne créent qu'une commande [PR-0.1/0.4]",
-  );
-  it.todo(
-    'sur-réservation de stock impossible (reserved = SUM(HELD)) [PR-0.1c/0.2]',
+    "P04 — deux POST idempotents (même clé) ne créent qu'une commande [PR-0.4]",
   );
 });
