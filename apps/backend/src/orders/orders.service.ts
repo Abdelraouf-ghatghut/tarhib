@@ -42,7 +42,6 @@ import {
   InventoryItem,
   StockZone,
 } from '../inventory/entities/inventory-item.entity.js';
-import { InventoryService } from '../inventory/inventory.service.js';
 import {
   reserveStockForProduct,
   consumeReservationsForOrder,
@@ -79,7 +78,6 @@ export class OrdersService {
     private readonly notificationsService: NotificationsService,
     private readonly notificationsGateway: NotificationsGateway,
     private readonly prioritySla: PrioritySlaService,
-    private readonly inventoryService: InventoryService,
   ) {}
 
   /**
@@ -92,60 +90,6 @@ export class OrdersService {
     if (!caller.roleId) return OrderPriority.P5;
     const role = await this.roleRepo.findOne({ where: { id: caller.roleId } });
     return role?.slaPriority || OrderPriority.P5;
-  }
-
-  /**
-   * Les commandes sont préparées en cuisine : le stock CUISINE est décrémenté
-   * en premier, et complété automatiquement depuis la BRANCHE si insuffisant
-   * (InventoryService.decrementForPreparation). Produit composé (a une
-   * recette) : décrémente ses ingrédients. Produit simple (pas de recette) :
-   * décrémente son propre stock. Une rupture cuisine+branche combinées
-   * bloque toute la transition (voir appelant).
-   */
-  private async decrementRecipeIngredients(
-    order: Order,
-    preparedBy: string,
-  ): Promise<void> {
-    const approvedLines = order.lines.filter(
-      (l) => l.validationStatus === LineValidationStatus.APPROVED,
-    );
-    if (approvedLines.length === 0) return;
-
-    const recipeLines = await this.recipeRepo.find({
-      where: { productId: In(approvedLines.map((l) => l.productId)) },
-    });
-
-    // Une seule transaction pour toutes les lignes : une rupture en cours de
-    // boucle annule les décrémentations déjà faites dans cette même tentative
-    // plutôt que de laisser un stock partiellement décrémenté.
-    await this.orderRepo.manager.transaction(async (manager) => {
-      for (const line of approvedLines) {
-        const recipesForLine = recipeLines.filter(
-          (r) => r.productId === line.productId,
-        );
-        if (recipesForLine.length > 0) {
-          for (const recipe of recipesForLine) {
-            await this.inventoryService.decrementForPreparation(
-              recipe.ingredientProductId,
-              order.branchId,
-              order.companyId,
-              recipe.quantity * line.quantity,
-              manager,
-              preparedBy,
-            );
-          }
-        } else {
-          await this.inventoryService.decrementForPreparation(
-            line.productId,
-            order.branchId,
-            order.companyId,
-            line.quantity,
-            manager,
-            preparedBy,
-          );
-        }
-      }
-    });
   }
 
   async create(dto: CreateOrderDto, caller: JwtPayload): Promise<OrderDto> {
@@ -199,9 +143,9 @@ export class OrdersService {
     ];
 
     // Charge les vraies données (§3.3 CLAUDE.md — ordre strict). Disponibilité
-    // = cuisine + branche combinées (la préparation décrémente la cuisine en
-    // premier, la branche complète automatiquement en cas de manque — voir
-    // decrementRecipeIngredients / InventoryService.decrementForPreparation).
+    // = cuisine + branche combinées : le stock est RÉSERVÉ ici (D1=B), pas
+    // décrémenté — voir reserveStockForProduct plus bas et
+    // consumeReservationsForOrder à la préparation (updateStatus).
     const [products, stockRows] = await Promise.all([
       this.productRepo.find({ where: productIds.map((id) => ({ id })) }),
       this.inventoryRepo.find({

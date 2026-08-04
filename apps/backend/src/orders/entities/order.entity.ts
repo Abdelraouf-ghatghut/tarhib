@@ -97,9 +97,15 @@ export class Order {
   })
   clientRequestHash!: string | null;
 
+  // PR-0.1a : eager RETIRÉ délibérément (F2) — un eager sur cette relation
+  // transforme tout Repository.findOne() en LEFT JOIN, ce qui invalide un
+  // verrou FOR UPDATE posé côté nullable (PostgreSQL : "FOR UPDATE cannot be
+  // applied to the nullable side of an outer join"). Tous les appelants
+  // demandent déjà explicitement `relations: ['lines']` quand ils en ont
+  // besoin (cf. orders.service.ts) ; le verrou de commande (updateStatus,
+  // delivery.service.ts) reste une requête SANS jointure par construction.
   @OneToMany(() => OrderLine, (line) => line.order, {
     cascade: true,
-    eager: true,
   })
   lines!: OrderLine[];
 }

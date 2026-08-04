@@ -12,7 +12,6 @@ import { Employee } from '../employees/entities/employee.entity.js';
 import { Product } from '../products/entities/product.entity.js';
 import { ProductRecipeLine } from '../products/entities/product-recipe-line.entity.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
-import { InventoryModule } from '../inventory/inventory.module.js';
 import { Quota } from '../quotas/entities/quota.entity.js';
 import { RoleQuota } from '../roles/entities/role-quota.entity.js';
 import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
@@ -35,7 +34,6 @@ import { Role } from '../roles/entities/role.entity.js';
     NotificationsModule,
     PrioritySlaModule,
     QuotasModule,
-    InventoryModule,
   ],
   providers: [OrdersService, ValidationEngineService],
   controllers: [OrdersController],
