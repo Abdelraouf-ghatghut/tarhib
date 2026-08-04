@@ -79,6 +79,24 @@ export class Order {
   @Column({ name: 'delivered_by', type: 'uuid', nullable: true })
   deliveredBy!: string | null;
 
+  /**
+   * Idempotence (D8, PR-0.4) : clé de retry fournie par le client, unique par
+   * (employee_id, client_request_id) — cf. migration IntegritySchema. Null
+   * = ancien client sans clé (comportement inchangé).
+   */
+  @Column({ name: 'client_request_id', type: 'uuid', nullable: true })
+  clientRequestId!: string | null;
+
+  /** Empreinte du panier (computeOrderRequestHash) — détecte une réutilisation
+   * de clé avec un payload différent. */
+  @Column({
+    name: 'client_request_hash',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  clientRequestHash!: string | null;
+
   @OneToMany(() => OrderLine, (line) => line.order, {
     cascade: true,
     eager: true,

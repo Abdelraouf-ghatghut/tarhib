@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -12,6 +13,7 @@ import {
   EntityManager,
   FindOptionsWhere,
   In,
+  QueryFailedError,
   Repository,
 } from 'typeorm';
 import { Order } from './entities/order.entity.js';
@@ -48,6 +50,7 @@ import {
 } from '../inventory/stock-reservation.js';
 import { QuotasService } from '../quotas/quotas.service.js';
 import { computeQuotaPeriod } from '../quotas/quota-period.js';
+import { computeOrderRequestHash } from './order-request-hash.js';
 import { consumeQuotaAtomic } from '../quotas/quota-consumption.js';
 import { PrioritySlaService } from '../priority-sla/priority-sla.service.js';
 import { Role } from '../roles/entities/role.entity.js';
@@ -160,6 +163,28 @@ export class OrdersService {
       quantity,
     }));
     const productIds = [...aggregated.keys()];
+
+    // Idempotence (D8, PR-0.4) : vérifiée AVANT tout LOCK/réservation — un
+    // retry sur une clé déjà servie ne doit ni consommer de quota ni réserver
+    // de stock une seconde fois. Le pre-check est une optimisation (évite le
+    // travail inutile) ; l'index unique (employee_id, client_request_id) reste
+    // l'autorité — la course concurrente est gérée au catch de la transaction
+    // plus bas (deux requêtes simultanées peuvent toutes deux passer ce check).
+    const requestHash = dto.clientRequestId
+      ? computeOrderRequestHash(lines, dto.note ?? null)
+      : null;
+    if (dto.clientRequestId) {
+      const existing = await this.orderRepo.findOne({
+        where: { employeeId: caller.sub, clientRequestId: dto.clientRequestId },
+        relations: ['lines'],
+      });
+      if (existing) {
+        if (existing.clientRequestHash !== requestHash) {
+          throw new ConflictException('orderRequestPayloadMismatch');
+        }
+        return this.toDto(existing);
+      }
+    }
 
     // Nomenclature (§3 CLAUDE.md) : un produit composé n'a pas de stock
     // propre — le stock à vérifier est celui de ses ingrédients.
@@ -286,224 +311,255 @@ export class OrdersService {
     // « Consume puis décide puis écris » garantit qu'une ligne rejetée par le
     // quota sous concurrence n'est jamais persistée APPROVED ; 0 ligne approuvée
     // rollback la consommation déjà faite.
-    const saved = await this.orderRepo.manager.transaction(async (manager) => {
-      const consumed = new Map<
-        string,
-        { periodStart: string; periodEnd: string; quantity: number }
-      >();
-      const stockAllocations = new Map<
-        string,
-        Array<{
-          inventoryItemId: string;
-          stockProductId: string;
-          zone: string;
-          quantity: number;
-        }>
-      >();
-      const rejected = new Map<string, string>(); // productId → motif
+    const saved = await this.orderRepo.manager
+      .transaction(async (manager) => {
+        const consumed = new Map<
+          string,
+          { periodStart: string; periodEnd: string; quantity: number }
+        >();
+        const stockAllocations = new Map<
+          string,
+          Array<{
+            inventoryItemId: string;
+            stockProductId: string;
+            zone: string;
+            quantity: number;
+          }>
+        >();
+        const rejected = new Map<string, string>(); // productId → motif
 
-      for (const [index, line] of lines.entries()) {
-        if (advisoryByProduct.get(line.productId)?.decision !== 'APPROVED') {
-          continue; // déjà rejeté (produit/rôle/branche)
-        }
-
-        // Savepoint par ligne : quota ET stock réussissent ensemble, sinon
-        // ROLLBACK TO SAVEPOINT annule les DEUX pour cette ligne (both-or-neither),
-        // sans toucher aux lignes déjà validées (panier partiel).
-        await manager.query(`SAVEPOINT sp_${index}`);
-        let ok = true;
-        let reason: string | null = null;
-
-        // 1) Quota (role-based atomique ; legacy additif advisory).
-        const quota = effectiveQuotas.get(line.productId);
-        let consumption: {
-          periodStart: string;
-          periodEnd: string;
-          quantity: number;
-        } | null = null;
-        if (caller.roleId && quota) {
-          const { periodStart, periodEnd } = computeQuotaPeriod(
-            quota.periodType,
-            now,
-          );
-          const quotaOk = await consumeQuotaAtomic(manager, {
-            employeeId: caller.sub,
-            productId: line.productId,
-            companyId: caller.companyId,
-            periodStart,
-            periodEnd,
-            quantity: line.quantity,
-            maxQuantity: quota.maxQuantity,
-          });
-          if (quotaOk) {
-            consumption = { periodStart, periodEnd, quantity: line.quantity };
-          } else {
-            ok = false;
-            reason = 'QUOTA_EXCEEDED';
+        for (const [index, line] of lines.entries()) {
+          if (advisoryByProduct.get(line.productId)?.decision !== 'APPROVED') {
+            continue; // déjà rejeté (produit/rôle/branche)
           }
-        } else if (!caller.roleId) {
-          await this.incrementLegacyQuota(
-            manager,
-            caller.sub,
-            line.productId,
-            line.quantity,
-          );
-        }
 
-        // 2) Réservation de stock (D1=B) : ingrédients si recette, sinon le
-        // produit. Toute rupture d'un besoin rejette la ligne.
-        const allocations: Array<{
-          inventoryItemId: string;
-          stockProductId: string;
-          zone: string;
-          quantity: number;
-        }> = [];
-        if (ok) {
-          const recipesForLine = recipeLines.filter(
-            (r) => r.productId === line.productId,
-          );
-          const needs =
-            recipesForLine.length > 0
-              ? recipesForLine.map((r) => ({
-                  productId: r.ingredientProductId,
-                  quantity: r.quantity * line.quantity,
-                }))
-              : [{ productId: line.productId, quantity: line.quantity }];
-          for (const need of needs) {
-            const res = await reserveStockForProduct(manager, {
-              productId: need.productId,
-              branchId: caller.branchId ?? '',
+          // Savepoint par ligne : quota ET stock réussissent ensemble, sinon
+          // ROLLBACK TO SAVEPOINT annule les DEUX pour cette ligne (both-or-neither),
+          // sans toucher aux lignes déjà validées (panier partiel).
+          await manager.query(`SAVEPOINT sp_${index}`);
+          let ok = true;
+          let reason: string | null = null;
+
+          // 1) Quota (role-based atomique ; legacy additif advisory).
+          const quota = effectiveQuotas.get(line.productId);
+          let consumption: {
+            periodStart: string;
+            periodEnd: string;
+            quantity: number;
+          } | null = null;
+          if (caller.roleId && quota) {
+            const { periodStart, periodEnd } = computeQuotaPeriod(
+              quota.periodType,
+              now,
+            );
+            const quotaOk = await consumeQuotaAtomic(manager, {
+              employeeId: caller.sub,
+              productId: line.productId,
               companyId: caller.companyId,
-              quantity: need.quantity,
+              periodStart,
+              periodEnd,
+              quantity: line.quantity,
+              maxQuantity: quota.maxQuantity,
             });
-            if (!res.ok) {
+            if (quotaOk) {
+              consumption = { periodStart, periodEnd, quantity: line.quantity };
+            } else {
               ok = false;
-              reason = 'INSUFFICIENT_STOCK';
-              break;
+              reason = 'QUOTA_EXCEEDED';
             }
-            for (const a of res.allocations) {
-              allocations.push({
-                inventoryItemId: a.inventoryItemId,
-                stockProductId: need.productId,
-                zone: a.zone,
-                quantity: a.quantity,
+          } else if (!caller.roleId) {
+            await this.incrementLegacyQuota(
+              manager,
+              caller.sub,
+              line.productId,
+              line.quantity,
+            );
+          }
+
+          // 2) Réservation de stock (D1=B) : ingrédients si recette, sinon le
+          // produit. Toute rupture d'un besoin rejette la ligne.
+          const allocations: Array<{
+            inventoryItemId: string;
+            stockProductId: string;
+            zone: string;
+            quantity: number;
+          }> = [];
+          if (ok) {
+            const recipesForLine = recipeLines.filter(
+              (r) => r.productId === line.productId,
+            );
+            const needs =
+              recipesForLine.length > 0
+                ? recipesForLine.map((r) => ({
+                    productId: r.ingredientProductId,
+                    quantity: r.quantity * line.quantity,
+                  }))
+                : [{ productId: line.productId, quantity: line.quantity }];
+            for (const need of needs) {
+              const res = await reserveStockForProduct(manager, {
+                productId: need.productId,
+                branchId: caller.branchId ?? '',
+                companyId: caller.companyId,
+                quantity: need.quantity,
               });
+              if (!res.ok) {
+                ok = false;
+                reason = 'INSUFFICIENT_STOCK';
+                break;
+              }
+              for (const a of res.allocations) {
+                allocations.push({
+                  inventoryItemId: a.inventoryItemId,
+                  stockProductId: need.productId,
+                  zone: a.zone,
+                  quantity: a.quantity,
+                });
+              }
             }
           }
-        }
 
-        if (ok) {
-          await manager.query(`RELEASE SAVEPOINT sp_${index}`);
-          if (consumption) consumed.set(line.productId, consumption);
-          if (allocations.length > 0) {
-            stockAllocations.set(line.productId, allocations);
+          if (ok) {
+            await manager.query(`RELEASE SAVEPOINT sp_${index}`);
+            if (consumption) consumed.set(line.productId, consumption);
+            if (allocations.length > 0) {
+              stockAllocations.set(line.productId, allocations);
+            }
+          } else {
+            await manager.query(`ROLLBACK TO SAVEPOINT sp_${index}`);
+            rejected.set(line.productId, reason ?? 'INSUFFICIENT_STOCK');
           }
-        } else {
-          await manager.query(`ROLLBACK TO SAVEPOINT sp_${index}`);
-          rejected.set(line.productId, reason ?? 'INSUFFICIENT_STOCK');
         }
-      }
 
-      const orderLines = lines.map((line) => {
-        const advisory = advisoryByProduct.get(line.productId);
-        const rejectReason = rejected.get(line.productId);
-        const approved = advisory?.decision === 'APPROVED' && !rejectReason;
-        return this.lineRepo.create({
-          productId: line.productId,
-          quantity: line.quantity,
-          validationStatus: approved
-            ? LineValidationStatus.APPROVED
-            : LineValidationStatus.REJECTED,
-          rejectionReason: approved
-            ? null
-            : (rejectReason ?? advisory?.reason ?? null),
+        const orderLines = lines.map((line) => {
+          const advisory = advisoryByProduct.get(line.productId);
+          const rejectReason = rejected.get(line.productId);
+          const approved = advisory?.decision === 'APPROVED' && !rejectReason;
+          return this.lineRepo.create({
+            productId: line.productId,
+            quantity: line.quantity,
+            validationStatus: approved
+              ? LineValidationStatus.APPROVED
+              : LineValidationStatus.REJECTED,
+            rejectionReason: approved
+              ? null
+              : (rejectReason ?? advisory?.reason ?? null),
+          });
         });
-      });
 
-      if (
-        !orderLines.some(
-          (l) => l.validationStatus === LineValidationStatus.APPROVED,
-        )
-      ) {
-        // Rollback : annule les consommations de quota déjà faites dans la tx.
-        throw new UnprocessableEntityException({
-          message: 'orderValidationFailed',
-          rejectedLines: orderLines.map((l) => ({
-            productId: l.productId,
-            quantity: l.quantity,
-            decision: 'REJECTED',
-            reason: l.rejectionReason,
-          })),
-        });
-      }
+        if (
+          !orderLines.some(
+            (l) => l.validationStatus === LineValidationStatus.APPROVED,
+          )
+        ) {
+          // Rollback : annule les consommations de quota déjà faites dans la tx.
+          throw new UnprocessableEntityException({
+            message: 'orderValidationFailed',
+            rejectedLines: orderLines.map((l) => ({
+              productId: l.productId,
+              quantity: l.quantity,
+              decision: 'REJECTED',
+              reason: l.rejectionReason,
+            })),
+          });
+        }
 
-      // Numéro de commande atomique par société (upsert, pas de doublon concurrent).
-      const [{ assigned }] = await manager.query<{ assigned: number }[]>(
-        `INSERT INTO company_order_counters (company_id, next_number)
+        // Numéro de commande atomique par société (upsert, pas de doublon concurrent).
+        const [{ assigned }] = await manager.query<{ assigned: number }[]>(
+          `INSERT INTO company_order_counters (company_id, next_number)
          VALUES ($1, 2)
          ON CONFLICT (company_id)
          DO UPDATE SET next_number = company_order_counters.next_number + 1
          RETURNING next_number - 1 AS assigned`,
-        [caller.companyId],
-      );
+          [caller.companyId],
+        );
 
-      const order = this.orderRepo.create({
-        employeeId: caller.sub,
-        companyId: caller.companyId,
-        branchId: caller.branchId,
-        orderNumber: assigned,
-        priority,
-        slaDeadline,
-        note: dto.note?.trim() || null,
-        status: OrderStatus.APPROVED,
-        approvedAt: now,
-        lines: orderLines,
-      });
-      const savedOrder = await manager.save(Order, order);
+        const order = this.orderRepo.create({
+          employeeId: caller.sub,
+          companyId: caller.companyId,
+          branchId: caller.branchId,
+          orderNumber: assigned,
+          priority,
+          slaDeadline,
+          note: dto.note?.trim() || null,
+          status: OrderStatus.APPROVED,
+          approvedAt: now,
+          lines: orderLines,
+          clientRequestId: dto.clientRequestId ?? null,
+          clientRequestHash: requestHash,
+        });
+        const savedOrder = await manager.save(Order, order);
 
-      // Registres (FK order/line valides après le save) : consommation quota
-      // (D12) + réservations de stock (HELD).
-      for (const savedLine of savedOrder.lines) {
-        if (savedLine.validationStatus !== LineValidationStatus.APPROVED) {
-          continue;
-        }
-        const c = consumed.get(savedLine.productId);
-        if (c) {
-          await manager.query(
-            `INSERT INTO order_quota_consumptions
+        // Registres (FK order/line valides après le save) : consommation quota
+        // (D12) + réservations de stock (HELD).
+        for (const savedLine of savedOrder.lines) {
+          if (savedLine.validationStatus !== LineValidationStatus.APPROVED) {
+            continue;
+          }
+          const c = consumed.get(savedLine.productId);
+          if (c) {
+            await manager.query(
+              `INSERT INTO order_quota_consumptions
                (order_id, order_line_id, employee_id, product_id, company_id, period_start, period_end, quantity)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [
-              savedOrder.id,
-              savedLine.id,
-              caller.sub,
-              savedLine.productId,
-              caller.companyId,
-              c.periodStart,
-              c.periodEnd,
-              c.quantity,
-            ],
-          );
-        }
-        for (const a of stockAllocations.get(savedLine.productId) ?? []) {
-          await manager.query(
-            `INSERT INTO inventory_reservations
+              [
+                savedOrder.id,
+                savedLine.id,
+                caller.sub,
+                savedLine.productId,
+                caller.companyId,
+                c.periodStart,
+                c.periodEnd,
+                c.quantity,
+              ],
+            );
+          }
+          for (const a of stockAllocations.get(savedLine.productId) ?? []) {
+            await manager.query(
+              `INSERT INTO inventory_reservations
                (order_id, order_line_id, inventory_item_id, ordered_product_id, stock_product_id, zone, quantity, status)
              VALUES ($1, $2, $3, $4, $5, $6, $7, 'HELD')`,
-            [
-              savedOrder.id,
-              savedLine.id,
-              a.inventoryItemId,
-              savedLine.productId,
-              a.stockProductId,
-              a.zone,
-              a.quantity,
-            ],
-          );
+              [
+                savedOrder.id,
+                savedLine.id,
+                a.inventoryItemId,
+                savedLine.productId,
+                a.stockProductId,
+                a.zone,
+                a.quantity,
+              ],
+            );
+          }
         }
-      }
-      return savedOrder;
-    });
+        return savedOrder;
+      })
+      .catch(async (err: unknown) => {
+        // Course d'idempotence : deux requêtes avec la même clé ont toutes deux
+        // passé le pre-check (lu 0 commande existante) puis tenté l'INSERT — une
+        // seule gagne l'index unique (employee_id, client_request_id), l'AUTRE
+        // prend une violation ici. Le perdant relit et retourne la gagnante
+        // (même empreinte) au lieu de propager une erreur au client.
+        if (
+          dto.clientRequestId &&
+          err instanceof QueryFailedError &&
+          (err.driverError as { constraint?: string } | undefined)
+            ?.constraint === 'uq_orders_employee_client_request'
+        ) {
+          const existing = await this.orderRepo.findOne({
+            where: {
+              employeeId: caller.sub,
+              clientRequestId: dto.clientRequestId,
+            },
+            relations: ['lines'],
+          });
+          if (existing) {
+            if (existing.clientRequestHash !== requestHash) {
+              throw new ConflictException('orderRequestPayloadMismatch');
+            }
+            return existing;
+          }
+        }
+        throw err;
+      });
 
     this.notificationsGateway.emitOrderUpdate('order:new', {
       orderId: saved.id,

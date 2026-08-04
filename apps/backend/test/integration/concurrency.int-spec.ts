@@ -436,8 +436,46 @@ describe('Concurrence — intégrité commandes/stock/quotas (baseline rouge)', 
     expect(releasedCount).toBe(1);
   });
 
-  // Nécessite l'idempotence (PR-0.4) :
-  it.todo(
-    "P04 — deux POST idempotents (même clé) ne créent qu'une commande [PR-0.4]",
-  );
+  // ── P04 — CORRIGÉ (PR-0.1 + PR-0.4) : l'index unique partiel
+  // uq_orders_employee_client_request (employee_id, client_request_id) sur
+  // lequel s'appuie OrdersService.create() (pre-check + catch de la course,
+  // cf. orders.service.spec.ts) sérialise réellement les insertions
+  // concurrentes — prouvé ici directement contre la contrainte, comme P06
+  // pour EXCLUDE. order_number distinct par tentative (i+1) pour ne pas
+  // percuter l'AUTRE contrainte unique (company_id, order_number).
+  it("P04 — deux commandes concurrentes avec la même clé d'idempotence : une seule est créée", async () => {
+    await truncate(ds, ['orders', 'companies']);
+    const companyId = await seedCompany('p04');
+    const employeeId = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+    const clientRequestId = 'abcdefab-abcd-abcd-abcd-abcdefabcdef';
+
+    const attempt = (i: number) =>
+      ds
+        .query(
+          `INSERT INTO orders
+             (employee_id, branch_id, company_id, order_number, status,
+              priority, sla_deadline, client_request_id, client_request_hash)
+           VALUES ($1, $2, $3, $4, 'APPROVED', 'P5', NOW() + INTERVAL '1 hour', $5, 'hash')`,
+          [
+            employeeId,
+            '12121212-1212-1212-1212-121212121212',
+            companyId,
+            i + 1,
+            clientRequestId,
+          ],
+        )
+        .then(() => true)
+        .catch(() => false);
+
+    const results = await runConcurrently(20, attempt);
+
+    const succeeded = results.filter((r) => r.ok && r.value === true).length;
+    const rowsForKey = await count(
+      ds,
+      `SELECT COUNT(*) FROM orders WHERE employee_id = $1 AND client_request_id = $2`,
+      [employeeId, clientRequestId],
+    );
+    expect(succeeded).toBe(1);
+    expect(rowsForKey).toBe(1);
+  });
 });

@@ -48,6 +48,17 @@ export class CreateOrderDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Clé d'idempotence (D8) — un UUID généré côté client par tentative de " +
+      'confirmation de panier ; renvoyé tel quel sur retry (timeout, perte de ' +
+      'réponse). Même clé + même panier → la commande existante est retournée ' +
+      'sans en recréer une seconde. Même clé + panier différent → 409.',
+  })
+  @IsOptional()
+  @IsUUID()
+  clientRequestId?: string;
 }
 
 /**

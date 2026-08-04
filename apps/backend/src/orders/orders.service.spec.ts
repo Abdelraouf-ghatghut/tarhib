@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { QueryFailedError } from 'typeorm';
 import { OrdersService } from './orders.service.js';
 import { Order } from './entities/order.entity.js';
 import { OrderLine } from './entities/order-line.entity.js';
@@ -24,6 +25,7 @@ import {
   DEFAULT_SLA_MINUTES,
 } from '../priority-sla/priority-sla.service.js';
 import { Role, SlaPriority } from '../roles/entities/role.entity.js';
+import { computeOrderRequestHash } from './order-request-hash.js';
 
 const mockRepo = () => ({
   create: jest.fn((v: unknown) => v),
@@ -63,6 +65,8 @@ const makeOrder = (priority: OrderPriority): Order => ({
   readyBy: null,
   deliveredAt: null,
   deliveredBy: null,
+  clientRequestId: null,
+  clientRequestHash: null,
   lines: [],
 });
 
@@ -370,6 +374,126 @@ describe('OrdersService', () => {
       await expect(service.findOne('unknown')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('create — idempotence (D8, PR-0.4)', () => {
+    const KEY = '99999999-9999-9999-9999-999999999999';
+
+    it('stores clientRequestId/clientRequestHash on a first-time creation', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      orderRepo.findOne.mockResolvedValue(null); // aucune commande existante pour cette clé
+      orderRepo.create.mockReturnValue(order);
+      orderRepo.save.mockResolvedValue(order);
+
+      await service.create(
+        { lines: [{ productId: 'prod-1', quantity: 1 }], clientRequestId: KEY },
+        caller(),
+      );
+
+      const created = (orderRepo.create.mock.calls[0] as [Order])[0];
+      expect(created.clientRequestId).toBe(KEY);
+      expect(created.clientRequestHash).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('returns the existing order without recreating when the same key+payload is retried', async () => {
+      const existing = makeOrder(OrderPriority.P5);
+      existing.id = 'ord-existing';
+      existing.clientRequestId = KEY;
+      existing.clientRequestHash = computeOrderRequestHash(
+        [{ productId: 'prod-1', quantity: 1 }],
+        null,
+      );
+      orderRepo.findOne.mockResolvedValue(existing);
+
+      const result = await service.create(
+        { lines: [{ productId: 'prod-1', quantity: 1 }], clientRequestId: KEY },
+        caller(),
+      );
+
+      expect(result.id).toBe('ord-existing');
+      expect(orderRepo.create).not.toHaveBeenCalled();
+      expect(orderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 409 when the same key is reused with a different payload', async () => {
+      const existing = makeOrder(OrderPriority.P5);
+      existing.clientRequestId = KEY;
+      existing.clientRequestHash = computeOrderRequestHash(
+        [{ productId: 'prod-1', quantity: 1 }],
+        null,
+      );
+      orderRepo.findOne.mockResolvedValue(existing);
+
+      await expect(
+        service.create(
+          {
+            lines: [{ productId: 'prod-1', quantity: 5 }], // quantité différente
+            clientRequestId: KEY,
+          },
+          caller(),
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(orderRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('resolves the concurrent-retry race: unique-index violation → returns the winning order', async () => {
+      const winner = makeOrder(OrderPriority.P5);
+      winner.id = 'ord-winner';
+      winner.clientRequestId = KEY;
+      winner.clientRequestHash = computeOrderRequestHash(
+        [{ productId: 'prod-1', quantity: 1 }],
+        null,
+      );
+
+      // Pre-check : aucune commande encore visible (course avec le gagnant).
+      // Après l'échec de l'INSERT (violation d'index), le refetch la trouve.
+      orderRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(winner);
+      orderRepo.create.mockReturnValue(makeOrder(OrderPriority.P5));
+      orderRepo.save.mockRejectedValue(
+        new QueryFailedError(
+          'INSERT INTO orders ...',
+          [],
+          Object.assign(new Error('duplicate key'), {
+            code: '23505',
+            constraint: 'uq_orders_employee_client_request',
+          }),
+        ),
+      );
+
+      const result = await service.create(
+        { lines: [{ productId: 'prod-1', quantity: 1 }], clientRequestId: KEY },
+        caller(),
+      );
+
+      expect(result.id).toBe('ord-winner');
+    });
+
+    it('propagates a genuine unique-violation unrelated to idempotence', async () => {
+      orderRepo.findOne.mockResolvedValue(null);
+      orderRepo.create.mockReturnValue(makeOrder(OrderPriority.P5));
+      orderRepo.save.mockRejectedValue(
+        new QueryFailedError(
+          'INSERT INTO orders ...',
+          [],
+          Object.assign(new Error('duplicate key'), {
+            code: '23505',
+            constraint: 'uq_orders_company_order_number', // AUTRE contrainte
+          }),
+        ),
+      );
+
+      await expect(
+        service.create(
+          {
+            lines: [{ productId: 'prod-1', quantity: 1 }],
+            clientRequestId: KEY,
+          },
+          caller(),
+        ),
+      ).rejects.toThrow(QueryFailedError);
     });
   });
 
