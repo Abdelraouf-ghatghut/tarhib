@@ -18,6 +18,11 @@ import { isPeriodClosed } from './period-lock.util.js';
 import { PayslipService } from '../hr/payslip.service.js';
 import { AccountingService } from '../accounting/accounting.service.js';
 
+// Clé arbitraire mais stable (PR-1.7) — hashtext('finance:payroll') tiendrait
+// aussi dans un bigint mais une constante en dur évite toute dépendance à la
+// façon dont Postgres hash les chaînes (stabilité garantie dans le temps).
+const PAYROLL_ADVISORY_LOCK_KEY = 727_001;
+
 /**
  * Génération mensuelle des lignes de paie (السلاريس) pour le personnel
  * interne Tarhib — complète la synchronisation immédiate du mois en cours
@@ -41,8 +46,48 @@ export class FinancePayrollService {
     private readonly accountingService: AccountingService,
   ) {}
 
+  /**
+   * Verrou advisory PostgreSQL (PR-1.7) : le cron mensuel et le bouton de
+   * rattrapage manuel (FinanceController) appellent tous deux runPayroll()
+   * — sans verrou, un déclenchement manuel pendant la fenêtre du cron (ou un
+   * double-clic, ou plusieurs instances backend partageant le même schedule)
+   * peuvent courir en parallèle. La protection par période existante
+   * (`existing` ci-dessous) est un check-then-insert non atomique : deux
+   * exécutions concurrentes peuvent toutes deux passer ce test avant que
+   * l'une n'insère, créant une double ligne de salaire. Verrou tenu sur une
+   * connexion dédiée (QueryRunner) pour toute la durée du run — le corps
+   * métier continue d'utiliser les repos habituels (pool), seul l'acquire/
+   * release doit rester sur la même session Postgres.
+   */
   async runPayroll(
     period: string = currentYearMonth(),
+  ): Promise<{ created: number; skipped: number }> {
+    const queryRunner =
+      this.employeeRepo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    try {
+      const lockResult = (await queryRunner.query(
+        'SELECT pg_try_advisory_lock($1) AS locked',
+        [PAYROLL_ADVISORY_LOCK_KEY],
+      )) as [{ locked: boolean }];
+      const locked = lockResult[0].locked;
+      if (!locked) {
+        throw new ConflictException('payrollRunInProgress');
+      }
+      try {
+        return await this.runPayrollLocked(period);
+      } finally {
+        await queryRunner.query('SELECT pg_advisory_unlock($1)', [
+          PAYROLL_ADVISORY_LOCK_KEY,
+        ]);
+      }
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  private async runPayrollLocked(
+    period: string,
   ): Promise<{ created: number; skipped: number }> {
     if (await isPeriodClosed(this.periodRepo, period)) {
       throw new ConflictException('periodClosed');

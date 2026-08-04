@@ -70,6 +70,11 @@ describe('FinancePayrollService', () => {
   let periodRepo: ReturnType<typeof mockRepo>;
   let payslipService: ReturnType<typeof mockPayslipService>;
   let accountingService: ReturnType<typeof mockAccountingService>;
+  let queryRunner: {
+    connect: jest.Mock;
+    query: jest.Mock;
+    release: jest.Mock;
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -90,6 +95,21 @@ describe('FinancePayrollService', () => {
     payslipService = module.get(PayslipService);
     accountingService = module.get(AccountingService);
     periodRepo.findOne.mockResolvedValue(null); // toute période ouverte par défaut
+
+    // Verrou advisory (PR-1.7) : connexion dédiée mockée, verrou acquis par
+    // défaut — les tests d'exclusion mutuelle le surchargent explicitement.
+    queryRunner = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue([{ locked: true }]),
+      release: jest.fn().mockResolvedValue(undefined),
+    };
+    (
+      employeeRepo as unknown as {
+        manager: { connection: { createQueryRunner: jest.Mock } };
+      }
+    ).manager = {
+      connection: { createQueryRunner: jest.fn(() => queryRunner) },
+    };
   });
 
   it('creates a SALARIES row for each salaried active TARHIB employee without one yet', async () => {
@@ -209,5 +229,48 @@ describe('FinancePayrollService', () => {
       ConflictException,
     );
     expect(employeeRepo.find).not.toHaveBeenCalled();
+  });
+
+  describe('verrou advisory PostgreSQL (PR-1.7)', () => {
+    it('rejects with a ConflictException when another run already holds the lock, without touching business data', async () => {
+      queryRunner.query.mockResolvedValue([{ locked: false }]);
+
+      await expect(service.runPayroll('2026-07')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(employeeRepo.find).not.toHaveBeenCalled();
+      // Rien à libérer : pg_try_advisory_lock n'a jamais été accordé.
+      expect(queryRunner.query).toHaveBeenCalledTimes(1);
+      expect(queryRunner.release).toHaveBeenCalled();
+    });
+
+    it('always unlocks and releases the connection, even when the run throws', async () => {
+      employeeRepo.find.mockRejectedValue(new Error('db down'));
+
+      await expect(service.runPayroll('2026-07')).rejects.toThrow('db down');
+
+      expect(queryRunner.query).toHaveBeenCalledWith(
+        'SELECT pg_advisory_unlock($1)',
+        [expect.any(Number)],
+      );
+      expect(queryRunner.release).toHaveBeenCalled();
+    });
+
+    it('releases the connection after a normal successful run', async () => {
+      employeeRepo.find.mockResolvedValue([]);
+
+      await service.runPayroll('2026-07');
+
+      expect(queryRunner.connect).toHaveBeenCalled();
+      expect(queryRunner.query).toHaveBeenCalledWith(
+        'SELECT pg_try_advisory_lock($1) AS locked',
+        [expect.any(Number)],
+      );
+      expect(queryRunner.query).toHaveBeenCalledWith(
+        'SELECT pg_advisory_unlock($1)',
+        [expect.any(Number)],
+      );
+      expect(queryRunner.release).toHaveBeenCalled();
+    });
   });
 });
