@@ -68,3 +68,73 @@ describe('ReportingController.getExecutiveReport — redaction des coûts (§4 C
     expect(result.kpis.totalStockValue).toBe(12345.67);
   });
 });
+
+describe('ReportingController — plafond de plage from/to (PR-1.5)', () => {
+  let service: {
+    getExecutiveReport: jest.Mock;
+    getOrdersReport: jest.Mock;
+    getSlaReport: jest.Mock;
+  };
+  let controller: ReportingController;
+
+  beforeEach(() => {
+    service = {
+      getExecutiveReport: jest.fn().mockResolvedValue(makeReport()),
+      getOrdersReport: jest.fn().mockResolvedValue({}),
+      getSlaReport: jest.fn().mockResolvedValue({}),
+    };
+    controller = new ReportingController(
+      service as unknown as ReportingService,
+    );
+  });
+
+  it('rejects a range spanning more than 400 days', () => {
+    // assertReportPeriod lève de façon synchrone (pas async) — un throw
+    // pendant l'appel lui-même, pas une promesse rejetée.
+    expect(() =>
+      controller.getOrdersReport(
+        makeReq(['report.view']),
+        undefined,
+        undefined,
+        '2020-01-01',
+        '2022-01-01',
+      ),
+    ).toThrow('reportPeriodTooLong');
+    expect(service.getOrdersReport).not.toHaveBeenCalled();
+  });
+
+  it('rejects to before from', () => {
+    expect(() =>
+      controller.getSlaReport(
+        makeReq(['report.view']),
+        undefined,
+        '2026-06-01',
+        '2026-01-01',
+      ),
+    ).toThrow('reportPeriodToBeforeFrom');
+  });
+
+  it('allows a range within the cap', async () => {
+    await expect(
+      controller.getExecutiveReport(
+        makeReq(['report.view']),
+        undefined,
+        undefined,
+        '2026-01-01',
+        '2026-06-01',
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('allows an open-ended range (no from or no to)', async () => {
+    await expect(
+      controller.getOrdersReport(
+        makeReq(['report.view']),
+        undefined,
+        undefined,
+        '2020-01-01',
+        undefined,
+      ),
+    ).resolves.toBeDefined();
+  });
+});
