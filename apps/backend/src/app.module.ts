@@ -83,6 +83,22 @@ import { HrModule } from './hr/hr.module.js';
           // et crashait l'app — interdit.
           synchronize: false,
           logging: false,
+          // PR-1.1 : pool dimensionné explicitement — le défaut pg (max:10,
+          // pas de timeout de connexion) sature silencieusement sous charge
+          // (le pic quota+réservation par commande tient plusieurs connexions
+          // simultanées) et fait pendre les requêtes indéfiniment au lieu
+          // d'échouer vite. `statement_timeout`/`idle_in_transaction_session_
+          // timeout` : filet contre une requête ou une transaction abandonnée
+          // qui garderait des verrous indéfiniment (le catalogue/reporting,
+          // plus lents, restent sous cette limite — voir Phase 1 reporting
+          // pour un budget dédié si besoin).
+          extra: {
+            max: 18,
+            connectionTimeoutMillis: 3000,
+            idleTimeoutMillis: 30_000,
+            statement_timeout: 10_000,
+            idle_in_transaction_session_timeout: 10_000,
+          },
         };
       },
     }),
