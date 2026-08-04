@@ -33,6 +33,13 @@ export function configureApiClient(next: TokenHandlers): void {
   handlers = next;
 }
 
+// Utilisé par realtime.ts pour le handshake WebSocket (PR-0.6a) — toujours le
+// token COURANT (pas figé à la connexion), réévalué à chaque tentative de
+// (re)connexion.
+export function getCurrentAccessToken(): string | null {
+  return handlers.getAccessToken();
+}
+
 api.interceptors.request.use((config) => {
   const token = handlers.getAccessToken();
   if (token) {

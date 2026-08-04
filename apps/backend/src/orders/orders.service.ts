@@ -564,6 +564,7 @@ export class OrdersService {
     this.notificationsGateway.emitOrderUpdate('order:new', {
       orderId: saved.id,
       branchId: saved.branchId,
+      employeeId: saved.employeeId,
     });
 
     return this.toDto(saved);
@@ -797,6 +798,7 @@ export class OrdersService {
       orderId: saved.id,
       status: saved.status,
       branchId: saved.branchId,
+      employeeId: saved.employeeId,
     });
 
     // `saved` vient du QueryBuilder verrouillé (sans les lignes) — on recharge
