@@ -1,0 +1,74 @@
+# PR-2.3 — pile d'observabilité de référence (Prometheus + Alertmanager +
+# Grafana + node_exporter), séparée de docker-compose.yml (dev applicatif)
+# car optionnelle et plus lourde. Lancer en plus de la pile applicative :
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+# Le backend doit déjà tourner sur :3000 (npm run start:dev) — Prometheus le
+# scrape via host.docker.internal, pas via ce fichier.
+#
+# Accès : Prometheus http://localhost:9090, Alertmanager http://localhost:9093,
+# Grafana http://localhost:3001 (admin / voir GRAFANA_ADMIN_PASSWORD).
+#
+# DEV ONLY, même esprit que docker-compose.yml (PR-0.7) : ports sur 127.0.0.1,
+# Alertmanager sans receiver réel (voir observability/alertmanager/alertmanager.yml).
+# Ne jamais exposer tel quel sur un réseau public en prod.
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: tarhib-prometheus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - tarhib_prometheus_data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: tarhib-alertmanager
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: tarhib-node-exporter
+    restart: unless-stopped
+    # 9101 côté hôte (pas le 9100 conventionnel) : port déjà pris par un
+    # autre process sur la machine de dev, sans rapport avec ce projet.
+    # Prometheus scrape via le réseau interne docker-compose (node-exporter:9100),
+    # ce mapping n'existe que pour une inspection manuelle optionnelle.
+    ports:
+      - "127.0.0.1:9101:9100"
+    # Sur le VPS cible en prod, monter les chemins hôte réels (/proc,/sys,/)
+    # en lecture seule pour des métriques CPU/RAM/disque exactes — sur
+    # Docker Desktop (dev Windows/Mac), ces métriques reflètent la VM
+    # interne de Docker Desktop, pas la machine physique. Suffisant pour
+    # vérifier que les règles d'alerte se déclenchent, pas pour du
+    # dimensionnement réel en dev.
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - /:/host:ro
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: tarhib-grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-tarhib_dev}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - tarhib_grafana_data:/var/lib/grafana
+
+volumes:
+  tarhib_prometheus_data:
+  tarhib_grafana_data:
