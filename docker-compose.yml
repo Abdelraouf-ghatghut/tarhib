@@ -26,6 +26,16 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - tarhib_pg_data:/var/lib/postgresql/data
+    # PR-2.2 : pg_stat_statements ne peut pas s'activer par SQL seul —
+    # shared_preload_libraries exige un flag au démarrage du serveur (donc
+    # ici, pas dans une migration). L'extension elle-même est créée par une
+    # migration normale (CREATE EXTENSION est transactionnel).
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
 
   redis:
     image: redis:7
