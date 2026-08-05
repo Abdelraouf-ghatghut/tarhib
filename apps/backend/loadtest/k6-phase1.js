@@ -2,17 +2,15 @@
 // VPS cible (4 vCPU/16 Go). Vise : 500 utilisateurs catalogue, 100 cmd/min,
 // création p95<500ms/p99<1s.
 //
-// LIMITE CONNUE : le pool de comptes seedés (scripts/seed-users.ts) ne
-// contient que 7 employés client habilités à commander — les 500 VUs
-// catalogue et les commandes réutilisent donc ce pool au lieu de 500
-// identités distinctes. C'est en fait un test PLUS PESSIMISTE pour la
-// contention de verrou par (employeeId, produit, période) qu'un vrai parc
-// de 500 employés (E1 — verrou total quota→stock), donc les p95/p99 mesurés
-// ici sont un majorant raisonnable, pas une sous-estimation. Voir le rapport
-// de run pour le détail.
+// Pool d'identités : 7 employés client réels (seed-users.ts) + jusqu'à 80
+// employés synthétiques (loadtest/seed-loadtest-employees.ts) — un premier
+// run avec seulement les 7 réels avait mesuré p95=802ms/p99=2.85s en
+// création, hypothèse principale = contention du verrou par employé
+// (LOCK→DECIDE→WRITE, E1) artificiellement concentrée sur 7 identités
+// partagées par 500 VUs. Ce pool élargi teste si l'hypothèse tient.
 //
 // Lancer (depuis la racine du repo, backend démarré en local sur :3000) :
-//   docker run --rm -i --network host -e BASE_URL=http://localhost:3000 \
+//   docker run --rm -i -e BASE_URL=http://host.docker.internal:3000 \
 //     -v "%CD%/apps/backend/loadtest:/scripts" grafana/k6 run /scripts/k6-phase1.js
 
 import http from 'k6/http';
@@ -23,7 +21,14 @@ const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
 const PASSWORD = 'Tarhib@2026!';
 const PRODUCT_ID = '8d221127-7b76-4015-82a9-dbb206a6b73f'; // Coffee (seed data)
 
-const CLIENT_EMPLOYEES = [
+// Nombre de comptes synthétiques loadtestN@alwaha-bank.ly à authentifier en
+// plus des 7 réels — paramétrable pour respecter le throttle login
+// (20/min/IP, cf. setup() qui les authentifie par lots).
+const SYNTHETIC_EMPLOYEE_COUNT = parseInt(__ENV.SYNTHETIC_EMPLOYEES || '33', 10);
+const LOGIN_BATCH_SIZE = 18; // marge sous le throttle réel de 20/min/IP
+const LOGIN_BATCH_PAUSE_S = 62;
+
+const REAL_CLIENT_EMPLOYEES = [
   'salma.alfaitouri@alwaha-bank.ly',
   'omar.alhouni@alwaha-bank.ly',
   'youssef.aburas@alwaha-bank.ly',
@@ -32,6 +37,11 @@ const CLIENT_EMPLOYEES = [
   'hanan.alobeidi@alwaha-bank.ly',
   'abdullah.alzliteny@alwaha-bank.ly',
 ];
+const SYNTHETIC_EMPLOYEES = Array.from(
+  { length: SYNTHETIC_EMPLOYEE_COUNT },
+  (_, i) => `loadtest${i}@alwaha-bank.ly`,
+);
+const CLIENT_EMPLOYEES = [...REAL_CLIENT_EMPLOYEES, ...SYNTHETIC_EMPLOYEES];
 
 const orderCreateTrend = new Trend('order_create_duration', true);
 const orderFailures = new Counter('order_create_failures');
@@ -44,6 +54,9 @@ const ORDER_RATE = parseInt(__ENV.ORDER_RATE || '100', 10);
 const DURATION = __ENV.DURATION || '2m';
 
 export const options = {
+  // Défaut k6 = 60s — insuffisant dès que le pool d'identités dépasse le
+  // throttle login (20/min/IP) et que setup() doit faire une pause.
+  setupTimeout: '5m',
   scenarios: {
     catalog_browse: {
       executor: 'constant-vus',
@@ -68,11 +81,16 @@ export const options = {
   },
 };
 
-// setup() tourne une seule fois, hors VUs — respecte le throttle login
-// (20/min/IP) : 7 logins, largement en dessous.
+// setup() tourne une seule fois, hors VUs — respecte le throttle login réel
+// (20/min/IP) en authentifiant par lots de LOGIN_BATCH_SIZE avec une pause
+// entre chaque lot si le pool dépasse la limite.
 export function setup() {
   const tokens = [];
-  for (const email of CLIENT_EMPLOYEES) {
+  for (let i = 0; i < CLIENT_EMPLOYEES.length; i++) {
+    if (i > 0 && i % LOGIN_BATCH_SIZE === 0) {
+      sleep(LOGIN_BATCH_PAUSE_S);
+    }
+    const email = CLIENT_EMPLOYEES[i];
     const res = http.post(
       `${BASE_URL}/auth/login`,
       JSON.stringify({ email, password: PASSWORD }),
