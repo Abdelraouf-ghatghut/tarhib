@@ -37,6 +37,25 @@ Store these values in the deployment secret manager and EAS Secrets, never in Gi
 6. Promote web and mobile update channels only after the smoke suite succeeds.
 7. Keep the previous backend image available for rollback. Database rollback requires an explicitly reviewed down migration or a tested restore; never run automatic destructive rollback.
 
+## Rollback procedure
+
+Expanding step 7 above — never delete the previous image/tag until the new revision has been running cleanly for at least one full business day.
+
+**Application-only rollback** (no schema change in the failed release, the common case):
+
+1. Stop routing traffic to the new revision (or scale it to zero).
+2. Start the previous backend image tag; confirm `/health/live` and `/health/ready`.
+3. Run the smoke suite against the rolled-back revision.
+4. Re-promote web/mobile update channels to the previous known-good build if they were already promoted to the failed one.
+5. Investigate the failure from logs/metrics (PR-2.1 `/metrics`, `pg_stat_statements` via `apps/backend/scripts/ops-diagnostics.sql`) before attempting the release again.
+
+**Schema-change rollback** (the release included a migration):
+
+1. Do **not** run `migration:revert` reflexively — first check whether the migration's `down()` is actually safe against the data written since it ran (e.g. a column added and then populated by the new code cannot be silently dropped without checking nothing depends on it). Read the specific migration file.
+2. If the down migration is safe: roll back the application (steps above) **before** reverting the migration, so no running code expects the new schema while it is being removed. Then `npm run migration:revert -w apps/backend` (same full-toolchain requirement as `migration:run`, see Deployment order step 3).
+3. If the down migration is unsafe or destructive (data would be lost): restore from the most recent verified backup instead of reverting (`scripts/verify-postgres-backup.ps1` against the target restore point) — this is why every backup is _verified_, not just taken, per the Backup policy below.
+4. Document the incident: which migration, why the down path was unsafe (if applicable), what was actually done, and the resulting RPO impact (see RPO/RTO below) if a restore was required.
+
 ## One-off ops scripts
 
 Some schema changes cannot run inside a TypeORM migration transaction and ship as standalone `apps/backend/scripts/ops-*.sql`, applied once by hand via `psql` outside a deployment window that needs to block. Applied so far:
@@ -58,6 +77,18 @@ Some schema changes cannot run inside a TypeORM migration transaction and ship a
 `scripts/verify-postgres-backup.ps1` (PR-2.5): decrypts (if `.enc`) and performs a **real `pg_restore` into a dedicated throwaway database** (`tarhib_restore_verify_<timestamp>`, dropped after verification), then confirms the restored database actually has tables and readable rows — not just that the archive is listable. Reports the wall-clock restore time (RTO input, see below). Verified for real on 2026-08-05: 61 tables, 102 `employees` rows, full decrypt+restore+verify cycle in 4.9s on a ~small dev dataset — re-measure on a production-sized dataset before trusting this figure for RTO planning.
 
 Production scheduling must use the platform secret manager for `BACKUP_ENCRYPTION_KEY`/AWS credentials, never a committed `.env`.
+
+## RPO / RTO (PR-2.6)
+
+**RPO (Recovery Point Objective) — up to 24 hours today.** The current setup takes nightly `pg_dump` snapshots only; it does not do continuous WAL archiving/PITR. In the worst case (incident right before the next scheduled backup), up to a full day of writes is unrecoverable. **This is a known, honest gap** — the original plan called for "PITR/managed snapshots," which this phase did not implement (it requires either a managed PostgreSQL provider's built-in PITR feature, or self-hosted continuous WAL archiving via `archive_command` to S3 — meaningfully more infrastructure than a nightly dump job). Tightening the RPO below 24h is follow-up work, not done here.
+
+**RTO (Recovery Time Objective) — measured, not assumed.** `scripts/verify-postgres-backup.ps1` reports actual restore wall-clock time on every run: **4.9 seconds** for the current dev dataset (61 tables, 102 `employees` rows), measured 2026-08-05. This number will grow with data volume — re-run the verification script against a production-sized copy before quoting an RTO to the business, and record the result here:
+
+| Date       | Dataset size                        | Restore time | Notes                                       |
+| ---------- | ----------------------------------- | ------------ | ------------------------------------------- |
+| 2026-08-05 | dev (61 tables, 102 employees rows) | 4.9s         | First real measurement, PR-2.5 verification |
+
+Full incident RTO also includes: locating/downloading the encrypted backup from external storage (network-dependent, not measured here), redeploying the application (Deployment order above), and the quarterly restoration exercise (Backup policy) — the 4.9s figure covers only the `pg_restore` step itself.
 
 ## Monitoring and alerts
 
