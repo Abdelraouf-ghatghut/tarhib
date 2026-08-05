@@ -173,6 +173,66 @@ describe('AuthService.login (TARHIB-21)', () => {
       expect(msg).not.toContain('password');
     }
   });
+
+  // D9 (fail-open) — trouvé par un vrai test de panne Redis en local : ces
+  // 3 accès Redis plantaient toute la requête de login (500) avant le
+  // correctif, alors que Keycloak lui-même répondait normalement. Le login
+  // mot de passe doit continuer de fonctionner pendant une panne Redis (D10).
+  describe('fail-open when Redis is unavailable (D9)', () => {
+    it('still logs in successfully when the block-check read fails', async () => {
+      const redis = makeRedis({
+        get: jest.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+      });
+      const svc = await buildService(redis, makeKeycloak());
+      const result = await svc.login({
+        email: 'u@t.com',
+        password: 'Pass1234!',
+      });
+      expect(result.accessToken).toBe('access-token');
+    });
+
+    it('still logs in successfully when the post-success cleanup del fails', async () => {
+      const redis = makeRedis({
+        del: jest.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+      });
+      const svc = await buildService(redis, makeKeycloak());
+      const result = await svc.login({
+        email: 'u@t.com',
+        password: 'Pass1234!',
+      });
+      expect(result.accessToken).toBe('access-token');
+    });
+
+    it('still returns the generic 401 (not a 500) on wrong credentials when attempt-tracking fails', async () => {
+      const keycloak = makeKeycloak({
+        loginWithPassword: jest
+          .fn()
+          .mockRejectedValue(new UnauthorizedException()),
+      });
+      const redis = makeRedis({
+        incr: jest.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+      });
+      const svc = await buildService(redis, keycloak);
+      await expect(
+        svc.login({ email: 'u@t.com', password: 'wrong' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('a genuine 5-attempts lockout still throws HttpException even though tracking uses Redis', async () => {
+      // Régression : le catch fail-open de recordFailedAttempt ne doit
+      // jamais avaler l'HttpException 429 intentionnelle du vrai verrouillage.
+      const keycloak = makeKeycloak({
+        loginWithPassword: jest
+          .fn()
+          .mockRejectedValue(new UnauthorizedException()),
+      });
+      const redis = makeRedis({ incr: jest.fn().mockResolvedValue(5) });
+      const svc = await buildService(redis, keycloak);
+      await expect(
+        svc.login({ email: 'u@t.com', password: 'wrong' }),
+      ).rejects.toBeInstanceOf(HttpException);
+    });
+  });
 });
 
 describe('AuthService.requestPasswordReset (TARHIB-23)', () => {

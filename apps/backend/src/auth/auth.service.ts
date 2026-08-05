@@ -4,6 +4,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -62,6 +63,7 @@ function generateInviteCode(length = 8): string {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly lockDurationSeconds: number;
 
   constructor(
@@ -114,11 +116,31 @@ export class AuthService {
   }
 
   // ── TARHIB-21: Login email/mdp ───────────────────────────────────────────
+  //
+  // D9 (fail-open borné) : le verrouillage anti-brute-force app-level ici
+  // n'est jamais l'autorité, seulement une couche additionnelle au-dessus de
+  // la protection brute-force native Keycloak (à activer dans le realm) — si
+  // Redis est indisponible, le login mot de passe doit continuer de
+  // fonctionner (D10), pas planter. Trouvé par un vrai test de panne Redis :
+  // les 3 accès Redis ci-dessous plantaient la requête entière (500) avant
+  // ce correctif, alors que Keycloak lui-même répondait normalement.
   async login(dto: LoginDto): Promise<TokenResponseDto> {
     const blockedKey = `${LOGIN_BLOCKED_PREFIX}${dto.email}`;
-    const isBlocked = await this.redis.get(blockedKey);
+    let isBlocked: string | null = null;
+    try {
+      isBlocked = await this.redis.get(blockedKey);
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Login lock check failed (fail-open, D9): ${String(err)}`,
+      );
+    }
     if (isBlocked) {
-      const remaining = await this.redis.ttl(blockedKey);
+      let remaining = this.lockDurationSeconds;
+      try {
+        remaining = await this.redis.ttl(blockedKey);
+      } catch {
+        // best-effort — le message reste utile même avec un TTL approximatif
+      }
       throw new HttpException(
         `Account temporarily locked. Retry in ${remaining}s`,
         HttpStatus.TOO_MANY_REQUESTS,
@@ -130,7 +152,13 @@ export class AuthService {
         dto.email,
         dto.password,
       );
-      await this.redis.del(`${LOGIN_ATTEMPTS_PREFIX}${dto.email}`);
+      try {
+        await this.redis.del(`${LOGIN_ATTEMPTS_PREFIX}${dto.email}`);
+      } catch (err: unknown) {
+        this.logger.warn(
+          `Failed-attempts cleanup failed (fail-open, D9): ${String(err)}`,
+        );
+      }
       return this.enrichTokens(tokens, dto.email);
     } catch (err) {
       if (err instanceof UnauthorizedException) {
@@ -174,22 +202,33 @@ export class AuthService {
     };
   }
 
+  // D9 (fail-open) : si Redis est indisponible, le décompte de tentatives
+  // est simplement perdu pour cette requête — jamais de crash de la réponse
+  // "identifiants invalides" que login() renvoie juste après. Keycloak reste
+  // le filet de sécurité brute-force pendant la panne.
   private async recordFailedAttempt(email: string): Promise<void> {
-    const attemptsKey = `${LOGIN_ATTEMPTS_PREFIX}${email}`;
-    const attempts = await this.redis.incr(attemptsKey);
-    if (attempts === 1) {
-      await this.redis.expire(attemptsKey, 600);
-    }
-    if (attempts >= MAX_LOGIN_ATTEMPTS) {
-      await this.redis.set(
-        `${LOGIN_BLOCKED_PREFIX}${email}`,
-        '1',
-        this.lockDurationSeconds,
-      );
-      await this.redis.del(attemptsKey);
-      throw new HttpException(
-        `Account locked after ${MAX_LOGIN_ATTEMPTS} failed attempts`,
-        HttpStatus.TOO_MANY_REQUESTS,
+    try {
+      const attemptsKey = `${LOGIN_ATTEMPTS_PREFIX}${email}`;
+      const attempts = await this.redis.incr(attemptsKey);
+      if (attempts === 1) {
+        await this.redis.expire(attemptsKey, 600);
+      }
+      if (attempts >= MAX_LOGIN_ATTEMPTS) {
+        await this.redis.set(
+          `${LOGIN_BLOCKED_PREFIX}${email}`,
+          '1',
+          this.lockDurationSeconds,
+        );
+        await this.redis.del(attemptsKey);
+        throw new HttpException(
+          `Account locked after ${MAX_LOGIN_ATTEMPTS} failed attempts`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    } catch (err: unknown) {
+      if (err instanceof HttpException) throw err;
+      this.logger.warn(
+        `Failed-attempt tracking failed (fail-open, D9): ${String(err)}`,
       );
     }
   }
