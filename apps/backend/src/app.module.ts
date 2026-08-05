@@ -48,6 +48,9 @@ import { OperationsModule } from './operations/operations.module.js';
 import { FinanceModule } from './finance/finance.module.js';
 import { AccountingModule } from './accounting/accounting.module.js';
 import { HrModule } from './hr/hr.module.js';
+import { MetricsModule } from './metrics/metrics.module.js';
+import { MetricsService } from './metrics/metrics.service.js';
+import { TypeOrmMetricsLogger } from './metrics/typeorm-metrics.logger.js';
 
 @Module({
   imports: [
@@ -66,9 +69,9 @@ import { HrModule } from './hr/hr.module.js';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 600 }]),
 
     TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
+      imports: [ConfigModule, MetricsModule],
+      inject: [ConfigService, MetricsService],
+      useFactory: (config: ConfigService, metrics: MetricsService) => {
         const databaseUrl = config.get<string>('DATABASE_URL');
         const migrationsRun =
           config.get<string>('TYPEORM_MIGRATIONS_RUN', 'false') === 'true';
@@ -82,7 +85,17 @@ import { HrModule } from './hr/hr.module.js';
           // synchronize:true réécrivait des colonnes au boot (ex. orders.priority)
           // et crashait l'app — interdit.
           synchronize: false,
-          logging: false,
+          // PR-2.1 : logger custom qui alimente db_query_duration_seconds pour
+          // (quasi) CHAQUE requête — maxQueryExecutionTime:1 force TypeORM à
+          // appeler logQuerySlow (seul hook qui donne une durée) dès qu'une
+          // requête dépasse 1ms, ce qui couvre en pratique la totalité du
+          // trafic réel (0 aurait semblé plus logique mais TypeORM teste
+          // `if (maxQueryExecutionTime && time > max)` — 0 est falsy en JS et
+          // désactive silencieusement le hook, vérifié en le voyant ne jamais
+          // se déclencher). Le logger ne remonte un warning visible qu'au-delà
+          // de 200ms, cf. son code — 1ms ne spamme rien.
+          logger: new TypeOrmMetricsLogger(metrics),
+          maxQueryExecutionTime: 1,
           // PR-1.1 : pool dimensionné explicitement — le défaut pg (max:10,
           // pas de timeout de connexion) sature silencieusement sous charge
           // (le pic quota+réservation par commande tient plusieurs connexions
@@ -105,6 +118,7 @@ import { HrModule } from './hr/hr.module.js';
 
     // Registered here so EnrichUserInterceptor can access Employee + Role repos at the app level
     TypeOrmModule.forFeature([Employee, Role]),
+    MetricsModule,
     RedisModule,
     AccessModule,
     MobileModule,

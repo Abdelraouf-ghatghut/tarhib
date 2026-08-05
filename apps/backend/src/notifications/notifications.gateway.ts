@@ -5,6 +5,7 @@ import {
   MessageBody,
   OnGatewayInit,
   OnGatewayConnection,
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,6 +20,7 @@ import {
   type DataScope,
 } from '../access/access-policy.service.js';
 import { AccessCacheService } from '../access/access-cache.service.js';
+import { MetricsService } from '../metrics/metrics.service.js';
 
 interface SocketData {
   employeeId: string;
@@ -56,7 +58,7 @@ interface SocketData {
   },
 })
 export class NotificationsGateway
-  implements OnGatewayInit, OnGatewayConnection
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(NotificationsGateway.name);
 
@@ -69,6 +71,7 @@ export class NotificationsGateway
     private readonly employeeRepo: Repository<Employee>,
     private readonly accessPolicy: AccessPolicyService,
     private readonly accessCache: AccessCacheService,
+    private readonly metrics: MetricsService,
   ) {}
 
   afterInit(server: Server): void {
@@ -140,6 +143,11 @@ export class NotificationsGateway
       rooms.push(`manager:company:${data.companyId}`);
     }
     void socket.join(rooms);
+    this.metrics.websocketConnectedClients.inc();
+  }
+
+  handleDisconnect(): void {
+    this.metrics.websocketConnectedClients.dec();
   }
 
   /**
@@ -153,6 +161,7 @@ export class NotificationsGateway
     remainingSeconds: number,
     priority: string,
   ): void {
+    this.metrics.websocketEventsTotal.inc({ event: 'sla:tick' });
     this.server.emit('sla:tick', { orderId, remainingSeconds, priority });
   }
 
@@ -181,6 +190,7 @@ export class NotificationsGateway
       `manager:company:${data.companyId}`,
       'manager:global',
     ];
+    this.metrics.websocketEventsTotal.inc({ event });
     this.server.to(rooms).emit(event, data);
   }
 

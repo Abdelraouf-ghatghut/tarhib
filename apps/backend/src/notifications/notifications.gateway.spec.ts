@@ -5,6 +5,7 @@ import { NotificationsGateway } from './notifications.gateway.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { AccessPolicyService } from '../access/access-policy.service.js';
 import { AccessCacheService } from '../access/access-cache.service.js';
+import { MetricsService } from '../metrics/metrics.service.js';
 
 const verifyMock = jest.fn();
 jest.mock('./ws-auth.js', () => ({
@@ -38,6 +39,7 @@ describe('NotificationsGateway (PR-0.6a auth + PR-0.6b rooms manager)', () => {
         { provide: getRepositoryToken(Employee), useValue: employeeRepo },
         { provide: AccessPolicyService, useValue: accessPolicy },
         { provide: AccessCacheService, useValue: accessCache },
+        MetricsService,
       ],
     }).compile();
 

@@ -9,9 +9,16 @@ import { AppModule } from './app.module';
 import { EmptyStringToUndefinedPipe } from './common/pipes/empty-string-to-undefined.pipe';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { isAllowedOrigin } from './common/cors-origin';
+import { MetricsService } from './metrics/metrics.service';
+import { createMetricsMiddleware } from './metrics/metrics.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // PR-2.1 : middleware Express, pas un intercepteur Nest — doit tourner
+  // AVANT les Guards pour aussi capturer les 401/403/429 (voir
+  // metrics.middleware.ts).
+  app.use(createMetricsMiddleware(app.get(MetricsService)));
 
   app.use(cookieParser());
   // CSP désactivée : cette API ne sert pas de HTML applicatif (Swagger UI
