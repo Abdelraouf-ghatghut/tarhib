@@ -1,7 +1,8 @@
 import 'dotenv/config';
 
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -11,9 +12,24 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { isAllowedOrigin } from './common/cors-origin';
 import { MetricsService } from './metrics/metrics.service';
 import { createMetricsMiddleware } from './metrics/metrics.middleware';
+import { RedisIoAdapter } from './notifications/redis-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Phase 3 — adaptateur Redis Socket.IO : condition nécessaire pour que le
+  // temps réel (emitOrderUpdate) fonctionne correctement avec plusieurs
+  // instances backend derrière un load balancer (voir redis-io.adapter.ts).
+  // Sans impact sur un déploiement à une seule instance (le pub/sub Redis
+  // ne fait alors que passer par lui-même).
+  const configService = app.get(ConfigService);
+  const redisIoAdapter = new RedisIoAdapter(
+    app,
+    configService.get<string>('REDIS_URL', 'redis://localhost:6379'),
+    new Logger('RedisIoAdapter'),
+  );
+  redisIoAdapter.connectToRedis();
+  app.useWebSocketAdapter(redisIoAdapter);
 
   // PR-2.1 : middleware Express, pas un intercepteur Nest — doit tourner
   // AVANT les Guards pour aussi capturer les 401/403/429 (voir
