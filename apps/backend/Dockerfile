@@ -52,4 +52,9 @@ USER tarhib
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://127.0.0.1:'+(process.env.PORT||3000)+'/health/live',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-CMD ["node", "dist/main.js"]
+# dist/src/main.js, pas dist/main.js : tsconfig.json n'a pas de rootDir
+# explicite et compile aussi scripts/ (seed-users.ts) en plus de src/, donc
+# TypeScript infère la racine commune comme le dossier backend lui-même et
+# préserve la structure src/ sous dist/. Vérifié par un vrai `npm run build`
+# + inspection de l'arbre dist/ généré (pas deviné).
+CMD ["node", "dist/src/main.js"]
