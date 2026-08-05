@@ -9,7 +9,9 @@ Store these values in the deployment secret manager and EAS Secrets, never in Gi
 - `FIREBASE_SERVICE_ACCOUNT_JSON`;
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`;
 - Infobip credentials when Infobip OTP is enabled;
-- EAS project, Apple App Store Connect and Google Play credentials.
+- EAS project, Apple App Store Connect and Google Play credentials;
+- `BACKUP_ENCRYPTION_KEY` (PR-2.4, backup encryption passphrase — losing it makes every existing backup unrecoverable, store it with the same rigor as a database credential, in a _different_ secret store than the backups themselves);
+- `BACKUP_S3_BUCKET` / `BACKUP_S3_ENDPOINT` (PR-2.4, external backup storage — a second region, never the same provider/account as the primary database).
 
 ## Deployment order
 
@@ -51,7 +53,11 @@ Some schema changes cannot run inside a TypeORM migration transaction and ship a
 - quarterly restoration exercise into an isolated database;
 - record backup checksum, size, schema migration number and restoration result.
 
-Use `scripts/backup-postgres.ps1`, then `scripts/verify-postgres-backup.ps1` locally. Production scheduling must use the platform secret manager and encrypted object storage.
+`scripts/backup-postgres.ps1` (PR-2.4): `pg_dump` (custom format) then AES-256-CBC encrypts the dump (native .NET crypto, no external `openssl`/`gpg` dependency — key derived from `BACKUP_ENCRYPTION_KEY` via PBKDF2-SHA256, 210k iterations; the plaintext dump is deleted immediately after encryption, never left on disk). If `BACKUP_S3_BUCKET` is set, uploads the encrypted file to S3-compatible storage via the AWS CLI (`BACKUP_S3_ENDPOINT` for non-AWS S3-compatible providers); **without it, the script warns loudly and the backup stays local-only** — that is not a complete backup policy (needs the second region above), the warning is intentional, not a bug to silence.
+
+`scripts/verify-postgres-backup.ps1` (PR-2.5): decrypts (if `.enc`) and performs a **real `pg_restore` into a dedicated throwaway database** (`tarhib_restore_verify_<timestamp>`, dropped after verification), then confirms the restored database actually has tables and readable rows — not just that the archive is listable. Reports the wall-clock restore time (RTO input, see below). Verified for real on 2026-08-05: 61 tables, 102 `employees` rows, full decrypt+restore+verify cycle in 4.9s on a ~small dev dataset — re-measure on a production-sized dataset before trusting this figure for RTO planning.
+
+Production scheduling must use the platform secret manager for `BACKUP_ENCRYPTION_KEY`/AWS credentials, never a committed `.env`.
 
 ## Monitoring and alerts
 
