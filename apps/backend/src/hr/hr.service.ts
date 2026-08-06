@@ -98,6 +98,11 @@ export class HrService {
       daysCount,
       reason: dto.reason ?? null,
     });
+    const balance = await this.getOrBuildBalance(entity);
+    const remaining = Number(balance.entitled) - Number(balance.taken);
+    if (daysCount > remaining) {
+      throw new ConflictException('leaveRequestExceedsBalance');
+    }
     return this.toLeaveRequestDto(await this.leaveRequestRepo.save(entity));
   }
 
@@ -119,15 +124,38 @@ export class HrService {
     id: string,
     approverId: string,
   ): Promise<LeaveRequestDto> {
-    const request = await this.leaveRequestRepo.findOne({ where: { id } });
-    if (!request) throw new NotFoundException(`Leave request ${id} not found`);
-    if (request.status !== LeaveRequestStatus.PENDING) {
-      throw new ConflictException('leaveRequestNotPending');
-    }
-    request.status = LeaveRequestStatus.APPROVED;
-    request.approverId = approverId;
-    const saved = await this.leaveRequestRepo.save(request);
-    await this.addTakenDays(request);
+    const saved = await this.leaveRequestRepo.manager.transaction(
+      async (manager) => {
+        const requestRepo = manager.getRepository(LeaveRequest);
+        const balanceRepo = manager.getRepository(LeaveBalance);
+        const typeRepo = manager.getRepository(LeaveType);
+
+        const request = await requestRepo.findOne({
+          where: { id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!request)
+          throw new NotFoundException(`Leave request ${id} not found`);
+        if (request.status !== LeaveRequestStatus.PENDING) {
+          throw new ConflictException('leaveRequestNotPending');
+        }
+        const balance = await this.getOrBuildBalance(
+          request,
+          balanceRepo,
+          typeRepo,
+        );
+        const remaining = Number(balance.entitled) - Number(balance.taken);
+        if (request.daysCount > remaining) {
+          throw new ConflictException('leaveRequestExceedsBalance');
+        }
+        request.status = LeaveRequestStatus.APPROVED;
+        request.approverId = approverId;
+        const savedRequest = await requestRepo.save(request);
+        balance.taken = Number(balance.taken) + Number(request.daysCount);
+        await balanceRepo.save(balance);
+        return savedRequest;
+      },
+    );
     return this.toLeaveRequestDto(saved);
   }
 
@@ -145,29 +173,30 @@ export class HrService {
     return this.toLeaveRequestDto(await this.leaveRequestRepo.save(request));
   }
 
-  private async addTakenDays(request: LeaveRequest): Promise<void> {
+  private async getOrBuildBalance(
+    request: LeaveRequest,
+    balanceRepo: Repository<LeaveBalance> = this.leaveBalanceRepo,
+    typeRepo: Repository<LeaveType> = this.leaveTypeRepo,
+  ): Promise<LeaveBalance> {
     const year = Number(request.startDate.slice(0, 4));
-    let balance = await this.leaveBalanceRepo.findOne({
+    const balance = await balanceRepo.findOne({
       where: {
         employeeId: request.employeeId,
         leaveTypeId: request.leaveTypeId,
         year,
       },
     });
-    if (!balance) {
-      const leaveType = await this.leaveTypeRepo.findOne({
-        where: { id: request.leaveTypeId },
-      });
-      balance = this.leaveBalanceRepo.create({
-        employeeId: request.employeeId,
-        leaveTypeId: request.leaveTypeId,
-        year,
-        entitled: leaveType?.defaultDaysPerYear ?? 0,
-        taken: 0,
-      });
-    }
-    balance.taken = Number(balance.taken) + Number(request.daysCount);
-    await this.leaveBalanceRepo.save(balance);
+    if (balance) return balance;
+    const leaveType = await typeRepo.findOne({
+      where: { id: request.leaveTypeId },
+    });
+    return balanceRepo.create({
+      employeeId: request.employeeId,
+      leaveTypeId: request.leaveTypeId,
+      year,
+      entitled: leaveType?.defaultDaysPerYear ?? 0,
+      taken: 0,
+    });
   }
 
   // ---- Leave balances ----

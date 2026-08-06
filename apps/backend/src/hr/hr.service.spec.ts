@@ -53,10 +53,28 @@ describe('HrService', () => {
     leaveBalanceRepo = module.get(getRepositoryToken(LeaveBalance));
     contractRepo = module.get(getRepositoryToken(EmploymentContract));
     reviewRepo = module.get(getRepositoryToken(PerformanceReview));
+
+    // approveLeaveRequest() route ses requêtes via manager.transaction — le
+    // faux manager délègue vers les mêmes mocks de repo pour rester simple.
+    const fakeManager = {
+      transaction: jest.fn((cb: (m: unknown) => unknown) => cb(fakeManager)),
+      getRepository: jest.fn((entity: unknown) => {
+        if (entity === LeaveBalance) return leaveBalanceRepo;
+        if (entity === LeaveType) return leaveTypeRepo;
+        return leaveRequestRepo;
+      }),
+    };
+    (leaveRequestRepo as unknown as { manager: unknown }).manager = fakeManager;
   });
 
   describe('createLeaveRequest', () => {
     it('computes an inclusive day count from start/end dates', async () => {
+      leaveBalanceRepo.findOne.mockResolvedValue(null);
+      leaveTypeRepo.findOne.mockResolvedValue({
+        id: 'lt-1',
+        defaultDaysPerYear: 21,
+      });
+
       const result = await service.createLeaveRequest({
         employeeId: 'emp-1',
         leaveTypeId: 'lt-1',
@@ -76,6 +94,24 @@ describe('HrService', () => {
           endDate: '2026-08-01',
         }),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rejects a request that exceeds the remaining balance', async () => {
+      leaveBalanceRepo.findOne.mockResolvedValue({
+        id: 'bal-1',
+        entitled: 21,
+        taken: 19,
+      });
+
+      await expect(
+        service.createLeaveRequest({
+          employeeId: 'emp-1',
+          leaveTypeId: 'lt-1',
+          startDate: '2026-08-01',
+          endDate: '2026-08-03',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(leaveRequestRepo.save).not.toHaveBeenCalled();
     });
   });
 
@@ -124,6 +160,28 @@ describe('HrService', () => {
       expect(leaveBalanceRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ taken: 8 }),
       );
+    });
+
+    it('rejects approving a request that exceeds the remaining balance', async () => {
+      leaveRequestRepo.findOne.mockResolvedValue({
+        id: 'lr-1',
+        employeeId: 'emp-1',
+        leaveTypeId: 'lt-1',
+        startDate: '2026-08-01',
+        daysCount: 5,
+        status: LeaveRequestStatus.PENDING,
+      });
+      leaveBalanceRepo.findOne.mockResolvedValue({
+        id: 'bal-1',
+        entitled: 21,
+        taken: 18,
+      });
+
+      await expect(
+        service.approveLeaveRequest('lr-1', 'manager-1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(leaveBalanceRepo.save).not.toHaveBeenCalled();
+      expect(leaveRequestRepo.save).not.toHaveBeenCalled();
     });
 
     it('rejects approving a request that is not PENDING', async () => {
