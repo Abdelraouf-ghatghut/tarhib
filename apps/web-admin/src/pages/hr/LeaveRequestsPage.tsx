@@ -1,21 +1,24 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  Alert,
   Button,
   DatePicker,
   Form,
   Input,
+  InputNumber,
   Modal,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
   Typography,
   message,
 } from "antd";
-import { PlusOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
+import { PlusOutlined, CheckOutlined, CloseOutlined, EditOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { hrApi, employeesApi } from "../../lib/api";
 import { getErrorMessage } from "../../lib/errors";
@@ -77,25 +80,36 @@ export function LeaveRequestsPage() {
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [modalOpen, setModalOpen] = useState(false);
+  const [typeForm] = Form.useForm();
+  const [typeModalOpen, setTypeModalOpen] = useState(false);
+  const [editingType, setEditingType] = useState<LeaveType | null>(null);
 
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
     queryFn: () => employeesApi.list().then((r) => r.data as Employee[]),
   });
-  const employeeName = (id: string) => {
-    const e = employees.find((x) => x.id === id);
-    if (!e) return id.slice(0, 8);
-    return isAr ? `${e.firstNameAr} ${e.lastNameAr}` : `${e.firstNameEn} ${e.lastNameEn}`;
-  };
+  const employeeMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  const employeeName = useCallback(
+    (id: string) => {
+      const e = employeeMap.get(id);
+      if (!e) return id.slice(0, 8);
+      return isAr ? `${e.firstNameAr} ${e.lastNameAr}` : `${e.firstNameEn} ${e.lastNameEn}`;
+    },
+    [employeeMap, isAr],
+  );
 
   const { data: leaveTypes = [] } = useQuery({
     queryKey: ["hr", "leave-types"],
     queryFn: () => hrApi.leaveTypes.list().then((r) => r.data as LeaveType[]),
   });
-  const leaveTypeName = (id: string) => {
-    const lt = leaveTypes.find((x) => x.id === id);
-    return lt ? (isAr ? lt.nameAr : lt.nameEn) : id.slice(0, 8);
-  };
+  const leaveTypeMap = useMemo(() => new Map(leaveTypes.map((lt) => [lt.id, lt])), [leaveTypes]);
+  const leaveTypeName = useCallback(
+    (id: string) => {
+      const lt = leaveTypeMap.get(id);
+      return lt ? (isAr ? lt.nameAr : lt.nameEn) : id.slice(0, 8);
+    },
+    [leaveTypeMap, isAr],
+  );
 
   const { data: requests = [], isLoading } = useQuery({
     queryKey: ["hr", "leave-requests"],
@@ -106,6 +120,21 @@ export function LeaveRequestsPage() {
     queryKey: ["hr", "leave-balances"],
     queryFn: () => hrApi.leaveBalances.list().then((r) => r.data as LeaveBalance[]),
   });
+
+  const watchedEmployeeId = Form.useWatch("employeeId", form);
+  const watchedLeaveTypeId = Form.useWatch("leaveTypeId", form);
+  const watchedStartDate = Form.useWatch("startDate", form);
+  const selectedYear = watchedStartDate ? dayjs(watchedStartDate).year() : dayjs().year();
+  const selectedBalance = balances.find(
+    (b) =>
+      b.employeeId === watchedEmployeeId &&
+      b.leaveTypeId === watchedLeaveTypeId &&
+      b.year === selectedYear,
+  );
+  const selectedLeaveType = leaveTypes.find((lt) => lt.id === watchedLeaveTypeId);
+  const remainingForSelection = selectedBalance
+    ? selectedBalance.remaining
+    : (selectedLeaveType?.defaultDaysPerYear ?? null);
 
   const create = useMutation({
     mutationFn: (values: Record<string, unknown>) =>
@@ -141,6 +170,33 @@ export function LeaveRequestsPage() {
     },
     onError: (err) => message.error(getErrorMessage(err, t)),
   });
+
+  const saveType = useMutation({
+    mutationFn: (values: Record<string, unknown>) =>
+      editingType
+        ? hrApi.leaveTypes.update(editingType.id, values)
+        : hrApi.leaveTypes.create(values),
+    onSuccess: () => {
+      message.success(t("saved"));
+      queryClient.invalidateQueries({ queryKey: ["hr", "leave-types"] });
+      setTypeModalOpen(false);
+      setEditingType(null);
+      typeForm.resetFields();
+    },
+    onError: (err) => message.error(getErrorMessage(err, t)),
+  });
+
+  const openCreateType = () => {
+    setEditingType(null);
+    typeForm.resetFields();
+    setTypeModalOpen(true);
+  };
+
+  const openEditType = (lt: LeaveType) => {
+    setEditingType(lt);
+    typeForm.setFieldsValue(lt);
+    setTypeModalOpen(true);
+  };
 
   const columns = [
     { title: t("employee"), dataIndex: "employeeId", key: "employeeId", render: employeeName },
@@ -185,6 +241,31 @@ export function LeaveRequestsPage() {
                   />
                 </Space>
               ) : null,
+          },
+        ]
+      : []),
+  ];
+
+  const typeColumns = [
+    { title: t("leaveTypeNameAr"), dataIndex: "nameAr", key: "nameAr" },
+    { title: t("leaveTypeNameEn"), dataIndex: "nameEn", key: "nameEn" },
+    { title: t("defaultDaysPerYear"), dataIndex: "defaultDaysPerYear", key: "defaultDaysPerYear" },
+    {
+      title: t("active"),
+      dataIndex: "active",
+      key: "active",
+      render: (v: boolean) => (
+        <Tag color={v ? "green" : "default"}>{v ? t("activeYes") : t("activeNo")}</Tag>
+      ),
+    },
+    ...(canManage
+      ? [
+          {
+            title: t("actions"),
+            key: "actions",
+            render: (_: unknown, r: LeaveType) => (
+              <Button size="small" icon={<EditOutlined />} onClick={() => openEditType(r)} />
+            ),
           },
         ]
       : []),
@@ -250,6 +331,28 @@ export function LeaveRequestsPage() {
               />
             ),
           },
+          {
+            key: "types",
+            label: t("leaveTypes"),
+            children: (
+              <>
+                {canManage && (
+                  <div style={{ marginBottom: 16 }}>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreateType}>
+                      {t("add")}
+                    </Button>
+                  </div>
+                )}
+                <Table
+                  rowKey="id"
+                  dataSource={leaveTypes}
+                  columns={typeColumns}
+                  pagination={{ pageSize: 20 }}
+                  scroll={{ x: "max-content" }}
+                />
+              </>
+            ),
+          },
         ]}
       />
 
@@ -279,6 +382,20 @@ export function LeaveRequestsPage() {
                 .map((lt) => ({ value: lt.id, label: isAr ? lt.nameAr : lt.nameEn }))}
             />
           </Form.Item>
+          {watchedEmployeeId && watchedLeaveTypeId && (
+            <Alert
+              type={
+                remainingForSelection !== null && remainingForSelection <= 0 ? "warning" : "info"
+              }
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={
+                remainingForSelection !== null
+                  ? t("leaveRemainingBalanceInfo", { count: remainingForSelection })
+                  : t("leaveRemainingBalanceUnknown")
+              }
+            />
+          )}
           <Form.Item name="startDate" label={t("startDate")} rules={[{ required: true }]}>
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
@@ -287,6 +404,38 @@ export function LeaveRequestsPage() {
           </Form.Item>
           <Form.Item name="reason" label={t("correctionReason")}>
             <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={typeModalOpen}
+        title={editingType ? t("edit") : t("add")}
+        onCancel={() => {
+          setTypeModalOpen(false);
+          setEditingType(null);
+          typeForm.resetFields();
+        }}
+        onOk={() => typeForm.submit()}
+        confirmLoading={saveType.isPending}
+        destroyOnClose
+      >
+        <Form form={typeForm} layout="vertical" onFinish={(v) => saveType.mutate(v)}>
+          <Form.Item name="nameAr" label={t("leaveTypeNameAr")} rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="nameEn" label={t("leaveTypeNameEn")} rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="defaultDaysPerYear"
+            label={t("defaultDaysPerYear")}
+            rules={[{ required: true }]}
+          >
+            <InputNumber min={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="active" label={t("active")} valuePropName="checked" initialValue={true}>
+            <Switch />
           </Form.Item>
         </Form>
       </Modal>
