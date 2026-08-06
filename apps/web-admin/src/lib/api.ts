@@ -4,7 +4,11 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 // withCredentials : le refresh token vit dans un cookie HttpOnly (posé par
 // /auth/login, lu par /auth/refresh et /auth/logout) — jamais dans localStorage
-export const api = axios.create({ baseURL: BASE_URL, withCredentials: true });
+// timeout (PR-1.8) : sans lui axios attend indéfiniment un backend qui ne
+// répond plus, laissant l'UI figée sur un spinner sans jamais basculer en
+// erreur. 15s couvre large les endpoints les plus lourds mesurés (rapports
+// < 10ms côté serveur, marge pour la latence réseau).
+export const api = axios.create({ baseURL: BASE_URL, withCredentials: true, timeout: 15_000 });
 
 export function setAuthToken(token: string) {
   api.defaults.headers.common["Authorization"] = `Bearer ${token}`;

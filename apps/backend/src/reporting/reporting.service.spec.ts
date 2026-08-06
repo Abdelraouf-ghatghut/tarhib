@@ -12,6 +12,7 @@ import { Branch } from '../branches/entities/branch.entity.js';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { OrderLine } from '../orders/entities/order-line.entity.js';
 import { Quota } from '../quotas/entities/quota.entity.js';
+import { RedisService } from '../redis/redis.service.js';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -33,6 +34,15 @@ describe('ReportingService — getQuotaReport (§3 CLAUDE.md, règle centrale qu
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReportingService,
+        {
+          provide: RedisService,
+          // Cache best-effort (PR-1.5) : miss systématique en test, la
+          // logique de getQuotaReport ne dépend jamais du cache exécutif.
+          useValue: {
+            get: jest.fn().mockResolvedValue(null),
+            set: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: getRepositoryToken(Order), useFactory: mockRepo },
         { provide: getRepositoryToken(InventoryItem), useFactory: mockRepo },
         { provide: getRepositoryToken(MeetingRoom), useFactory: mockRepo },
@@ -159,5 +169,90 @@ describe('ReportingService — getQuotaReport (§3 CLAUDE.md, règle centrale qu
     expect(qb.andWhere).toHaveBeenCalledWith('e.branch_id = :branchId', {
       branchId: 'br-1',
     });
+  });
+});
+
+describe('ReportingService — cache du rapport exécutif (PR-1.5)', () => {
+  let service: ReportingService;
+  let orderRepo: ReturnType<typeof mockRepo>;
+  let orderLineRepo: ReturnType<typeof mockRepo>;
+  let inventoryRepo: ReturnType<typeof mockRepo>;
+  let poLineRepo: ReturnType<typeof mockRepo>;
+  let redis: { get: jest.Mock; set: jest.Mock };
+
+  beforeEach(async () => {
+    redis = { get: jest.fn(), set: jest.fn().mockResolvedValue(undefined) };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ReportingService,
+        { provide: RedisService, useValue: redis },
+        { provide: getRepositoryToken(Order), useFactory: mockRepo },
+        { provide: getRepositoryToken(InventoryItem), useFactory: mockRepo },
+        { provide: getRepositoryToken(MeetingRoom), useFactory: mockRepo },
+        { provide: getRepositoryToken(RoomBooking), useFactory: mockRepo },
+        {
+          provide: getRepositoryToken(PurchaseOrderLine),
+          useFactory: mockRepo,
+        },
+        { provide: getRepositoryToken(Product), useFactory: mockRepo },
+        { provide: getRepositoryToken(Company), useFactory: mockRepo },
+        { provide: getRepositoryToken(Branch), useFactory: mockRepo },
+        { provide: getRepositoryToken(Employee), useFactory: mockRepo },
+        { provide: getRepositoryToken(OrderLine), useFactory: mockRepo },
+        { provide: getRepositoryToken(Quota), useFactory: mockRepo },
+      ],
+    }).compile();
+
+    service = module.get(ReportingService);
+    orderRepo = module.get(getRepositoryToken(Order));
+    orderLineRepo = module.get(getRepositoryToken(OrderLine));
+    inventoryRepo = module.get(getRepositoryToken(InventoryItem));
+    poLineRepo = module.get(getRepositoryToken(PurchaseOrderLine));
+    for (const token of [Company, Branch, Employee]) {
+      const repo: { count: jest.Mock } = module.get(getRepositoryToken(token));
+      repo.count = jest.fn().mockResolvedValue(0);
+    }
+  });
+
+  it('returns the cached report on a hit without querying the database', async () => {
+    const cached = { kpis: { ordersCount: 42 } };
+    redis.get.mockResolvedValue(JSON.stringify(cached));
+
+    const result = await service.getExecutiveReport({ companyId: 'co-1' });
+
+    expect(result).toEqual(cached);
+    expect(orderRepo.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('falls back to computing the report when Redis is unavailable (best-effort)', async () => {
+    redis.get.mockRejectedValue(new Error('redis down'));
+    const qb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      clone: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      addGroupBy: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+      getMany: jest.fn().mockResolvedValue([]),
+      getRawMany: jest.fn().mockResolvedValue([]),
+      getRawOne: jest.fn().mockResolvedValue({ avgMinutes: null }),
+    };
+    orderRepo.createQueryBuilder.mockReturnValue(qb);
+    orderLineRepo.createQueryBuilder.mockReturnValue(qb);
+    inventoryRepo.createQueryBuilder.mockReturnValue(qb);
+    poLineRepo.createQueryBuilder.mockReturnValue(qb);
+
+    const result = await service.getExecutiveReport({ companyId: 'co-1' });
+
+    expect(orderRepo.createQueryBuilder).toHaveBeenCalled();
+    expect(result.kpis.ordersCount).toBe(0);
+    // Écriture cache tentée malgré le miss initial en lecture (best-effort,
+    // jamais bloquant).
+    expect(redis.set).toHaveBeenCalled();
   });
 });

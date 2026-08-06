@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { io, type Socket } from "socket.io-client";
 
-import { BASE_URL } from "./api/client";
+import { BASE_URL, getCurrentAccessToken } from "./api/client";
 
 // Événements émis par apps/backend/src/notifications/notifications.gateway.ts
 // (namespace /sla).
@@ -20,12 +20,28 @@ export interface SlaTick {
 
 let socket: Socket | null = null;
 
-/** Socket partagée vers le namespace /sla — créée au premier abonnement. */
+/**
+ * Socket partagée vers le namespace /sla — créée au premier abonnement.
+ *
+ * PR-0.6a : le serveur exige un JWT valide au handshake (sinon connect_error,
+ * la socket n'est jamais admise et ne reçoit aucun événement). `auth` en
+ * fonction callback = réévalué à CHAQUE tentative de (re)connexion, donc
+ * toujours le token courant (pas figé au premier connect — important après un
+ * refresh de token ou une reconnexion suite à coupure réseau).
+ */
 export function getRealtimeSocket(): Socket {
   if (!socket) {
     socket = io(`${BASE_URL}/sla`, {
       transports: ["websocket", "polling"],
       reconnection: true,
+      auth: (cb: (data: { token?: string }) => void) =>
+        cb({ token: getCurrentAccessToken() ?? undefined }),
+    });
+    // Ancienne app / session expirée / Redis... : le polling des useQuery
+    // (cf. useOrderEvents) reste le filet de sécurité si la socket n'est
+    // jamais admise — pas de dégradation silencieuse à masquer davantage ici.
+    socket.on("connect_error", (err: Error) => {
+      console.warn(`[realtime] connexion WebSocket refusée : ${err.message}`);
     });
   }
   return socket;

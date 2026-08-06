@@ -22,6 +22,9 @@ export enum OrderStatus {
   READY = 'READY',
   DELIVERED = 'DELIVERED',
   REJECTED = 'REJECTED',
+  /** Annulation VOLONTAIRE par l'employé propriétaire, avant IN_PROGRESS —
+   * distinct de REJECTED (rejet métier/stock/quota/opérationnel), D13. */
+  CANCELLED = 'CANCELLED',
 }
 
 export enum OrderPriority {
@@ -48,6 +51,17 @@ export class CreateOrderDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Clé d'idempotence (D8) — un UUID généré côté client par tentative de " +
+      'confirmation de panier ; renvoyé tel quel sur retry (timeout, perte de ' +
+      'réponse). Même clé + même panier → la commande existante est retournée ' +
+      'sans en recréer une seconde. Même clé + panier différent → 409.',
+  })
+  @IsOptional()
+  @IsUUID()
+  clientRequestId?: string;
 }
 
 /**
@@ -145,6 +159,12 @@ export class OrderDto {
 
   @ApiProperty({ nullable: true })
   rejectedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  cancelledAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  cancelledBy!: string | null;
 
   @ApiProperty({ nullable: true })
   prepStartedAt!: Date | null;

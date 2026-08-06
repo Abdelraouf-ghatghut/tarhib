@@ -8,9 +8,17 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { EmptyStringToUndefinedPipe } from './common/pipes/empty-string-to-undefined.pipe';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { isAllowedOrigin } from './common/cors-origin';
+import { MetricsService } from './metrics/metrics.service';
+import { createMetricsMiddleware } from './metrics/metrics.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // PR-2.1 : middleware Express, pas un intercepteur Nest — doit tourner
+  // AVANT les Guards pour aussi capturer les 401/403/429 (voir
+  // metrics.middleware.ts).
+  app.use(createMetricsMiddleware(app.get(MetricsService)));
 
   app.use(cookieParser());
   // CSP désactivée : cette API ne sert pas de HTML applicatif (Swagger UI
@@ -20,26 +28,13 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter());
 
   // credentials:true est requis pour le cookie de refresh HttpOnly — incompatible
-  // avec origin:'*', d'où la liste blanche configurable
-  const corsOrigins = (
-    process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:4173'
-  )
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  // avec origin:'*', d'où la liste blanche configurable (cf. common/cors-origin.ts,
+  // partagée avec le gateway WebSocket)
   app.enableCors({
-    // Liste blanche + tout localhost (Flutter web en debug utilise un port
-    // aléatoire) — origin:'*' est impossible avec credentials:true
     origin: (
       origin: string | undefined,
       cb: (err: Error | null, allow?: boolean) => void,
-    ) => {
-      const allowed =
-        !origin ||
-        corsOrigins.includes(origin) ||
-        /^https?:\/\/localhost:\d+$/.test(origin);
-      cb(null, allowed);
-    },
+    ) => cb(null, isAllowedOrigin(origin)),
     credentials: true,
   });
 

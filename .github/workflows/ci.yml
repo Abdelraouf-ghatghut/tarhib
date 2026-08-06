@@ -91,6 +91,50 @@ jobs:
           retention-days: 1
 
   # ──────────────────────────────────────────────────────────────
+  # Job 1b : Tests d'intégration/concurrence sur un VRAI PostgreSQL
+  #          (harness PR-0.0 — garanties commandes/stock/quotas).
+  #          Les cas connus non corrigés sont en `it.failing` : verts tant
+  #          que le bug existe, rouges quand un correctif les rend justes.
+  # ──────────────────────────────────────────────────────────────
+  integration-test-node:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tarhib
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: tarhib_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://tarhib:test@localhost:5432/tarhib_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply database migrations
+        run: npm run migration:run -w apps/backend
+
+      - name: Integration / concurrency tests (real PostgreSQL)
+        run: npm run test:int -w apps/backend
+
+  # ──────────────────────────────────────────────────────────────
   # Job 2 : Flutter mobile — génération client Dart + QA + build
   #         Démarre seulement si build-test-node passe
   # ──────────────────────────────────────────────────────────────

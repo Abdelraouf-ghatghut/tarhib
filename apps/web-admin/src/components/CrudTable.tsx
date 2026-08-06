@@ -143,13 +143,11 @@ function CrudTableInner<T extends { id: string }>(
       <Table<T>
         rowKey={rowKey}
         dataSource={data}
-        // whiteSpace: nowrap sur l'entête — évite le retour à la ligne des
-        // titres de colonne (ex. libellés arabes longs), quelle que soit la
-        // largeur de colonne ; le corps du tableau garde son retour à la
-        // ligne normal.
         columns={[...columns, actionCol].map((col) => ({
           ...col,
-          title: <span style={{ whiteSpace: "nowrap" }}>{col.title}</span>,
+          onHeaderCell: () => ({
+            style: { whiteSpace: "nowrap" },
+          }),
         }))}
         loading={isPending}
         pagination={{ pageSize: 20 }}

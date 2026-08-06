@@ -20,6 +20,8 @@ import { RequireAnyPermission } from '../auth/decorators/require-permission.deco
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import {
+  CatalogSnapshotDto,
+  CatalogVersionDto,
   CreateProductDto,
   CreateRecipeLineDto,
   ProductAdminDto,
@@ -62,6 +64,32 @@ export class ProductsController {
   @ApiResponse({ status: 200, type: [ProductDto] })
   findAll(@CurrentUser() user: JwtPayload): Promise<ProductDto[]> {
     return this.productsService.findAll(user.role, user.roleId, user.branchId);
+  }
+
+  @Get('version')
+  @ApiOperation({
+    summary:
+      'Version légère du catalogue — permet au mobile de réutiliser son snapshot local',
+  })
+  @ApiResponse({ status: 200, type: CatalogVersionDto })
+  getCatalogVersion(): Promise<CatalogVersionDto> {
+    return this.productsService.getCatalogVersion();
+  }
+
+  @Get('snapshot')
+  @ApiOperation({
+    summary:
+      'Snapshot statique versionné du catalogue, filtré selon le rôle et la branche',
+  })
+  @ApiResponse({ status: 200, type: CatalogSnapshotDto })
+  getCatalogSnapshot(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<CatalogSnapshotDto> {
+    return this.productsService.getCatalogSnapshot(
+      user.role,
+      user.roleId,
+      user.branchId,
+    );
   }
 
   @Get('availability')

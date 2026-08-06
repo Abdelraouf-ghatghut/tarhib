@@ -7,7 +7,8 @@ export type OrderStatus =
   | "IN_PROGRESS"
   | "READY"
   | "DELIVERED"
-  | "REJECTED";
+  | "REJECTED"
+  | "CANCELLED";
 
 export type LineValidationStatus = "APPROVED" | "REJECTED" | "PENDING_APPROVAL";
 
@@ -52,6 +53,11 @@ export interface Order {
 export interface CreateOrderInput {
   lines: Array<{ productId: string; quantity: number }>;
   note?: string;
+  // PR-0.4b : une resoumission (retry manuel après timeout/erreur réseau, cf.
+  // le timeout axios de PR-1.8) avec le même clientRequestId est absorbée
+  // côté serveur au lieu de créer une commande en double — voir
+  // order-request-hash.ts (backend) pour la vérification du contenu.
+  clientRequestId?: string;
 }
 
 export interface DashboardStats {
@@ -60,6 +66,16 @@ export interface DashboardStats {
   deliveredToday: number;
   avgSlaMinutes: number;
   mostOrdered: Array<{ productId: string; name: string; count: number }>;
+}
+
+/**
+ * PR-0.4b : identifiant de resoumission — pas besoin d'être cryptographique,
+ * juste unique par employé (contrainte uq_orders_employee_client_request
+ * côté serveur). Pas de dépendance uuid pour ça : Math.random + timestamp
+ * suffit largement pour ce cas d'usage.
+ */
+export function generateClientRequestId(): string {
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /** POST /orders — déclenche le moteur de validation §3.3 côté serveur. */

@@ -61,6 +61,14 @@ export class Order {
   @Column({ name: 'rejected_by', type: 'uuid', nullable: true })
   rejectedBy!: string | null;
 
+  /** Annulation volontaire de l'employé propriétaire (D13) — distincte de
+   * rejected_at/by pour ne pas fausser un rapport filtré sur les rejets. */
+  @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
+  cancelledAt!: Date | null;
+
+  @Column({ name: 'cancelled_by', type: 'uuid', nullable: true })
+  cancelledBy!: string | null;
+
   @Column({ name: 'prep_started_at', type: 'timestamptz', nullable: true })
   prepStartedAt!: Date | null;
 
@@ -79,9 +87,33 @@ export class Order {
   @Column({ name: 'delivered_by', type: 'uuid', nullable: true })
   deliveredBy!: string | null;
 
+  /**
+   * Idempotence (D8, PR-0.4) : clé de retry fournie par le client, unique par
+   * (employee_id, client_request_id) — cf. migration IntegritySchema. Null
+   * = ancien client sans clé (comportement inchangé).
+   */
+  @Column({ name: 'client_request_id', type: 'uuid', nullable: true })
+  clientRequestId!: string | null;
+
+  /** Empreinte du panier (computeOrderRequestHash) — détecte une réutilisation
+   * de clé avec un payload différent. */
+  @Column({
+    name: 'client_request_hash',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  clientRequestHash!: string | null;
+
+  // PR-0.1a : eager RETIRÉ délibérément (F2) — un eager sur cette relation
+  // transforme tout Repository.findOne() en LEFT JOIN, ce qui invalide un
+  // verrou FOR UPDATE posé côté nullable (PostgreSQL : "FOR UPDATE cannot be
+  // applied to the nullable side of an outer join"). Tous les appelants
+  // demandent déjà explicitement `relations: ['lines']` quand ils en ont
+  // besoin (cf. orders.service.ts) ; le verrou de commande (updateStatus,
+  // delivery.service.ts) reste une requête SANS jointure par construction.
   @OneToMany(() => OrderLine, (line) => line.order, {
     cascade: true,
-    eager: true,
   })
   lines!: OrderLine[];
 }

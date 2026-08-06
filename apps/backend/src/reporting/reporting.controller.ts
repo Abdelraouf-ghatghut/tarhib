@@ -1,4 +1,11 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { Request } from 'express';
 import {
   ApiBearerAuth,
@@ -34,6 +41,28 @@ import {
 export class ReportingController {
   constructor(private readonly reportingService: ReportingService) {}
 
+  // PR-1.5 : plafond de plage — un `from`/`to` non borné (ou couvrant
+  // plusieurs années) forçait un scan complet des tables commandes/lignes
+  // pour une société ancienne à fort volume. 400 jours couvre un exercice
+  // complet + marge, largement suffisant pour un rapport périodique.
+  private static readonly MAX_PERIOD_DAYS = 400;
+
+  private assertReportPeriod(from?: string, to?: string): void {
+    if (!from || !to) return;
+    const fromMs = Date.parse(from);
+    const toMs = Date.parse(to);
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+      throw new BadRequestException('invalidReportPeriod');
+    }
+    if (toMs < fromMs) {
+      throw new BadRequestException('reportPeriodToBeforeFrom');
+    }
+    const spanDays = (toMs - fromMs) / 86_400_000;
+    if (spanDays > ReportingController.MAX_PERIOD_DAYS) {
+      throw new BadRequestException('reportPeriodTooLong');
+    }
+  }
+
   @Get('orders')
   @ApiOperation({
     summary: 'Rapport commandes : total, par statut et par priorité',
@@ -57,6 +86,7 @@ export class ReportingController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<OrdersReport> {
+    this.assertReportPeriod(from, to);
     const companyId = req.user?.companyId || qCompanyId || '';
     return this.reportingService.getOrdersReport(companyId, {
       branchId,
@@ -93,6 +123,7 @@ export class ReportingController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<SlaReport> {
+    this.assertReportPeriod(from, to);
     const companyId = req.user?.companyId || qCompanyId || '';
     return this.reportingService.getSlaReport(companyId, { from, to });
   }
@@ -131,6 +162,7 @@ export class ReportingController {
     @Query('to') to?: string,
     @Query('limit') limit?: string,
   ): Promise<UserActivityReport> {
+    this.assertReportPeriod(from, to);
     const companyId = req.user?.companyId || qCompanyId || '';
     return this.reportingService.getUserActivityReport(companyId, {
       branchId,
@@ -154,6 +186,7 @@ export class ReportingController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<MeetingRoomsReport> {
+    this.assertReportPeriod(from, to);
     const companyId = req.user?.companyId || qCompanyId || '';
     return this.reportingService.getMeetingRoomsReport(companyId, { from, to });
   }
@@ -178,6 +211,7 @@ export class ReportingController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<PurchasingReport> {
+    this.assertReportPeriod(from, to);
     return this.reportingService.getPurchasingReport({
       companyId,
       branchId,
@@ -239,6 +273,7 @@ export class ReportingController {
     @Query('to') to?: string,
     @Query('granularity') granularity?: 'day' | 'week' | 'month' | 'year',
   ): Promise<ExecutiveReport> {
+    this.assertReportPeriod(from, to);
     const report = await this.reportingService.getExecutiveReport({
       companyId,
       branchId,

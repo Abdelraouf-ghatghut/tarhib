@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { ScrollView } from "react-native";
 
 import {
@@ -10,6 +10,7 @@ import {
   fetchEmployeeCatalog,
   fetchMyOrders,
   fetchMyQuotas,
+  generateClientRequestId,
   orderStatusLabel,
   spacing,
   t,
@@ -127,9 +128,15 @@ export const EmployeeApp = ({
   const trackedOrder = trackedOrderId
     ? (myOrders.find((order) => order.id === trackedOrderId) ?? null)
     : null;
+  // PR-0.4b : un retry manuel (après timeout axios/erreur réseau) du MÊME
+  // panier doit réutiliser le même clientRequestId pour que le serveur
+  // l'absorbe au lieu de créer une commande en double — la signature
+  // détecte quand le panier a réellement changé pour en générer un nouveau.
+  const pendingRequestRef = useRef<{ id: string; signature: string } | null>(null);
   const orderMutation = useMutation({
     mutationFn: (input: CreateOrderInput) => createOrder(input),
     onSuccess: (order) => {
+      pendingRequestRef.current = null;
       cart.clear();
       setNote("");
       setOrderError(null);
@@ -147,12 +154,22 @@ export const EmployeeApp = ({
   const confirmOrder = () => {
     if (orderMutation.isPending || cart.lines.length === 0) return;
     setOrderError(null);
+    const lines = cart.lines.map((product) => ({
+      productId: product.id,
+      quantity: cart.quantities[product.id] ?? 0,
+    }));
+    const trimmedNote = note.trim() || undefined;
+    const signature = JSON.stringify([
+      [...lines].sort((a, b) => a.productId.localeCompare(b.productId)),
+      trimmedNote ?? null,
+    ]);
+    if (pendingRequestRef.current?.signature !== signature) {
+      pendingRequestRef.current = { id: generateClientRequestId(), signature };
+    }
     orderMutation.mutate({
-      lines: cart.lines.map((product) => ({
-        productId: product.id,
-        quantity: cart.quantities[product.id] ?? 0,
-      })),
-      note: note.trim() || undefined,
+      lines,
+      note: trimmedNote,
+      clientRequestId: pendingRequestRef.current.id,
     });
   };
 

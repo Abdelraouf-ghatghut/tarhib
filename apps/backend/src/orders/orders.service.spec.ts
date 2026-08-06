@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { QueryFailedError } from 'typeorm';
 import { OrdersService } from './orders.service.js';
 import { Order } from './entities/order.entity.js';
 import { OrderLine } from './entities/order-line.entity.js';
@@ -24,6 +29,7 @@ import {
   DEFAULT_SLA_MINUTES,
 } from '../priority-sla/priority-sla.service.js';
 import { Role, SlaPriority } from '../roles/entities/role.entity.js';
+import { computeOrderRequestHash } from './order-request-hash.js';
 
 const mockRepo = () => ({
   create: jest.fn((v: unknown) => v),
@@ -63,15 +69,17 @@ const makeOrder = (priority: OrderPriority): Order => ({
   readyBy: null,
   deliveredAt: null,
   deliveredBy: null,
+  clientRequestId: null,
+  clientRequestHash: null,
   lines: [],
 });
 
 describe('OrdersService', () => {
   let service: OrdersService;
   let orderRepo: ReturnType<typeof mockRepo>;
+  let lineRepo: ReturnType<typeof mockRepo>;
   let productRepo: ReturnType<typeof mockRepo>;
   let roleQuotaRepo: ReturnType<typeof mockRepo>;
-  let recipeRepo: ReturnType<typeof mockRepo>;
   let inventoryService: { decrementForPreparation: jest.Mock };
   let prioritySla: { getSlaMinutes: jest.Mock };
 
@@ -131,9 +139,9 @@ describe('OrdersService', () => {
 
     service = module.get<OrdersService>(OrdersService);
     orderRepo = module.get(getRepositoryToken(Order));
+    lineRepo = module.get(getRepositoryToken(OrderLine));
     productRepo = module.get(getRepositoryToken(Product));
     roleQuotaRepo = module.get(getRepositoryToken(RoleQuota));
-    recipeRepo = module.get(getRepositoryToken(ProductRecipeLine));
     inventoryService = module.get(InventoryService);
 
     // Panier valide par défaut : produit commandable + stock suffisant
@@ -173,8 +181,8 @@ describe('OrdersService', () => {
     employeeRepo.findOne.mockResolvedValue(null);
 
     // orderRepo.manager.transaction(...) est utilisé par create() et
-    // decrementRecipeIngredients() — le mock exécute simplement le callback
-    // avec un faux manager qui route vers les repos mockés existants.
+    // updateStatus() — le mock exécute simplement le callback avec un faux
+    // manager qui route vers les repos mockés existants.
     const quotaUsageRepo: ReturnType<typeof mockRepo> = module.get(
       getRepositoryToken(EmployeeQuotaUsage),
     );
@@ -190,6 +198,18 @@ describe('OrdersService', () => {
         if (entity === EmployeeQuotaUsage) return quotaUsageRepo;
         if (entity === Quota) return quotaRepo;
         return mockRepo();
+      }),
+      // updateStatus() verrouille la commande via un QueryBuilder — le stub
+      // chaîne where/setLock et résout getOne() sur le mock orderRepo.findOne.
+      createQueryBuilder: jest.fn(() => {
+        const qb: Record<string, jest.Mock> = {};
+        qb.where = jest.fn(() => qb);
+        qb.setLock = jest.fn(() => qb);
+        qb.getOne = jest.fn(
+          async (): Promise<Order | null> =>
+            (await orderRepo.findOne()) as Order | null,
+        );
+        return qb;
       }),
     };
     (orderRepo as unknown as { manager: unknown }).manager = fakeManager;
@@ -319,6 +339,66 @@ describe('OrdersService', () => {
     });
   });
 
+  describe('dashboardStats — agrégation SQL (PR-1.4)', () => {
+    // Un seul faux QueryBuilder chaînable, réutilisé pour les 3 requêtes
+    // d'agrégation (status counts, moyenne SLA, top produits).
+    const fakeQb = (resolved: unknown) => {
+      const qb: Record<string, jest.Mock> = {};
+      qb.select = jest.fn(() => qb);
+      qb.addSelect = jest.fn(() => qb);
+      qb.innerJoin = jest.fn(() => qb);
+      qb.where = jest.fn(() => qb);
+      qb.andWhere = jest.fn(() => qb);
+      qb.groupBy = jest.fn(() => qb);
+      qb.orderBy = jest.fn(() => qb);
+      qb.limit = jest.fn(() => qb);
+      qb.getRawMany = jest.fn().mockResolvedValue(resolved);
+      qb.getRawOne = jest.fn().mockResolvedValue(resolved);
+      return qb;
+    };
+
+    it('computes counts/avg/top-products from SQL aggregation results, never loading full orders', async () => {
+      orderRepo.createQueryBuilder
+        .mockReturnValueOnce(
+          fakeQb([
+            { status: OrderStatus.PENDING, count: '2' },
+            { status: OrderStatus.APPROVED, count: '1' },
+            { status: OrderStatus.DELIVERED, count: '3' },
+          ]),
+        )
+        .mockReturnValueOnce(fakeQb({ avg: '15.5' }));
+      lineRepo.createQueryBuilder.mockReturnValue(
+        fakeQb([{ productId: 'prod-1', total: '7' }]),
+      );
+      productRepo.find.mockResolvedValue([
+        { id: 'prod-1', nameEn: 'Coffee', nameAr: 'قهوة' },
+      ]);
+
+      const result = await service.dashboardStats(caller());
+
+      expect(result.todayOrders).toBe(6);
+      expect(result.pendingCount).toBe(3); // PENDING + APPROVED
+      expect(result.deliveredToday).toBe(3);
+      expect(result.avgSlaMinutes).toBe(15.5);
+      expect(result.mostOrdered).toEqual([
+        { productId: 'prod-1', name: 'Coffee', count: 7 },
+      ]);
+      expect(orderRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('returns zero avg when no order was ever delivered today', async () => {
+      orderRepo.createQueryBuilder
+        .mockReturnValueOnce(fakeQb([]))
+        .mockReturnValueOnce(fakeQb({ avg: null }));
+      lineRepo.createQueryBuilder.mockReturnValue(fakeQb([]));
+
+      const result = await service.dashboardStats(caller());
+
+      expect(result.avgSlaMinutes).toBe(0);
+      expect(result.mostOrdered).toEqual([]);
+    });
+  });
+
   describe('findOne', () => {
     it('should return the order when found', async () => {
       const order = makeOrder(OrderPriority.P5);
@@ -360,6 +440,126 @@ describe('OrdersService', () => {
       await expect(service.findOne('unknown')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('create — idempotence (D8, PR-0.4)', () => {
+    const KEY = '99999999-9999-9999-9999-999999999999';
+
+    it('stores clientRequestId/clientRequestHash on a first-time creation', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      orderRepo.findOne.mockResolvedValue(null); // aucune commande existante pour cette clé
+      orderRepo.create.mockReturnValue(order);
+      orderRepo.save.mockResolvedValue(order);
+
+      await service.create(
+        { lines: [{ productId: 'prod-1', quantity: 1 }], clientRequestId: KEY },
+        caller(),
+      );
+
+      const created = (orderRepo.create.mock.calls[0] as [Order])[0];
+      expect(created.clientRequestId).toBe(KEY);
+      expect(created.clientRequestHash).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('returns the existing order without recreating when the same key+payload is retried', async () => {
+      const existing = makeOrder(OrderPriority.P5);
+      existing.id = 'ord-existing';
+      existing.clientRequestId = KEY;
+      existing.clientRequestHash = computeOrderRequestHash(
+        [{ productId: 'prod-1', quantity: 1 }],
+        null,
+      );
+      orderRepo.findOne.mockResolvedValue(existing);
+
+      const result = await service.create(
+        { lines: [{ productId: 'prod-1', quantity: 1 }], clientRequestId: KEY },
+        caller(),
+      );
+
+      expect(result.id).toBe('ord-existing');
+      expect(orderRepo.create).not.toHaveBeenCalled();
+      expect(orderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 409 when the same key is reused with a different payload', async () => {
+      const existing = makeOrder(OrderPriority.P5);
+      existing.clientRequestId = KEY;
+      existing.clientRequestHash = computeOrderRequestHash(
+        [{ productId: 'prod-1', quantity: 1 }],
+        null,
+      );
+      orderRepo.findOne.mockResolvedValue(existing);
+
+      await expect(
+        service.create(
+          {
+            lines: [{ productId: 'prod-1', quantity: 5 }], // quantité différente
+            clientRequestId: KEY,
+          },
+          caller(),
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(orderRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('resolves the concurrent-retry race: unique-index violation → returns the winning order', async () => {
+      const winner = makeOrder(OrderPriority.P5);
+      winner.id = 'ord-winner';
+      winner.clientRequestId = KEY;
+      winner.clientRequestHash = computeOrderRequestHash(
+        [{ productId: 'prod-1', quantity: 1 }],
+        null,
+      );
+
+      // Pre-check : aucune commande encore visible (course avec le gagnant).
+      // Après l'échec de l'INSERT (violation d'index), le refetch la trouve.
+      orderRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(winner);
+      orderRepo.create.mockReturnValue(makeOrder(OrderPriority.P5));
+      orderRepo.save.mockRejectedValue(
+        new QueryFailedError(
+          'INSERT INTO orders ...',
+          [],
+          Object.assign(new Error('duplicate key'), {
+            code: '23505',
+            constraint: 'uq_orders_employee_client_request',
+          }),
+        ),
+      );
+
+      const result = await service.create(
+        { lines: [{ productId: 'prod-1', quantity: 1 }], clientRequestId: KEY },
+        caller(),
+      );
+
+      expect(result.id).toBe('ord-winner');
+    });
+
+    it('propagates a genuine unique-violation unrelated to idempotence', async () => {
+      orderRepo.findOne.mockResolvedValue(null);
+      orderRepo.create.mockReturnValue(makeOrder(OrderPriority.P5));
+      orderRepo.save.mockRejectedValue(
+        new QueryFailedError(
+          'INSERT INTO orders ...',
+          [],
+          Object.assign(new Error('duplicate key'), {
+            code: '23505',
+            constraint: 'uq_orders_company_order_number', // AUTRE contrainte
+          }),
+        ),
+      );
+
+      await expect(
+        service.create(
+          {
+            lines: [{ productId: 'prod-1', quantity: 1 }],
+            clientRequestId: KEY,
+          },
+          caller(),
+        ),
+      ).rejects.toThrow(QueryFailedError);
     });
   });
 
@@ -470,7 +670,7 @@ describe('OrdersService', () => {
     });
   });
 
-  describe('updateStatus — nomenclature (recette) au passage IN_PROGRESS', () => {
+  describe('updateStatus — réservations de stock (D1=B)', () => {
     const platformAdmin: JwtPayload = {
       sub: 'admin-1',
       email: 'super@tarhib.app',
@@ -480,188 +680,116 @@ describe('OrdersService', () => {
       permissions: ['company.manage'],
     };
 
-    it('decrements every ingredient of a composed product’s line by recipeQty × orderedQty', async () => {
+    // Le stock n'est plus décrémenté à la préparation via decrementForPreparation
+    // (obsolète) : il a été RÉSERVÉ à l'approbation, la préparation consomme les
+    // réservations. La logique détaillée (consume/release) est couverte par les
+    // tests d'intégration (concurrency.int-spec.ts).
+    it('IN_PROGRESS transitionne sans decrementForPreparation (réservations consommées)', async () => {
       const order = makeOrder(OrderPriority.P5);
       order.status = OrderStatus.APPROVED;
-      order.lines = [
-        {
-          id: 'line-1',
-          productId: 'prod-latte',
-          quantity: 2,
-          validationStatus: 'APPROVED',
-        } as OrderLine,
-      ];
+      order.lines = [];
       orderRepo.findOne.mockResolvedValue(order);
       orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
-      recipeRepo.find.mockResolvedValue([
-        {
-          productId: 'prod-latte',
-          ingredientProductId: 'ing-coffee',
-          quantity: 7,
-        },
-        {
-          productId: 'prod-latte',
-          ingredientProductId: 'ing-milk',
-          quantity: 100,
-        },
-      ]);
 
-      await service.updateStatus(
+      const result = await service.updateStatus(
         'ord-1',
         OrderStatus.IN_PROGRESS,
         platformAdmin,
       );
 
-      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
-        'ing-coffee',
-        order.branchId,
-        order.companyId,
-        14,
-        expect.anything(),
-        expect.anything(),
-      );
-      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
-        'ing-milk',
-        order.branchId,
-        order.companyId,
-        200,
-        expect.anything(),
-        expect.anything(),
-      );
+      expect(result.status).toBe(OrderStatus.IN_PROGRESS);
+      expect(inventoryService.decrementForPreparation).not.toHaveBeenCalled();
     });
 
-    it('blocks the transition (order not saved) when an ingredient is insufficient', async () => {
+    it('REJECTED transitionne et libère les réservations', async () => {
       const order = makeOrder(OrderPriority.P5);
       order.status = OrderStatus.APPROVED;
-      order.lines = [
-        {
-          id: 'line-1',
-          productId: 'prod-latte',
-          quantity: 2,
-          validationStatus: 'APPROVED',
-        } as OrderLine,
-      ];
+      order.lines = [];
       orderRepo.findOne.mockResolvedValue(order);
-      recipeRepo.find.mockResolvedValue([
-        {
-          productId: 'prod-latte',
-          ingredientProductId: 'ing-coffee',
-          quantity: 7,
-        },
-      ]);
-      inventoryService.decrementForPreparation.mockRejectedValueOnce(
-        new Error('insufficientInventoryStock'),
+      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
+
+      const result = await service.updateStatus(
+        'ord-1',
+        OrderStatus.REJECTED,
+        platformAdmin,
       );
+
+      expect(result.status).toBe(OrderStatus.REJECTED);
+    });
+  });
+
+  describe('updateStatus — annulation par le propriétaire (D13)', () => {
+    it('lets the owner cancel their own PENDING order', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.PENDING;
+      order.employeeId = 'emp-1'; // === caller().sub
+      orderRepo.findOne.mockResolvedValue(order);
+      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
+
+      const result = await service.updateStatus(
+        'ord-1',
+        OrderStatus.CANCELLED,
+        caller(),
+      );
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it('lets the owner cancel their own APPROVED order', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.employeeId = 'emp-1';
+      orderRepo.findOne.mockResolvedValue(order);
+      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
+
+      const result = await service.updateStatus(
+        'ord-1',
+        OrderStatus.CANCELLED,
+        caller(),
+      );
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it("rejects cancellation of someone else's order by a plain employee", async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      order.employeeId = 'emp-OTHER';
+      orderRepo.findOne.mockResolvedValue(order);
 
       await expect(
-        service.updateStatus('ord-1', OrderStatus.IN_PROGRESS, platformAdmin),
-      ).rejects.toThrow('insufficientInventoryStock');
-      expect(orderRepo.save).not.toHaveBeenCalled();
+        service.updateStatus('ord-1', OrderStatus.CANCELLED, caller()),
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it('decrements the product’s own stock when the line’s product has no recipe (plain product)', async () => {
+    it('rejects cancellation once the order is IN_PROGRESS (owner or not)', async () => {
       const order = makeOrder(OrderPriority.P5);
-      order.status = OrderStatus.APPROVED;
-      order.lines = [
-        {
-          id: 'line-1',
-          productId: 'prod-plain',
-          quantity: 3,
-          validationStatus: 'APPROVED',
-        } as OrderLine,
-      ];
+      order.status = OrderStatus.IN_PROGRESS;
+      order.employeeId = 'emp-1';
       orderRepo.findOne.mockResolvedValue(order);
-      orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
-      recipeRepo.find.mockResolvedValue([]);
-
-      await service.updateStatus(
-        'ord-1',
-        OrderStatus.IN_PROGRESS,
-        platformAdmin,
-      );
-
-      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
-        'prod-plain',
-        order.branchId,
-        order.companyId,
-        3,
-        expect.anything(),
-        expect.anything(),
-      );
-    });
-
-    it('blocks the transition when a plain product’s own stock is insufficient', async () => {
-      const order = makeOrder(OrderPriority.P5);
-      order.status = OrderStatus.APPROVED;
-      order.lines = [
-        {
-          id: 'line-1',
-          productId: 'prod-plain',
-          quantity: 99,
-          validationStatus: 'APPROVED',
-        } as OrderLine,
-      ];
-      orderRepo.findOne.mockResolvedValue(order);
-      recipeRepo.find.mockResolvedValue([]);
-      inventoryService.decrementForPreparation.mockRejectedValueOnce(
-        new Error('insufficientInventoryStock'),
-      );
 
       await expect(
-        service.updateStatus('ord-1', OrderStatus.IN_PROGRESS, platformAdmin),
-      ).rejects.toThrow('insufficientInventoryStock');
-      expect(orderRepo.save).not.toHaveBeenCalled();
+        service.updateStatus('ord-1', OrderStatus.CANCELLED, caller()),
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it('mixes composed and plain products correctly in the same order', async () => {
+    it('releases reservations and restores quota consumptions on cancellation', async () => {
       const order = makeOrder(OrderPriority.P5);
       order.status = OrderStatus.APPROVED;
-      order.lines = [
-        {
-          id: 'line-1',
-          productId: 'prod-latte',
-          quantity: 1,
-          validationStatus: 'APPROVED',
-        } as OrderLine,
-        {
-          id: 'line-2',
-          productId: 'prod-plain',
-          quantity: 2,
-          validationStatus: 'APPROVED',
-        } as OrderLine,
-      ];
+      order.employeeId = 'emp-1';
       orderRepo.findOne.mockResolvedValue(order);
       orderRepo.save.mockImplementation((o: Order) => Promise.resolve(o));
-      recipeRepo.find.mockResolvedValue([
-        {
-          productId: 'prod-latte',
-          ingredientProductId: 'ing-coffee',
-          quantity: 7,
-        },
-      ]);
 
-      await service.updateStatus(
-        'ord-1',
-        OrderStatus.IN_PROGRESS,
-        platformAdmin,
-      );
+      const fakeManager = (
+        orderRepo as unknown as { manager: { query: jest.Mock } }
+      ).manager;
+      fakeManager.query.mockClear();
 
-      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
-        'ing-coffee',
-        order.branchId,
-        order.companyId,
-        7,
-        expect.anything(),
-        expect.anything(),
+      await service.updateStatus('ord-1', OrderStatus.CANCELLED, caller());
+
+      const queries = fakeManager.query.mock.calls.map(
+        (call: unknown[]) => call[0] as string,
       );
-      expect(inventoryService.decrementForPreparation).toHaveBeenCalledWith(
-        'prod-plain',
-        order.branchId,
-        order.companyId,
-        2,
-        expect.anything(),
-        expect.anything(),
-      );
+      expect(queries.some((q) => q.includes("status = 'RELEASED'"))).toBe(true);
+      expect(queries.some((q) => q.includes("status = 'RESTORED'"))).toBe(true);
     });
   });
 });

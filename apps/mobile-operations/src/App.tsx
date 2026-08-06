@@ -9,6 +9,7 @@ import {
   registerThmanyahFonts,
   useAppPreferences,
   useAuthStore,
+  useReactQueryAppStateFocus,
 } from "@tarhib/mobile-shared";
 
 import { OperationsApp } from "./screens/OperationsApp";
@@ -27,6 +28,8 @@ export default function App() {
 
   const toggleTheme = () => setThemeMode(themeMode === "light" ? "dark" : "light");
   const toggleLang = () => setLang(lang === "en" ? "ar" : "en");
+
+  useReactQueryAppStateFocus();
 
   useEffect(() => {
     if (isAuthenticated) void registerPushToken();

@@ -5,7 +5,7 @@
  */
 export function useEntityLookup<T>(
   list: T[] | undefined,
-  getId: (item: T) => string,
+  getId: (item: T) => string | null | undefined,
   getLabel: (item: T) => string,
 ): {
   (id: string): string;

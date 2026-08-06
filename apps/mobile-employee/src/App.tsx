@@ -9,6 +9,7 @@ import {
   registerThmanyahFonts,
   useAppPreferences,
   useAuthStore,
+  useReactQueryAppStateFocus,
 } from "@tarhib/mobile-shared";
 
 import { EmployeeApp } from "./screens/EmployeeApp";
@@ -24,6 +25,8 @@ export default function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const theme = useMemo(() => makeTheme("employee", themeMode), [themeMode]);
+
+  useReactQueryAppStateFocus();
 
   useEffect(() => {
     if (isAuthenticated) void registerPushToken();

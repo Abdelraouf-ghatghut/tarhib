@@ -32,7 +32,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { CreateLocationModal } from "./CreateLocationModal";
 import { LocationDetailDrawer } from "./LocationDetailDrawer";
 import { EditProductModal } from "./EditProductModal";
-import { SourceZoneModal } from "./SourceZoneModal";
+import { SourceZoneModal, type SourceZoneFormValues } from "./SourceZoneModal";
 import {
   STATUS_COLOR,
   type Employee,
@@ -240,7 +240,7 @@ export default function VipTasksPage() {
   // avant d'être déplacé vers l'emplacement VIP (clarification métier) — on
   // demande la zone plutôt que de supposer BRANCH silencieusement.
   const [zoneAction, setZoneAction] = useState<ZoneAction | null>(null);
-  const [zoneForm] = Form.useForm();
+  const [zoneForm] = Form.useForm<SourceZoneFormValues>();
 
   const openCount = tasks.filter((t) => t.status === "OPEN").length;
   const belowThresholdCount = locations.filter((l) => l.belowThreshold).length;

@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { RedisService } from '../redis/redis.service.js';
 import { Order } from '../orders/entities/order.entity.js';
 import { OrderStatus } from '../orders/dto/order.dto.js';
 import { InventoryItem } from '../inventory/entities/inventory-item.entity.js';
@@ -156,9 +157,20 @@ export interface ExecutiveReport {
   topProducts: Array<{ productId: string; orderCount: number }>;
 }
 
+// TTL court (PR-1.5) : la vue exécutive agrège ~17 requêtes sur les tables
+// commandes/lignes/stock/achats — un dashboard consulté par plusieurs
+// managers dans la même minute recalculait tout à chaque chargement. Le
+// reporting n'a jamais été temps réel (CDC §13) : une fraîcheur à 30s près
+// est un compromis acceptable, jamais l'autorité (cache best-effort,
+// Redis en panne retombe simplement sur le calcul direct).
+const EXECUTIVE_REPORT_CACHE_TTL_SECONDS = 30;
+
 @Injectable()
 export class ReportingService {
+  private readonly logger = new Logger(ReportingService.name);
+
   constructor(
+    private readonly redis: RedisService,
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(InventoryItem)
@@ -726,28 +738,56 @@ export class ReportingService {
       granularity?: TrendGranularity;
     } = {},
   ): Promise<ExecutiveReport> {
+    const cacheKey = `reports:executive:v1:${opts.companyId ?? ''}:${opts.branchId ?? ''}:${opts.from ?? ''}:${opts.to ?? ''}:${opts.granularity ?? ''}`;
+    try {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) return JSON.parse(cached) as ExecutiveReport;
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Lecture cache rapport exécutif échouée (dégradé) : ${String(err)}`,
+      );
+    }
+
+    const report = await this.computeExecutiveReport(opts);
+
+    try {
+      await this.redis.set(
+        cacheKey,
+        JSON.stringify(report),
+        EXECUTIVE_REPORT_CACHE_TTL_SECONDS,
+      );
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Écriture cache rapport exécutif échouée (ignorée) : ${String(err)}`,
+      );
+    }
+
+    return report;
+  }
+
+  private async computeExecutiveReport(
+    opts: {
+      companyId?: string;
+      branchId?: string;
+      from?: string;
+      to?: string;
+      granularity?: TrendGranularity;
+    } = {},
+  ): Promise<ExecutiveReport> {
     const granularity: TrendGranularity =
       opts.granularity && GRANULARITIES.includes(opts.granularity)
         ? opts.granularity
         : 'day';
 
-    const companiesCount = await this.companyRepo.count({
-      where: opts.companyId ? { id: opts.companyId } : {},
-    });
-
     const branchWhere: FindOptionsWhere<Branch> = {};
     if (opts.companyId) branchWhere.companyId = opts.companyId;
     if (opts.branchId) branchWhere.id = opts.branchId;
-    const branchesCount = await this.branchRepo.count({ where: branchWhere });
 
     const employeeWhere: FindOptionsWhere<Employee> = {
       scope: EmployeeScope.CLIENT,
     };
     if (opts.companyId) employeeWhere.companyId = opts.companyId;
     if (opts.branchId) employeeWhere.branchId = opts.branchId;
-    const clientEmployeesCount = await this.employeeRepo.count({
-      where: employeeWhere,
-    });
 
     const baseQb = this.orderRepo.createQueryBuilder('o');
     if (opts.companyId)
@@ -760,14 +800,129 @@ export class ReportingService {
       baseQb.andWhere('o.created_at >= :from', { from: opts.from });
     if (opts.to) baseQb.andWhere('o.created_at <= :to', { to: opts.to });
 
-    const ordersCount = await baseQb.clone().getCount();
-
-    const statusRows = await baseQb
+    const deliveredQb = baseQb
       .clone()
-      .select('o.status', 'status')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('o.status')
-      .getRawMany<{ status: string; count: string }>();
+      .andWhere('o.status = :delivered', { delivered: OrderStatus.DELIVERED })
+      .andWhere('o.delivered_at IS NOT NULL');
+
+    const lineQb = this.orderLineRepo
+      .createQueryBuilder('l')
+      .innerJoin('l.order', 'o');
+    if (opts.companyId)
+      lineQb.andWhere('o.company_id = :companyId', {
+        companyId: opts.companyId,
+      });
+    if (opts.branchId)
+      lineQb.andWhere('o.branch_id = :branchId', { branchId: opts.branchId });
+    if (opts.from)
+      lineQb.andWhere('o.created_at >= :from', { from: opts.from });
+    if (opts.to) lineQb.andWhere('o.created_at <= :to', { to: opts.to });
+
+    // Chaque requête ci-dessous est indépendante (clone d'un QueryBuilder
+    // construit synchroniquement, aucune n'a besoin du résultat d'une autre)
+    // — l'ancienne version les exécutait en 17 aller-retours DB séquentiels.
+    const [
+      companiesCount,
+      branchesCount,
+      clientEmployeesCount,
+      ordersCount,
+      statusRows,
+      deliveredTotal,
+      onTimeCount,
+      avgRow,
+      trendRows,
+      slaTrendRows,
+      companyOrderRows,
+      companySlaRows,
+      consumptionRows,
+      productRows,
+      invDetail,
+      purchasing,
+    ] = await Promise.all([
+      this.companyRepo.count({
+        where: opts.companyId ? { id: opts.companyId } : {},
+      }),
+      this.branchRepo.count({ where: branchWhere }),
+      this.employeeRepo.count({ where: employeeWhere }),
+      baseQb.clone().getCount(),
+      baseQb
+        .clone()
+        .select('o.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('o.status')
+        .getRawMany<{ status: string; count: string }>(),
+      deliveredQb.clone().getCount(),
+      deliveredQb
+        .clone()
+        .andWhere('o.delivered_at <= o.sla_deadline')
+        .getCount(),
+      deliveredQb
+        .clone()
+        .select(
+          'AVG(EXTRACT(EPOCH FROM (o.delivered_at - o.created_at)) / 60)',
+          'avgMinutes',
+        )
+        .getRawOne<{ avgMinutes: string | null }>(),
+      baseQb
+        .clone()
+        .select(`DATE_TRUNC('${granularity}', o.created_at)`, 'bucket')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('bucket')
+        .orderBy('bucket', 'ASC')
+        .getRawMany<{ bucket: Date; count: string }>(),
+      deliveredQb
+        .clone()
+        .select(`DATE_TRUNC('${granularity}', o.created_at)`, 'bucket')
+        .addSelect(
+          'SUM(CASE WHEN o.delivered_at <= o.sla_deadline THEN 1 ELSE 0 END)',
+          'onTime',
+        )
+        .addSelect('COUNT(*)', 'total')
+        .groupBy('bucket')
+        .orderBy('bucket', 'ASC')
+        .getRawMany<{ bucket: Date; onTime: string; total: string }>(),
+      baseQb
+        .clone()
+        .select('o.company_id', 'companyId')
+        .addSelect('COUNT(*)', 'orderCount')
+        .groupBy('o.company_id')
+        .getRawMany<{ companyId: string; orderCount: string }>(),
+      deliveredQb
+        .clone()
+        .select('o.company_id', 'companyId')
+        .addSelect(
+          'SUM(CASE WHEN o.delivered_at <= o.sla_deadline THEN 1 ELSE 0 END)',
+          'onTime',
+        )
+        .addSelect('COUNT(*)', 'total')
+        .groupBy('o.company_id')
+        .getRawMany<{ companyId: string; onTime: string; total: string }>(),
+      lineQb
+        .clone()
+        .select('o.company_id', 'companyId')
+        .addSelect('SUM(l.quantity)', 'consumption')
+        .groupBy('o.company_id')
+        .getRawMany<{ companyId: string; consumption: string }>(),
+      lineQb
+        .clone()
+        .select('l.product_id', 'productId')
+        .addSelect('COUNT(*)', 'orderCount')
+        .groupBy('l.product_id')
+        .orderBy('COUNT(*)', 'DESC')
+        .limit(10)
+        .getRawMany<{ productId: string; orderCount: string }>(),
+      this.getInventoryDetailReport({
+        companyId: opts.companyId,
+        branchId: opts.branchId,
+      }),
+      this.getPurchasingReport({
+        companyId: opts.companyId,
+        branchId: opts.branchId,
+        from: opts.from,
+        to: opts.to,
+      }),
+    ]);
+
     const countByStatus = new Map(
       statusRows.map((r) => [r.status, parseInt(r.count, 10)]),
     );
@@ -787,103 +942,31 @@ export class ReportingService {
       { status: 'REJECTED', count: rejectedCount },
     ];
 
-    const deliveredQb = baseQb
-      .clone()
-      .andWhere('o.status = :delivered', { delivered: OrderStatus.DELIVERED })
-      .andWhere('o.delivered_at IS NOT NULL');
-
-    const deliveredTotal = await deliveredQb.clone().getCount();
-    const onTimeCount = await deliveredQb
-      .clone()
-      .andWhere('o.delivered_at <= o.sla_deadline')
-      .getCount();
     const slaComplianceRate =
       deliveredTotal > 0
         ? Math.round((onTimeCount / deliveredTotal) * 100)
         : 100;
 
-    const avgRow = await deliveredQb
-      .clone()
-      .select(
-        'AVG(EXTRACT(EPOCH FROM (o.delivered_at - o.created_at)) / 60)',
-        'avgMinutes',
-      )
-      .getRawOne<{ avgMinutes: string | null }>();
     const avgDeliveryMinutes = avgRow?.avgMinutes
       ? Math.round(parseFloat(avgRow.avgMinutes))
       : 0;
 
-    const trendRows = await baseQb
-      .clone()
-      .select(`DATE_TRUNC('${granularity}', o.created_at)`, 'bucket')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('bucket')
-      .orderBy('bucket', 'ASC')
-      .getRawMany<{ bucket: Date; count: string }>();
     const ordersTrend = trendRows.map((r) => ({
       bucket: new Date(r.bucket).toISOString(),
       count: parseInt(r.count, 10),
     }));
 
-    const slaTrendRows = await deliveredQb
-      .clone()
-      .select(`DATE_TRUNC('${granularity}', o.created_at)`, 'bucket')
-      .addSelect(
-        'SUM(CASE WHEN o.delivered_at <= o.sla_deadline THEN 1 ELSE 0 END)',
-        'onTime',
-      )
-      .addSelect('COUNT(*)', 'total')
-      .groupBy('bucket')
-      .orderBy('bucket', 'ASC')
-      .getRawMany<{ bucket: Date; onTime: string; total: string }>();
     const slaTrend = slaTrendRows.map((r) => ({
       bucket: new Date(r.bucket).toISOString(),
       rate: Math.round((parseInt(r.onTime, 10) / parseInt(r.total, 10)) * 100),
     }));
 
-    const companyOrderRows = await baseQb
-      .clone()
-      .select('o.company_id', 'companyId')
-      .addSelect('COUNT(*)', 'orderCount')
-      .groupBy('o.company_id')
-      .getRawMany<{ companyId: string; orderCount: string }>();
-
-    const companySlaRows = await deliveredQb
-      .clone()
-      .select('o.company_id', 'companyId')
-      .addSelect(
-        'SUM(CASE WHEN o.delivered_at <= o.sla_deadline THEN 1 ELSE 0 END)',
-        'onTime',
-      )
-      .addSelect('COUNT(*)', 'total')
-      .groupBy('o.company_id')
-      .getRawMany<{ companyId: string; onTime: string; total: string }>();
     const slaByCompany = new Map(
       companySlaRows.map((r) => [
         r.companyId,
         Math.round((parseInt(r.onTime, 10) / parseInt(r.total, 10)) * 100),
       ]),
     );
-
-    const lineQb = this.orderLineRepo
-      .createQueryBuilder('l')
-      .innerJoin('l.order', 'o');
-    if (opts.companyId)
-      lineQb.andWhere('o.company_id = :companyId', {
-        companyId: opts.companyId,
-      });
-    if (opts.branchId)
-      lineQb.andWhere('o.branch_id = :branchId', { branchId: opts.branchId });
-    if (opts.from)
-      lineQb.andWhere('o.created_at >= :from', { from: opts.from });
-    if (opts.to) lineQb.andWhere('o.created_at <= :to', { to: opts.to });
-
-    const consumptionRows = await lineQb
-      .clone()
-      .select('o.company_id', 'companyId')
-      .addSelect('SUM(l.quantity)', 'consumption')
-      .groupBy('o.company_id')
-      .getRawMany<{ companyId: string; consumption: string }>();
     const consumptionByCompany = new Map(
       consumptionRows.map((r) => [r.companyId, parseInt(r.consumption, 10)]),
     );
@@ -898,34 +981,15 @@ export class ReportingService {
       .sort((a, b) => b.orderCount - a.orderCount)
       .slice(0, 10);
 
-    const productRows = await lineQb
-      .clone()
-      .select('l.product_id', 'productId')
-      .addSelect('COUNT(*)', 'orderCount')
-      .groupBy('l.product_id')
-      .orderBy('COUNT(*)', 'DESC')
-      .limit(10)
-      .getRawMany<{ productId: string; orderCount: string }>();
     const topProducts = productRows.map((r) => ({
       productId: r.productId,
       orderCount: parseInt(r.orderCount, 10),
     }));
 
-    const invDetail = await this.getInventoryDetailReport({
-      companyId: opts.companyId,
-      branchId: opts.branchId,
-    });
     const totalStockValue = invDetail.totalStockValue;
     const outOfStockCount = invDetail.rows.filter(
       (r) => r.quantity === 0,
     ).length;
-
-    const purchasing = await this.getPurchasingReport({
-      companyId: opts.companyId,
-      branchId: opts.branchId,
-      from: opts.from,
-      to: opts.to,
-    });
 
     return {
       kpis: {

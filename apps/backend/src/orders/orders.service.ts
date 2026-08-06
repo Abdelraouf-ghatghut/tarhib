@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -8,11 +9,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
-  Between,
   EntityManager,
   FindOptionsWhere,
   In,
+  QueryFailedError,
   Repository,
+  SelectQueryBuilder,
 } from 'typeorm';
 import { Order } from './entities/order.entity.js';
 import {
@@ -40,10 +42,18 @@ import {
   InventoryItem,
   StockZone,
 } from '../inventory/entities/inventory-item.entity.js';
-import { InventoryService } from '../inventory/inventory.service.js';
-import { Quota } from '../quotas/entities/quota.entity.js';
+import {
+  reserveStockForProduct,
+  consumeReservationsForOrder,
+  releaseReservationsForOrder,
+} from '../inventory/stock-reservation.js';
 import { QuotasService } from '../quotas/quotas.service.js';
-import { EmployeeQuotaUsage } from '../roles/entities/employee-quota-usage.entity.js';
+import { computeQuotaPeriod } from '../quotas/quota-period.js';
+import { computeOrderRequestHash } from './order-request-hash.js';
+import {
+  consumeQuotaAtomic,
+  restoreQuotaConsumptionsForOrder,
+} from '../quotas/quota-consumption.js';
 import { PrioritySlaService } from '../priority-sla/priority-sla.service.js';
 import { Role } from '../roles/entities/role.entity.js';
 
@@ -71,7 +81,6 @@ export class OrdersService {
     private readonly notificationsService: NotificationsService,
     private readonly notificationsGateway: NotificationsGateway,
     private readonly prioritySla: PrioritySlaService,
-    private readonly inventoryService: InventoryService,
   ) {}
 
   /**
@@ -86,62 +95,43 @@ export class OrdersService {
     return role?.slaPriority || OrderPriority.P5;
   }
 
-  /**
-   * Les commandes sont préparées en cuisine : le stock CUISINE est décrémenté
-   * en premier, et complété automatiquement depuis la BRANCHE si insuffisant
-   * (InventoryService.decrementForPreparation). Produit composé (a une
-   * recette) : décrémente ses ingrédients. Produit simple (pas de recette) :
-   * décrémente son propre stock. Une rupture cuisine+branche combinées
-   * bloque toute la transition (voir appelant).
-   */
-  private async decrementRecipeIngredients(
-    order: Order,
-    preparedBy: string,
-  ): Promise<void> {
-    const approvedLines = order.lines.filter(
-      (l) => l.validationStatus === LineValidationStatus.APPROVED,
-    );
-    if (approvedLines.length === 0) return;
-
-    const recipeLines = await this.recipeRepo.find({
-      where: { productId: In(approvedLines.map((l) => l.productId)) },
-    });
-
-    // Une seule transaction pour toutes les lignes : une rupture en cours de
-    // boucle annule les décrémentations déjà faites dans cette même tentative
-    // plutôt que de laisser un stock partiellement décrémenté.
-    await this.orderRepo.manager.transaction(async (manager) => {
-      for (const line of approvedLines) {
-        const recipesForLine = recipeLines.filter(
-          (r) => r.productId === line.productId,
-        );
-        if (recipesForLine.length > 0) {
-          for (const recipe of recipesForLine) {
-            await this.inventoryService.decrementForPreparation(
-              recipe.ingredientProductId,
-              order.branchId,
-              order.companyId,
-              recipe.quantity * line.quantity,
-              manager,
-              preparedBy,
-            );
-          }
-        } else {
-          await this.inventoryService.decrementForPreparation(
-            line.productId,
-            order.branchId,
-            order.companyId,
-            line.quantity,
-            manager,
-            preparedBy,
-          );
-        }
-      }
-    });
-  }
-
   async create(dto: CreateOrderDto, caller: JwtPayload): Promise<OrderDto> {
-    const productIds = dto.lines.map((l) => l.productId);
+    // Agrégation du panier : plusieurs lignes d'un même produit sont fusionnées
+    // → quota et stock validés sur la SOMME, jamais indépendamment par ligne.
+    const aggregated = new Map<string, number>();
+    for (const l of dto.lines) {
+      aggregated.set(
+        l.productId,
+        (aggregated.get(l.productId) ?? 0) + l.quantity,
+      );
+    }
+    const lines = [...aggregated.entries()].map(([productId, quantity]) => ({
+      productId,
+      quantity,
+    }));
+    const productIds = [...aggregated.keys()];
+
+    // Idempotence (D8, PR-0.4) : vérifiée AVANT tout LOCK/réservation — un
+    // retry sur une clé déjà servie ne doit ni consommer de quota ni réserver
+    // de stock une seconde fois. Le pre-check est une optimisation (évite le
+    // travail inutile) ; l'index unique (employee_id, client_request_id) reste
+    // l'autorité — la course concurrente est gérée au catch de la transaction
+    // plus bas (deux requêtes simultanées peuvent toutes deux passer ce check).
+    const requestHash = dto.clientRequestId
+      ? computeOrderRequestHash(lines, dto.note ?? null)
+      : null;
+    if (dto.clientRequestId) {
+      const existing = await this.orderRepo.findOne({
+        where: { employeeId: caller.sub, clientRequestId: dto.clientRequestId },
+        relations: ['lines'],
+      });
+      if (existing) {
+        if (existing.clientRequestHash !== requestHash) {
+          throw new ConflictException('orderRequestPayloadMismatch');
+        }
+        return this.toDto(existing);
+      }
+    }
 
     // Nomenclature (§3 CLAUDE.md) : un produit composé n'a pas de stock
     // propre — le stock à vérifier est celui de ses ingrédients.
@@ -156,9 +146,9 @@ export class OrdersService {
     ];
 
     // Charge les vraies données (§3.3 CLAUDE.md — ordre strict). Disponibilité
-    // = cuisine + branche combinées (la préparation décrémente la cuisine en
-    // premier, la branche complète automatiquement en cas de manque — voir
-    // decrementRecipeIngredients / InventoryService.decrementForPreparation).
+    // = cuisine + branche combinées : le stock est RÉSERVÉ ici (D1=B), pas
+    // décrémenté — voir reserveStockForProduct plus bas et
+    // consumeReservationsForOrder à la préparation (updateStatus).
     const [products, stockRows] = await Promise.all([
       this.productRepo.find({ where: productIds.map((id) => ({ id })) }),
       this.inventoryRepo.find({
@@ -174,9 +164,12 @@ export class OrdersService {
     ]);
     const stockByProduct = new Map<string, number>();
     for (const row of stockRows) {
+      // Disponibilité advisory = available (quantity - reserved), pas le stock
+      // physique — cohérent avec la réservation qui fait autorité (D1=B).
       stockByProduct.set(
         row.productId,
-        (stockByProduct.get(row.productId) ?? 0) + row.quantity,
+        (stockByProduct.get(row.productId) ?? 0) +
+          (row.quantity - (row.reserved ?? 0)),
       );
     }
     const stocks = [...stockByProduct.entries()].map(
@@ -187,12 +180,23 @@ export class OrdersService {
       }),
     );
 
-    // Quota system: prefer new role-based quotas, fallback to legacy per-employee quotas
-    const quotaSnapshots = await this.quotasService.snapshotsFor(
+    // Quota effectif du rôle primaire (D2) : periodType + max par produit. La
+    // consommation est ATOMIQUE dans la transaction (consumeQuotaAtomic), pas un
+    // simple contrôle advisory → corrige P01 (additif) et P02 (garde du max).
+    const effectiveQuotas = await this.quotasService.effectiveRoleQuotas(
       caller,
       productIds,
     );
+    // Chemin legacy uniquement (employé sans rôle) : quota advisory via la table
+    // `quotas`. Le chemin role-based ne charge rien ici (quota traité
+    // atomiquement dans la transaction).
+    const quotaSnapshots = caller.roleId
+      ? []
+      : await this.quotasService.snapshotsFor(caller, productIds);
 
+    // Validation advisory §3.3 étapes 1-2 (produit/rôle/branche/stock) sur les
+    // lignes agrégées. Le quota (étape 3) est traité atomiquement plus bas →
+    // quotas:[] ici pour ne pas rejeter sur un snapshot périmé.
     const ctx: ValidationContext = {
       employeeId: caller.sub,
       companyId: caller.companyId || '',
@@ -219,15 +223,24 @@ export class OrdersService {
       })),
     };
 
-    const validation = this.validationEngine.validateCart(ctx, dto.lines);
+    const validation = this.validationEngine.validateCart(ctx, lines);
+    const advisoryByProduct = new Map<
+      string,
+      { decision: string; reason: string | null }
+    >();
+    for (const v of validation.lines) {
+      advisoryByProduct.set(v.productId, {
+        decision: v.decision,
+        reason: v.reason ?? null,
+      });
+    }
 
-    const rejectedLines = validation.lines.filter(
-      (l) => l.decision === 'REJECTED',
-    );
-    if (rejectedLines.length === dto.lines.length) {
+    if (validation.lines.every((v) => v.decision === 'REJECTED')) {
       throw new UnprocessableEntityException({
         message: 'orderValidationFailed',
-        rejectedLines,
+        rejectedLines: validation.lines.filter(
+          (v) => v.decision === 'REJECTED',
+        ),
       });
     }
 
@@ -237,81 +250,269 @@ export class OrdersService {
       caller.companyId,
       priority,
     );
-    const slaDeadline = new Date(Date.now() + slaMinutes * 60_000);
-
-    // Moteur de validation (CLAUDE.md §3.3) : rejet automatique de la ligne
-    // fautive (rôle non autorisé, stock insuffisant, quota dépassé — quota
-    // vérifié uniquement s'il existe pour l'employé), jamais de blocage du
-    // panier entier pour une seule ligne en faute. La décision est
-    // entièrement automatique — aucune ligne rejetée n'attend l'arbitrage
-    // d'un Department Manager : la commande est validée immédiatement dès
-    // qu'il reste au moins une ligne valide, les lignes rejetées restent
-    // visibles avec leur motif (l'employé les retire de ses prochains
-    // paniers, cf. affichage mobile order_line_tile.dart).
     const now = new Date();
+    const slaDeadline = new Date(now.getTime() + slaMinutes * 60_000);
 
-    const order = this.orderRepo.create({
-      employeeId: caller.sub,
-      companyId: caller.companyId,
-      branchId: caller.branchId,
-      priority,
-      slaDeadline,
-      note: dto.note?.trim() || null,
-      status: OrderStatus.APPROVED,
-      approvedAt: now,
-      lines: dto.lines.map((l) => {
-        const validationLine = validation.lines.find(
-          (v) => v.productId === l.productId,
-        );
-        const line = this.lineRepo.create({
-          productId: l.productId,
-          quantity: l.quantity,
-          validationStatus:
-            validationLine?.decision === 'REJECTED'
-              ? LineValidationStatus.REJECTED
-              : LineValidationStatus.APPROVED,
-          rejectionReason: validationLine?.reason ?? null,
+    // Transaction (R1) : consommation de quota atomique → décision finale des
+    // lignes → insertion commande/lignes → registre de consommation (D12).
+    // « Consume puis décide puis écris » garantit qu'une ligne rejetée par le
+    // quota sous concurrence n'est jamais persistée APPROVED ; 0 ligne approuvée
+    // rollback la consommation déjà faite.
+    const saved = await this.orderRepo.manager
+      .transaction(async (manager) => {
+        const consumed = new Map<
+          string,
+          { periodStart: string; periodEnd: string; quantity: number }
+        >();
+        const stockAllocations = new Map<
+          string,
+          Array<{
+            inventoryItemId: string;
+            stockProductId: string;
+            zone: string;
+            quantity: number;
+          }>
+        >();
+        const rejected = new Map<string, string>(); // productId → motif
+
+        for (const [index, line] of lines.entries()) {
+          if (advisoryByProduct.get(line.productId)?.decision !== 'APPROVED') {
+            continue; // déjà rejeté (produit/rôle/branche)
+          }
+
+          // Savepoint par ligne : quota ET stock réussissent ensemble, sinon
+          // ROLLBACK TO SAVEPOINT annule les DEUX pour cette ligne (both-or-neither),
+          // sans toucher aux lignes déjà validées (panier partiel).
+          await manager.query(`SAVEPOINT sp_${index}`);
+          let ok = true;
+          let reason: string | null = null;
+
+          // 1) Quota (role-based atomique ; legacy additif advisory).
+          const quota = effectiveQuotas.get(line.productId);
+          let consumption: {
+            periodStart: string;
+            periodEnd: string;
+            quantity: number;
+          } | null = null;
+          if (caller.roleId && quota) {
+            const { periodStart, periodEnd } = computeQuotaPeriod(
+              quota.periodType,
+              now,
+            );
+            const quotaOk = await consumeQuotaAtomic(manager, {
+              employeeId: caller.sub,
+              productId: line.productId,
+              companyId: caller.companyId,
+              periodStart,
+              periodEnd,
+              quantity: line.quantity,
+              maxQuantity: quota.maxQuantity,
+            });
+            if (quotaOk) {
+              consumption = { periodStart, periodEnd, quantity: line.quantity };
+            } else {
+              ok = false;
+              reason = 'QUOTA_EXCEEDED';
+            }
+          } else if (!caller.roleId) {
+            await this.incrementLegacyQuota(
+              manager,
+              caller.sub,
+              line.productId,
+              line.quantity,
+            );
+          }
+
+          // 2) Réservation de stock (D1=B) : ingrédients si recette, sinon le
+          // produit. Toute rupture d'un besoin rejette la ligne.
+          const allocations: Array<{
+            inventoryItemId: string;
+            stockProductId: string;
+            zone: string;
+            quantity: number;
+          }> = [];
+          if (ok) {
+            const recipesForLine = recipeLines.filter(
+              (r) => r.productId === line.productId,
+            );
+            const needs =
+              recipesForLine.length > 0
+                ? recipesForLine.map((r) => ({
+                    productId: r.ingredientProductId,
+                    quantity: r.quantity * line.quantity,
+                  }))
+                : [{ productId: line.productId, quantity: line.quantity }];
+            for (const need of needs) {
+              const res = await reserveStockForProduct(manager, {
+                productId: need.productId,
+                branchId: caller.branchId ?? '',
+                companyId: caller.companyId,
+                quantity: need.quantity,
+              });
+              if (!res.ok) {
+                ok = false;
+                reason = 'INSUFFICIENT_STOCK';
+                break;
+              }
+              for (const a of res.allocations) {
+                allocations.push({
+                  inventoryItemId: a.inventoryItemId,
+                  stockProductId: need.productId,
+                  zone: a.zone,
+                  quantity: a.quantity,
+                });
+              }
+            }
+          }
+
+          if (ok) {
+            await manager.query(`RELEASE SAVEPOINT sp_${index}`);
+            if (consumption) consumed.set(line.productId, consumption);
+            if (allocations.length > 0) {
+              stockAllocations.set(line.productId, allocations);
+            }
+          } else {
+            await manager.query(`ROLLBACK TO SAVEPOINT sp_${index}`);
+            rejected.set(line.productId, reason ?? 'INSUFFICIENT_STOCK');
+          }
+        }
+
+        const orderLines = lines.map((line) => {
+          const advisory = advisoryByProduct.get(line.productId);
+          const rejectReason = rejected.get(line.productId);
+          const approved = advisory?.decision === 'APPROVED' && !rejectReason;
+          return this.lineRepo.create({
+            productId: line.productId,
+            quantity: line.quantity,
+            validationStatus: approved
+              ? LineValidationStatus.APPROVED
+              : LineValidationStatus.REJECTED,
+            rejectionReason: approved
+              ? null
+              : (rejectReason ?? advisory?.reason ?? null),
+          });
         });
-        return line;
-      }),
-    });
 
-    // Une seule transaction : la commande et l'incrément de quota doivent
-    // réussir ou échouer ensemble, sinon un échec de l'incrément laisserait
-    // une commande APPROVED dont la consommation de quota n'est pas comptée.
-    const saved = await this.orderRepo.manager.transaction(async (manager) => {
-      // Incrément atomique par société (§ numéro de commande court) : upsert
-      // + retour de l'ancienne valeur, sans risque de doublon sous concurrence.
-      const [{ assigned }] = await manager.query<{ assigned: number }[]>(
-        `INSERT INTO company_order_counters (company_id, next_number)
+        if (
+          !orderLines.some(
+            (l) => l.validationStatus === LineValidationStatus.APPROVED,
+          )
+        ) {
+          // Rollback : annule les consommations de quota déjà faites dans la tx.
+          throw new UnprocessableEntityException({
+            message: 'orderValidationFailed',
+            rejectedLines: orderLines.map((l) => ({
+              productId: l.productId,
+              quantity: l.quantity,
+              decision: 'REJECTED',
+              reason: l.rejectionReason,
+            })),
+          });
+        }
+
+        // Numéro de commande atomique par société (upsert, pas de doublon concurrent).
+        const [{ assigned }] = await manager.query<{ assigned: number }[]>(
+          `INSERT INTO company_order_counters (company_id, next_number)
          VALUES ($1, 2)
          ON CONFLICT (company_id)
          DO UPDATE SET next_number = company_order_counters.next_number + 1
          RETURNING next_number - 1 AS assigned`,
-        [order.companyId],
-      );
-      order.orderNumber = assigned;
-
-      const savedOrder = await manager.save(Order, order);
-      const approvedLines = savedOrder.lines.filter(
-        (l) => l.validationStatus === LineValidationStatus.APPROVED,
-      );
-      if (approvedLines.length > 0) {
-        await this.incrementQuotaUsage(
-          caller,
-          approvedLines.map((l) => ({
-            productId: l.productId,
-            quantity: l.quantity,
-          })),
-          manager,
+          [caller.companyId],
         );
-      }
-      return savedOrder;
-    });
+
+        const order = this.orderRepo.create({
+          employeeId: caller.sub,
+          companyId: caller.companyId,
+          branchId: caller.branchId,
+          orderNumber: assigned,
+          priority,
+          slaDeadline,
+          note: dto.note?.trim() || null,
+          status: OrderStatus.APPROVED,
+          approvedAt: now,
+          lines: orderLines,
+          clientRequestId: dto.clientRequestId ?? null,
+          clientRequestHash: requestHash,
+        });
+        const savedOrder = await manager.save(Order, order);
+
+        // Registres (FK order/line valides après le save) : consommation quota
+        // (D12) + réservations de stock (HELD).
+        for (const savedLine of savedOrder.lines) {
+          if (savedLine.validationStatus !== LineValidationStatus.APPROVED) {
+            continue;
+          }
+          const c = consumed.get(savedLine.productId);
+          if (c) {
+            await manager.query(
+              `INSERT INTO order_quota_consumptions
+               (order_id, order_line_id, employee_id, product_id, company_id, period_start, period_end, quantity)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              [
+                savedOrder.id,
+                savedLine.id,
+                caller.sub,
+                savedLine.productId,
+                caller.companyId,
+                c.periodStart,
+                c.periodEnd,
+                c.quantity,
+              ],
+            );
+          }
+          for (const a of stockAllocations.get(savedLine.productId) ?? []) {
+            await manager.query(
+              `INSERT INTO inventory_reservations
+               (order_id, order_line_id, inventory_item_id, ordered_product_id, stock_product_id, zone, quantity, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'HELD')`,
+              [
+                savedOrder.id,
+                savedLine.id,
+                a.inventoryItemId,
+                savedLine.productId,
+                a.stockProductId,
+                a.zone,
+                a.quantity,
+              ],
+            );
+          }
+        }
+        return savedOrder;
+      })
+      .catch(async (err: unknown) => {
+        // Course d'idempotence : deux requêtes avec la même clé ont toutes deux
+        // passé le pre-check (lu 0 commande existante) puis tenté l'INSERT — une
+        // seule gagne l'index unique (employee_id, client_request_id), l'AUTRE
+        // prend une violation ici. Le perdant relit et retourne la gagnante
+        // (même empreinte) au lieu de propager une erreur au client.
+        if (
+          dto.clientRequestId &&
+          err instanceof QueryFailedError &&
+          (err.driverError as { constraint?: string } | undefined)
+            ?.constraint === 'uq_orders_employee_client_request'
+        ) {
+          const existing = await this.orderRepo.findOne({
+            where: {
+              employeeId: caller.sub,
+              clientRequestId: dto.clientRequestId,
+            },
+            relations: ['lines'],
+          });
+          if (existing) {
+            if (existing.clientRequestHash !== requestHash) {
+              throw new ConflictException('orderRequestPayloadMismatch');
+            }
+            return existing;
+          }
+        }
+        throw err;
+      });
 
     this.notificationsGateway.emitOrderUpdate('order:new', {
       orderId: saved.id,
       branchId: saved.branchId,
+      employeeId: saved.employeeId,
+      companyId: saved.companyId,
     });
 
     return this.toDto(saved);
@@ -373,73 +574,91 @@ export class OrdersService {
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
 
-    const where: FindOptionsWhere<Order> = {
-      createdAt: Between(start, end),
+    const scoped = this.isPlatformAdmin(caller)
+      ? {}
+      : {
+          companyId: caller.companyId || undefined,
+          branchId: caller.branchId || undefined,
+        };
+
+    // Agrégation en SQL (PR-1.4) : l'ancienne version chargeait toutes les
+    // commandes du jour + leurs lignes en mémoire pour ne produire que des
+    // compteurs/moyennes — coût qui croît avec le volume de commandes/jour
+    // pour rien, PostgreSQL fait ce travail nativement.
+    const applyScope = <T extends object>(qb: SelectQueryBuilder<T>) => {
+      qb.where('o.createdAt >= :start AND o.createdAt < :end', {
+        start,
+        end,
+      });
+      if (scoped.companyId) qb.andWhere('o.companyId = :companyId', scoped);
+      if (scoped.branchId) qb.andWhere('o.branchId = :branchId', scoped);
+      return qb;
     };
-    if (!this.isPlatformAdmin(caller)) {
-      if (caller.companyId) where.companyId = caller.companyId;
-      if (caller.branchId) where.branchId = caller.branchId;
-    }
 
-    const orders = await this.orderRepo.find({
-      where,
-      order: { createdAt: 'DESC' },
-      relations: ['lines'],
-    });
+    const statusCounts = await applyScope(
+      this.orderRepo
+        .createQueryBuilder('o')
+        .select('o.status', 'status')
+        .addSelect('COUNT(*)', 'count'),
+    )
+      .groupBy('o.status')
+      .getRawMany<{ status: OrderStatus; count: string }>();
 
-    const delivered = orders.filter(
-      (order) => order.status === OrderStatus.DELIVERED,
+    const countByStatus = new Map(
+      statusCounts.map((row) => [row.status, Number(row.count)]),
     );
-    const pending = orders.filter((order) =>
-      [OrderStatus.PENDING, OrderStatus.APPROVED].includes(order.status),
+    const todayOrders = statusCounts.reduce(
+      (sum, row) => sum + Number(row.count),
+      0,
     );
+    const pendingCount =
+      (countByStatus.get(OrderStatus.PENDING) ?? 0) +
+      (countByStatus.get(OrderStatus.APPROVED) ?? 0);
+    const deliveredToday = countByStatus.get(OrderStatus.DELIVERED) ?? 0;
 
-    const deliveryDurations = delivered
-      .map((order) =>
-        order.prepStartedAt && order.deliveredAt
-          ? (order.deliveredAt.getTime() - order.prepStartedAt.getTime()) /
-            60_000
-          : null,
-      )
-      .filter(
-        (duration): duration is number =>
-          typeof duration === 'number' && Number.isFinite(duration),
-      );
+    const avgRow = await applyScope(
+      this.orderRepo
+        .createQueryBuilder('o')
+        .select(
+          'AVG(EXTRACT(EPOCH FROM (o.deliveredAt - o.prepStartedAt)) / 60)',
+          'avg',
+        ),
+    )
+      .andWhere('o.status = :delivered', { delivered: OrderStatus.DELIVERED })
+      .andWhere('o.prepStartedAt IS NOT NULL')
+      .andWhere('o.deliveredAt IS NOT NULL')
+      .getRawOne<{ avg: string | null }>();
 
-    const productCounts = new Map<string, number>();
-    for (const order of orders) {
-      for (const line of order.lines ?? []) {
-        productCounts.set(
-          line.productId,
-          (productCounts.get(line.productId) ?? 0) + Number(line.quantity ?? 0),
-        );
-      }
-    }
+    const topLines = await applyScope(
+      this.lineRepo
+        .createQueryBuilder('l')
+        .innerJoin('l.order', 'o')
+        .select('l.productId', 'productId')
+        .addSelect('SUM(l.quantity)', 'total'),
+    )
+      .groupBy('l.productId')
+      .orderBy('total', 'DESC')
+      .limit(5)
+      .getRawMany<{ productId: string; total: string }>();
 
-    const topProductIds = [...productCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([productId]) => productId);
-
-    const products = topProductIds.length
-      ? await this.productRepo.find({ where: { id: In(topProductIds) } })
+    const products = topLines.length
+      ? await this.productRepo.find({
+          where: { id: In(topLines.map((row) => row.productId)) },
+        })
       : [];
     const namesById = new Map(
       products.map((product) => [product.id, product.nameEn || product.nameAr]),
     );
 
     return {
-      todayOrders: orders.length,
-      pendingCount: pending.length,
-      deliveredToday: delivered.length,
-      avgSlaMinutes: deliveryDurations.length
-        ? deliveryDurations.reduce((sum, value) => sum + value, 0) /
-          deliveryDurations.length
-        : 0,
-      mostOrdered: topProductIds.map((productId) => ({
-        productId,
-        name: namesById.get(productId) ?? productId,
-        count: productCounts.get(productId) ?? 0,
+      todayOrders,
+      pendingCount,
+      deliveredToday,
+      avgSlaMinutes: avgRow?.avg ? Number(avgRow.avg) : 0,
+      mostOrdered: topLines.map((row) => ({
+        productId: row.productId,
+        name: namesById.get(row.productId) ?? row.productId,
+        count: Number(row.total),
       })),
     };
   }
@@ -450,64 +669,96 @@ export class OrdersService {
     caller: JwtPayload,
     reason?: string,
   ): Promise<OrderDto> {
-    const order = await this.orderRepo.findOne({
-      where: { id },
-      relations: ['lines'],
-    });
-    if (!order) throw new NotFoundException(`Order ${id} not found`);
+    // Tout dans UNE transaction, sur une commande VERROUILLÉE : sérialise les
+    // transitions concurrentes (fixe le double-démarrage P03). Le verrou est
+    // pris SANS jointure — Order.lines est eager, mais un QueryBuilder ne charge
+    // pas les relations eager, donc FOR UPDATE porte sur `orders` seul (pas
+    // d'outer join qui invaliderait le verrou).
+    const saved = await this.orderRepo.manager.transaction(async (manager) => {
+      const order = await manager
+        .createQueryBuilder(Order, 'o')
+        .where('o.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!order) throw new NotFoundException(`Order ${id} not found`);
 
-    const allowed = this.allowedTransitions(caller, order.status);
-    if (!allowed.includes(status)) {
-      throw new BadRequestException(
-        `Role ${caller.role} cannot transition ${order.status} → ${status}`,
+      // Transition recalculée depuis le statut VERROUILLÉ : le perdant d'une
+      // course voit le nouveau statut et sort en no-op idempotent.
+      const allowed = this.allowedTransitions(
+        caller,
+        order.status,
+        order.employeeId,
       );
-    }
-    // Un admin plateforme (superadmin) n'a aucune société assignée
-    // (caller.companyId est null) : il gère toutes les sociétés et ne doit
-    // donc jamais être bloqué par la vérification multi-tenant — même règle
-    // que RolesService.findAll (cf. isTarhibAdmin).
-    if (!this.isPlatformAdmin(caller) && order.companyId !== caller.companyId) {
-      throw new ForbiddenException('crossTenantAccessDenied');
-    }
+      if (!allowed.includes(status)) {
+        if (order.status === status) return order; // déjà dans l'état cible
+        throw new BadRequestException(
+          `Role ${caller.role} cannot transition ${order.status} → ${status}`,
+        );
+      }
+      // Un admin plateforme n'a aucune société assignée : jamais bloqué par la
+      // vérification multi-tenant (même règle que allowedTransitions).
+      if (
+        !this.isPlatformAdmin(caller) &&
+        order.companyId !== caller.companyId
+      ) {
+        throw new ForbiddenException('crossTenantAccessDenied');
+      }
 
-    order.status = status;
-    if (reason?.trim()) order.note = reason.trim();
-    const now = new Date();
-    if (status === OrderStatus.APPROVED) {
-      order.approvedAt = now;
-      order.approvedBy = caller.sub;
-    } else if (status === OrderStatus.REJECTED) {
-      order.rejectedAt = now;
-      order.rejectedBy = caller.sub;
-    } else if (status === OrderStatus.IN_PROGRESS) {
-      order.prepStartedAt = now;
-      order.preparedBy = caller.sub;
-      // Décrémente le stock (ingrédients pour un produit composé, produit
-      // lui-même sinon) au moment réel de préparation, pas à la confirmation
-      // (le stock a pu changer entre-temps). Rupture bloque la transition —
-      // le statut n'est pas persisté si decrementForPreparation rejette.
-      await this.decrementRecipeIngredients(order, caller.sub);
-    } else if (status === OrderStatus.READY) {
-      order.readyAt = now;
-      order.readyBy = caller.sub;
-    } else if (status === OrderStatus.DELIVERED) {
-      order.deliveredAt = now;
-      order.deliveredBy = caller.sub;
-    }
-    const saved = await this.orderRepo.save(order);
+      order.status = status;
+      if (reason?.trim()) order.note = reason.trim();
+      const now = new Date();
+      if (status === OrderStatus.APPROVED) {
+        order.approvedAt = now;
+        order.approvedBy = caller.sub;
+      } else if (status === OrderStatus.REJECTED) {
+        order.rejectedAt = now;
+        order.rejectedBy = caller.sub;
+        // Libère les réservations HELD (reserved -=, RELEASED) ; no-op si déjà
+        // consommé (filtre sur le statut de réservation, E3).
+        await releaseReservationsForOrder(manager, order.id);
+        // Quota restitué SEULEMENT si la préparation n'a jamais démarré (D12 :
+        // "non rendu si IN_PROGRESS+" — un rejet pour rupture en cours de
+        // préparation ne rend pas le quota déjà consommé).
+        if (!order.prepStartedAt) {
+          await restoreQuotaConsumptionsForOrder(manager, order.id);
+        }
+      } else if (status === OrderStatus.CANCELLED) {
+        order.cancelledAt = now;
+        order.cancelledBy = caller.sub;
+        // CANCELLED n'est atteignable QUE depuis PENDING/APPROVED (branche
+        // propriétaire d'allowedTransitions) → prepStartedAt est TOUJOURS null
+        // ici, contrairement à REJECTED : pas de garde à dupliquer.
+        await releaseReservationsForOrder(manager, order.id);
+        await restoreQuotaConsumptionsForOrder(manager, order.id);
+      } else if (status === OrderStatus.IN_PROGRESS) {
+        order.prepStartedAt = now;
+        order.preparedBy = caller.sub;
+        // Consomme les réservations HELD (quantity/reserved -=, CONSUMED) — plus
+        // jamais de rupture à la préparation, le stock était réservé à l'approbation.
+        await consumeReservationsForOrder(manager, order.id);
+      } else if (status === OrderStatus.READY) {
+        order.readyAt = now;
+        order.readyBy = caller.sub;
+      } else if (status === OrderStatus.DELIVERED) {
+        order.deliveredAt = now;
+        order.deliveredBy = caller.sub;
+      }
+
+      return manager.save(Order, order);
+    });
 
     // Notify employee via SMS + push FCM (TARHIB-9) — fire-and-forget,
     // don't block the response. orders.employee_id porte l'identité Keycloak
     // de l'appelant (cf. create), d'où la recherche keycloakId OU id.
     this.employeeRepo
       .findOne({
-        where: [{ keycloakId: order.employeeId }, { id: order.employeeId }],
+        where: [{ keycloakId: saved.employeeId }, { id: saved.employeeId }],
       })
       .then(async (employee) => {
         if (!employee) return;
         if (employee.phoneNumber) {
           await this.notificationsService.notifyOrderStatusChanged(
-            order.id,
+            saved.id,
             status,
             employee.phoneNumber,
           );
@@ -516,14 +767,14 @@ export class OrdersService {
           await this.notificationsService.sendPush(
             employee.fcmToken,
             'Tarhib',
-            `Commande #${order.id.slice(0, 8)} — nouveau statut : ${status}`,
-            { orderId: order.id, type: 'order-status' },
+            `Commande #${saved.id.slice(0, 8)} — nouveau statut : ${status}`,
+            { orderId: saved.id, type: 'order-status' },
           );
         }
       })
       .catch((err: unknown) =>
         this.logger.error(
-          `Notification failed for order ${order.id}: ${String(err)}`,
+          `Notification failed for order ${saved.id}: ${String(err)}`,
         ),
       );
 
@@ -531,9 +782,17 @@ export class OrdersService {
       orderId: saved.id,
       status: saved.status,
       branchId: saved.branchId,
+      employeeId: saved.employeeId,
+      companyId: saved.companyId,
     });
 
-    return this.toDto(saved);
+    // `saved` vient du QueryBuilder verrouillé (sans les lignes) — on recharge
+    // les lignes pour le DTO de retour.
+    const withLines = await this.orderRepo.findOne({
+      where: { id: saved.id },
+      relations: ['lines'],
+    });
+    return this.toDto(withLines ?? saved);
   }
 
   /**
@@ -550,7 +809,28 @@ export class OrdersService {
     );
   }
 
+  /**
+   * D13 : l'employé propriétaire peut annuler SA commande (PENDING/APPROVED
+   * → CANCELLED), tant que la préparation n'a pas démarré — grant ADDITIF,
+   * indépendant des permissions/rôle (superposé au résultat de
+   * roleBasedTransitions, jamais à la place).
+   */
   private allowedTransitions(
+    caller: JwtPayload,
+    current: OrderStatus,
+    orderEmployeeId: string,
+  ): OrderStatus[] {
+    const roleBased = this.roleBasedTransitions(caller, current);
+    const isOwner = caller.sub === orderEmployeeId;
+    const cancellable =
+      current === OrderStatus.PENDING || current === OrderStatus.APPROVED;
+    if (isOwner && cancellable) {
+      return [...new Set([...roleBased, OrderStatus.CANCELLED])];
+    }
+    return roleBased;
+  }
+
+  private roleBasedTransitions(
     caller: JwtPayload,
     current: OrderStatus,
   ): OrderStatus[] {
@@ -576,6 +856,7 @@ export class OrdersService {
         [OrderStatus.READY]: [OrderStatus.DELIVERED, OrderStatus.REJECTED],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
+        [OrderStatus.CANCELLED]: [],
       };
       return full[current] ?? [];
     }
@@ -588,6 +869,7 @@ export class OrdersService {
         [OrderStatus.READY]: [],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
+        [OrderStatus.CANCELLED]: [],
       };
       return approver[current] ?? [];
     }
@@ -604,6 +886,7 @@ export class OrdersService {
         [OrderStatus.READY]: canDeliver ? [OrderStatus.DELIVERED] : [],
         [OrderStatus.DELIVERED]: [],
         [OrderStatus.REJECTED]: [],
+        [OrderStatus.CANCELLED]: [],
       };
       return agent[current] ?? [];
     }
@@ -630,70 +913,23 @@ export class OrdersService {
     return orders.map((order) => this.toDto(order));
   }
 
-  private async incrementQuotaUsage(
-    caller: JwtPayload,
-    lines: Array<{ productId: string; quantity: number }>,
+  /**
+   * Consommation de quota LEGACY (employé sans rôle, table `quotas`) : incrément
+   * additif dans la transaction de commande, gardé advisory par le moteur de
+   * validation en amont (le chemin role-based passe par consumeQuotaAtomic).
+   */
+  private async incrementLegacyQuota(
     manager: EntityManager,
+    employeeId: string,
+    productId: string,
+    quantity: number,
   ): Promise<void> {
-    const quotaUsageRepo = manager.getRepository(EmployeeQuotaUsage);
-    const quotaRepo = manager.getRepository(Quota);
-    const today = new Date();
-    const periodStart = today.toISOString().slice(0, 10);
-    // Period end: end of current month
-    const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-      .toISOString()
-      .slice(0, 10);
-
-    if (caller.roleId) {
-      for (const line of lines) {
-        await quotaUsageRepo
-          .createQueryBuilder()
-          .insert()
-          .into(EmployeeQuotaUsage)
-          .values({
-            employeeId: caller.sub,
-            productId: line.productId,
-            companyId: caller.companyId,
-            periodStart,
-            periodEnd,
-            usedQuantity: line.quantity,
-          })
-          .orUpdate(
-            ['used_quantity'],
-            [
-              'employee_id',
-              'product_id',
-              'company_id',
-              'period_start',
-              'period_end',
-            ],
-          )
-          .execute()
-          .catch(() =>
-            quotaUsageRepo.query(
-              `UPDATE employee_quota_usage SET used_quantity = used_quantity + $1
-               WHERE employee_id = $2 AND product_id = $3 AND company_id = $4
-                 AND period_start <= CURRENT_DATE AND period_end >= CURRENT_DATE`,
-              [line.quantity, caller.sub, line.productId, caller.companyId],
-            ),
-          );
-      }
-      return;
-    }
-
-    // Legacy fallback
-    for (const line of lines) {
-      await quotaRepo
-        .createQueryBuilder()
-        .update()
-        .set({ usedQuantity: () => 'used_quantity + :qty' })
-        .where('employee_id = :empId', { empId: caller.sub })
-        .andWhere('product_id = :productId', { productId: line.productId })
-        .andWhere('period_start <= CURRENT_DATE')
-        .andWhere('period_end >= CURRENT_DATE')
-        .setParameter('qty', line.quantity)
-        .execute();
-    }
+    await manager.query(
+      `UPDATE quotas SET used_quantity = used_quantity + $1
+       WHERE employee_id = $2 AND product_id = $3
+         AND period_start <= CURRENT_DATE AND period_end >= CURRENT_DATE`,
+      [quantity, employeeId, productId],
+    );
   }
 
   private toDto(o: Order, employee?: Employee): OrderDto {
