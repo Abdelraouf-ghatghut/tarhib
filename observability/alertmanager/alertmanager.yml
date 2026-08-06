@@ -1,0 +1,20 @@
+# PR-2.3 — config de référence. Le receiver "null" absorbe les alertes sans
+# les envoyer nulle part : suffisant pour vérifier que les règles se
+# déclenchent (visible dans l'UI Alertmanager :9093), PAS pour une prod
+# réelle. Avant déploiement, remplacer par un vrai receiver (email, Slack,
+# PagerDuty...) avec des identifiants réels — voir la doc Alertmanager pour
+# la syntaxe du receiver choisi.
+route:
+  receiver: default
+  group_by: ["alertname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - match:
+        severity: critical
+      receiver: default
+      repeat_interval: 1h
+
+receivers:
+  - name: default

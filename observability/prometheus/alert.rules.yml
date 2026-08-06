@@ -1,0 +1,94 @@
+# PR-2.3 — seuils de départ, à ajuster avec de la donnée de prod réelle.
+# Documentés aussi dans PRODUCTION_RUNBOOK.md (section Monitoring and alerts).
+groups:
+  - name: tarhib-backend
+    rules:
+      - alert: BackendDown
+        expr: up{job="tarhib-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend injoignable par Prometheus depuis 1 min"
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status_code=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taux d'erreur 5xx > 5% sur 5 minutes"
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+          > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 de latence HTTP > 1s sur 5 minutes"
+
+      - alert: AuthFailureSpike
+        expr: |
+          sum(rate(http_requests_total{route="/auth/login",status_code="401"}[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pic d'échecs de connexion (>0.5/s sur 5 min) — brute-force possible"
+
+      - alert: DbQueryErrors
+        expr: increase(db_query_errors_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Plus de 5 erreurs de requête SQL en 5 minutes"
+
+      - alert: RedisErrorsElevated
+        expr: increase(redis_command_errors_total[5m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis en dégradation (best-effort, cf. PR-0.5) — vérifier la disponibilité"
+
+      - alert: WebsocketClientsDroppedToZero
+        expr: websocket_connected_clients == 0 and (max_over_time(websocket_connected_clients[10m]) > 5)
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Toutes les connexions WebSocket ont chuté à zéro après une charge réelle — possible crash/redémarrage"
+
+  - name: tarhib-host
+    rules:
+      - alert: HighCpuUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU hôte > 85% pendant 10 minutes"
+
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAM hôte > 90% utilisée pendant 10 minutes"
+
+      - alert: LowDiskSpace
+        expr: |
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 15
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Moins de 15% d'espace disque libre"
