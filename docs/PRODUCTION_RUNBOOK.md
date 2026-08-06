@@ -125,6 +125,24 @@ All thresholds are starting points — retune once real production traffic patte
 
 **Also monitor**: PostgreSQL connections/locks and slow queries via `pg_stat_statements` (PR-2.2, `apps/backend/scripts/ops-diagnostics.sql` — copy/paste queries for incident response, not an automated dashboard), queue depth, SLA breaches, failed push/SMS deliveries and mobile crashes (currently manual/log-based, not yet wired into the metrics stack above). Alert on migration failure and backup failure via the deployment/backup job's own exit code until the Pushgateway wiring above exists.
 
+## Redundancy (Phase 3 — conditional, partially implemented)
+
+Phase 3 is explicitly conditional in the plan: only engage it once measurements or business need justify it, and two-processes-on-one-VPS is not high availability. What's actually done vs. what remains real infrastructure work:
+
+**Done and verified for real (2026-08-05):**
+
+- _Socket.IO Redis adapter_ (`src/notifications/redis-io.adapter.ts`, wired in `main.ts`): without it, an event emitted by `emitOrderUpdate` on backend instance A never reaches a socket connected to instance B — each Socket.IO process only knows its own sockets. Verified with two real local backend instances (ports 3000/3001, same Postgres/Redis): a client connected to instance A received `order:new` for an order created via instance B's REST API (`apps/backend/loadtest/test-redis-io-adapter.mjs`, kept as a reusable regression check). No behavior change for a single-instance deployment.
+- _Redis Sentinel reference topology_ (`docker-compose.sentinel.yml`, 1 master + 2 replicas + 3 sentinels, isolated from the app's own dev Redis): real automatic failover verified — see the file's header comment for the two failure-injection methods tried (`docker stop` triggers Sentinel's defensive "tilt mode" via DNS teardown and does **not** fail over; `docker pause`, closer to a real hung/crashed process with the host still reachable, **does** fail over correctly in ~30s, and the old master is safely demoted on return, never reclaiming master automatically). **Not wired into the application** — `redis.module.ts` still connects directly to the single dev Redis; adopting this for real means replacing that connection with ioredis's `sentinels: [...]` option, worth doing only if Redis actually becomes a real availability risk.
+- _External image storage_: evaluated and **skipped, not applicable** — there is no existing local-disk image upload mechanism to migrate away from (`Product.imageUrl` is a bare string column with no multer/upload endpoint anywhere in the codebase today). Nothing to fix; revisit if an upload feature is ever built.
+
+**Out of reach from a coding session — real infrastructure, not implemented here:**
+
+- _Second VPS in a different failure domain_ — needs an actual second server/provider account.
+- _Two backend instances behind a load balancer_ — the Redis adapter above is the code-level prerequisite; the actual load balancer (nginx/HAProxy/cloud LB) and second running instance need real infra.
+- _Keycloak redundancy with a shared database_ — needs a second Keycloak node and a shared/replicated database, real infra.
+- _PostgreSQL with genuine guaranteed failover_ — needs either a managed provider's failover feature (see D11, still conditional/unvalidated) or self-hosted Patroni/repmgr across multiple real machines.
+- _Real node-loss tests_ — pulling power/network on an actual second node; meaningless to simulate with both "nodes" on one dev laptop.
+
 ## Mobile release checklist
 
 - validate EN and AR, RTL, light/dark themes and accessibility on supported Android/iOS devices;

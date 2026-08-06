@@ -1,0 +1,94 @@
+# Phase 3 - reference Redis Sentinel topology (1 master, 2 replicas, 3
+# sentinels), separate from the app's own Redis (docker-compose.yml) to
+# avoid disturbing it. Demonstrates and locally verifies automatic failover
+# - the application does NOT connect to this stack by default (redis.module.ts
+# still points at the single dev Redis); adopting Sentinel for real would mean
+# replacing the ioredis connection there with a `sentinels: [...]` config, only
+# worth doing if Redis actually becomes a real availability risk (Phase 3 is
+# explicitly conditional).
+#
+# Start:  docker compose -f docker-compose.sentinel.yml up -d
+# Verify: docker compose -f docker-compose.sentinel.yml exec sentinel-1 \
+#           redis-cli -p 26379 sentinel master tarhib-master
+#
+# Failover tested for real (2026-08-05), two different ways — the distinction
+# matters:
+#   - `docker stop redis-master` (tears down the container's network/DNS
+#     entry entirely) made Sentinel log repeated "Failed to resolve hostname"
+#     and enter "+tilt mode" — Sentinel deliberately does NOT fail over while
+#     tilted (its own defense against acting on unreliable state). This is a
+#     real Sentinel behavior, not a bug in this config, but it means a
+#     container-level `stop` is a poor proxy for "the master process died".
+#   - `docker pause redis-master` (freezes the process, keeps the network/DNS
+#     entry alive — closer to "process hung/host still up") triggered the
+#     real sequence: +sdown -> +odown (quorum 3/2) -> +switch-master, a
+#     replica correctly promoted within ~30s. `docker unpause` afterwards
+#     correctly demoted the old master to a replica of the new one — it never
+#     reclaimed master automatically, which is the important safety property.
+
+services:
+  redis-master:
+    image: redis:7
+    container_name: tarhib-redis-master
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6380:6379"
+    command: redis-server --port 6379
+
+  redis-replica-1:
+    image: redis:7
+    container_name: tarhib-redis-replica-1
+    restart: unless-stopped
+    depends_on:
+      - redis-master
+    command: redis-server --port 6379 --replicaof redis-master 6379
+
+  redis-replica-2:
+    image: redis:7
+    container_name: tarhib-redis-replica-2
+    restart: unless-stopped
+    depends_on:
+      - redis-master
+    command: redis-server --port 6379 --replicaof redis-master 6379
+
+  sentinel-1:
+    image: redis:7
+    container_name: tarhib-sentinel-1
+    restart: unless-stopped
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+    ports:
+      - "127.0.0.1:26379:26379"
+    volumes:
+      - ./observability/redis-sentinel/sentinel.conf:/tmp/sentinel-template.conf
+    entrypoint: sh -c "cp /tmp/sentinel-template.conf /etc/sentinel.conf && redis-sentinel /etc/sentinel.conf"
+
+  sentinel-2:
+    image: redis:7
+    container_name: tarhib-sentinel-2
+    restart: unless-stopped
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+    ports:
+      - "127.0.0.1:26380:26379"
+    volumes:
+      - ./observability/redis-sentinel/sentinel.conf:/tmp/sentinel-template.conf
+    entrypoint: sh -c "cp /tmp/sentinel-template.conf /etc/sentinel.conf && redis-sentinel /etc/sentinel.conf"
+
+  sentinel-3:
+    image: redis:7
+    container_name: tarhib-sentinel-3
+    restart: unless-stopped
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+    ports:
+      - "127.0.0.1:26381:26379"
+    volumes:
+      - ./observability/redis-sentinel/sentinel.conf:/tmp/sentinel-template.conf
+    entrypoint: sh -c "cp /tmp/sentinel-template.conf /etc/sentinel.conf && redis-sentinel /etc/sentinel.conf"
