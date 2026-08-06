@@ -1,6 +1,11 @@
 import { Form, Modal, Select } from "antd";
+import type { FormInstance } from "antd";
 import { useTranslation } from "react-i18next";
 import type { ZoneAction } from "./types";
+
+export interface SourceZoneFormValues {
+  sourceZone: string;
+}
 
 export function SourceZoneModal({
   zoneAction,
@@ -17,8 +22,8 @@ export function SourceZoneModal({
   allowedZones: readonly string[];
   onClose: () => void;
   loading: boolean;
-  onSubmit: (values: { sourceZone: string }) => void;
-  form: ReturnType<typeof Form.useForm>[0];
+  onSubmit: (values: SourceZoneFormValues) => void;
+  form: FormInstance<SourceZoneFormValues>;
 }) {
   const { t } = useTranslation();
 
