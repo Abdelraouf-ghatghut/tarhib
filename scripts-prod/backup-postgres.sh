@@ -5,11 +5,36 @@ umask 077
 BACKUP_DIR="/var/backups/tarhib/postgres"
 COMPOSE_FILE="/opt/tarhib/docker-compose.prod.yml"
 ENV_FILE="/opt/tarhib/.env.production"
+RESTIC_ENV="/home/tarhibadmin/.config/tarhib/restic-r2.env"
+POSTGRES_USER="tarhib"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
-cd /opt/tarhib
+source "$RESTIC_ENV"
 
-POSTGRES_USER="tarhib"
+cronitor_ping() {
+  local state="$1"
+
+  curl \
+    --fail \
+    --silent \
+    --show-error \
+    --max-time 20 \
+    "${CRONITOR_BACKUP_URL}?state=${state}" \
+    >/dev/null || true
+}
+
+handle_failure() {
+  local exit_code=$?
+  trap - ERR
+  cronitor_ping fail
+  exit "$exit_code"
+}
+
+trap handle_failure ERR
+
+cronitor_ping run
+
+cd /opt/tarhib
 
 for DATABASE_NAME in tarhib keycloak; do
   TARGET="$BACKUP_DIR/${DATABASE_NAME}_${TIMESTAMP}.dump"
@@ -24,10 +49,6 @@ for DATABASE_NAME in tarhib keycloak; do
 done
 
 find "$BACKUP_DIR" -type f -name '*.dump' -mtime +7 -delete
-
-RESTIC_ENV="/home/tarhibadmin/.config/tarhib/restic-r2.env"
-
-source "$RESTIC_ENV"
 
 restic backup \
   /var/backups/tarhib/postgres \
@@ -47,3 +68,6 @@ restic forget \
   --keep-weekly 8 \
   --keep-monthly 12 \
   --prune
+
+cronitor_ping complete
+trap - ERR
