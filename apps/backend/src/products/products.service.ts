@@ -114,6 +114,7 @@ export class ProductsService {
       unit: dto.unit ?? null,
       purchaseUnit: dto.purchaseUnit ?? null,
       unitsPerPurchase: dto.unitsPerPurchase ?? 1,
+      active: dto.active ?? true,
       ...this.deriveFlags(dto),
     });
     const saved = await this.repo.save(entity);
@@ -305,6 +306,7 @@ export class ProductsService {
       entity.purchaseUnit = dto.purchaseUnit ?? null;
     if (dto.unitsPerPurchase !== undefined)
       entity.unitsPerPurchase = dto.unitsPerPurchase;
+    if (dto.active !== undefined) entity.active = dto.active;
     const saved = await this.repo.save(entity);
     await this.publishCatalogVersion(saved.updatedAt);
     return this.toDto(saved);

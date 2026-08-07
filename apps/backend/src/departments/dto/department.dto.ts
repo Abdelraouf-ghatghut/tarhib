@@ -25,6 +25,11 @@ export class CreateDepartmentDto {
   @IsString()
   @IsOptional()
   nameEn?: string | null;
+
+  @ApiPropertyOptional({ default: true })
+  @IsBoolean()
+  @IsOptional()
+  active?: boolean;
 }
 
 export class DepartmentDto {

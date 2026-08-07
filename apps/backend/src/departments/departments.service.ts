@@ -17,6 +17,7 @@ export class DepartmentsService {
       branchId: dto.branchId,
       nameAr: dto.nameAr,
       nameEn: dto.nameEn?.trim() || null,
+      active: dto.active ?? true,
     });
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
@@ -47,6 +48,7 @@ export class DepartmentsService {
     if (!entity) throw new NotFoundException(`Department ${id} not found`);
     if (dto.nameAr !== undefined) entity.nameAr = dto.nameAr;
     if (dto.nameEn !== undefined) entity.nameEn = dto.nameEn?.trim() || null;
+    if (dto.active !== undefined) entity.active = dto.active;
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
   }

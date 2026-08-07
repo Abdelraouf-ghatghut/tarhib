@@ -44,6 +44,11 @@ export class CreateBranchDto {
   @IsUUID()
   @IsOptional()
   purchasingManagerId?: string;
+
+  @ApiPropertyOptional({ default: true })
+  @IsBoolean()
+  @IsOptional()
+  active?: boolean;
 }
 
 export class BranchDto {

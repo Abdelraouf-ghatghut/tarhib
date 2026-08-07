@@ -19,6 +19,7 @@ export class BranchesService {
       stockResponsibleId: dto.stockResponsibleId ?? null,
       orderValidatorId: dto.orderValidatorId ?? null,
       purchasingManagerId: dto.purchasingManagerId ?? null,
+      active: dto.active ?? true,
     });
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
@@ -47,6 +48,7 @@ export class BranchesService {
       entity.orderValidatorId = dto.orderValidatorId ?? null;
     if (dto.purchasingManagerId !== undefined)
       entity.purchasingManagerId = dto.purchasingManagerId ?? null;
+    if (dto.active !== undefined) entity.active = dto.active;
     const saved = await this.repo.save(entity);
     return this.toDto(saved);
   }

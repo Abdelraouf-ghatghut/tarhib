@@ -187,6 +187,11 @@ export class CreateProductDto {
   @IsOptional()
   unitCost?: number;
 
+  @ApiPropertyOptional({ default: true })
+  @IsBoolean()
+  @IsOptional()
+  active?: boolean;
+
   @ApiPropertyOptional({
     example: 'g',
     description: 'Unité de stock/recette ("g", "ml", "unité")',
