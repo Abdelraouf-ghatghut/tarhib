@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { permissionsApi, rolesApi, companiesApi, branchesApi } from "../lib/api";
 import { bilingualName } from "../lib/bilingualName";
+import { permissionLabel } from "../lib/permissionLabel";
+import { permissionGroupLabel } from "./roles/shared";
 
 const { Title, Text } = Typography;
 
@@ -95,7 +97,7 @@ export function ProfilePage() {
     const perm = byKey.get(key);
     acc[group] = [
       ...(acc[group] ?? []),
-      perm ? bilingualName(perm.nameAr, perm.nameEn, isAr) : key,
+      perm ? permissionLabel(perm, isAr) : key,
     ];
     return acc;
   }, {});
@@ -173,7 +175,7 @@ export function ProfilePage() {
                         marginBlockEnd: 6,
                       }}
                     >
-                      {group}
+                      {permissionGroupLabel(group, t)}
                     </Text>
                     <Space size={6} wrap>
                       {labels.map((label) => (

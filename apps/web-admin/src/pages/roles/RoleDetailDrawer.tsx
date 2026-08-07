@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   bilingualName,
   permissionGroupLabel,
+  permissionLabel,
   slaColor,
   slaLevelLabel,
   type Permission,
@@ -46,7 +47,7 @@ export function RoleDetailDrawer({
     const groups = role.permissions.reduce<Record<string, string[]>>((acc, key) => {
       const group = key.split(".")[0];
       const perm = byKey.get(key);
-      const label = perm ? bilingualName(perm.nameAr, perm.nameEn, isAr) : key;
+      const label = perm ? permissionLabel(perm, isAr) : key;
       acc[group] = [...(acc[group] ?? []), label];
       return acc;
     }, {});

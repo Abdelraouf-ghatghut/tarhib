@@ -1,4 +1,5 @@
 export { bilingualName } from "../../lib/bilingualName";
+export { permissionLabel } from "../../lib/permissionLabel";
 
 export interface RoleQuotaInput {
   productId: string;
@@ -75,6 +76,8 @@ const PERMISSION_GROUP_KEYS: Record<string, string> = {
   employee: "permissionGroupEmployee",
   favorite: "permissionGroupFavorite",
   finance: "permissionGroupFinance",
+  accounting: "permissionGroupAccounting",
+  hr: "permissionGroupHr",
   inventory: "permissionGroupInventory",
   meeting: "permissionGroupMeeting",
   notification: "permissionGroupNotification",

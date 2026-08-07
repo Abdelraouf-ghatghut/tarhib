@@ -263,6 +263,8 @@
   "permissionGroupEmployee": "الموظفون",
   "permissionGroupFavorite": "المفضلة",
   "permissionGroupFinance": "المالية",
+  "permissionGroupAccounting": "المحاسبة",
+  "permissionGroupHr": "الموارد البشرية",
   "permissionGroupInventory": "المخزون",
   "permissionGroupMeeting": "قاعات الاجتماعات",
   "permissionGroupNotification": "الإشعارات",

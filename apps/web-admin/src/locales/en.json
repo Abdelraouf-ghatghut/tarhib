@@ -263,6 +263,8 @@
   "permissionGroupEmployee": "Employees",
   "permissionGroupFavorite": "Favorites",
   "permissionGroupFinance": "Finance",
+  "permissionGroupAccounting": "Accounting",
+  "permissionGroupHr": "Human resources",
   "permissionGroupInventory": "Inventory",
   "permissionGroupMeeting": "Meeting rooms",
   "permissionGroupNotification": "Notifications",

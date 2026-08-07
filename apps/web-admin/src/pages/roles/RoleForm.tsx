@@ -29,6 +29,7 @@ import { useTranslation } from "react-i18next";
 import {
   bilingualName,
   permissionGroupLabel,
+  permissionLabel,
   slaColor,
   slaLevelLabel,
   type MeetingRoomLite,
@@ -168,7 +169,8 @@ export function RoleForm({
       return (
         p.key.toLowerCase().includes(needle) ||
         p.nameAr.includes(permSearch) ||
-        p.nameEn.toLowerCase().includes(needle)
+        p.nameEn.toLowerCase().includes(needle) ||
+        permissionLabel(p, isAr).toLowerCase().includes(needle)
       );
     });
     return Object.entries(
@@ -178,7 +180,7 @@ export function RoleForm({
         return acc;
       }, {}),
     );
-  }, [permissions, permSearch]);
+  }, [permissions, permSearch, isAr]);
 
   function togglePerm(key: string, checked: boolean) {
     setSelectedPerms((prev) => {
@@ -743,7 +745,7 @@ export function RoleForm({
                             checked={selectedPerms.has(p.key)}
                             onChange={(e) => togglePerm(p.key, e.target.checked)}
                           >
-                            {bilingualName(p.nameAr, p.nameEn, isAr)}
+                            {permissionLabel(p, isAr)}
                           </Checkbox>
                         ))}
                       </div>

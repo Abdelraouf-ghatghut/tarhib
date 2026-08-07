@@ -45,6 +45,7 @@ import { RoleDetailDrawer } from "./RoleDetailDrawer";
 import { SlaLevelsConfig } from "./SlaLevelsConfig";
 import {
   bilingualName,
+  permissionLabel,
   slaColor,
   slaLevelLabel,
   type Company,
@@ -267,7 +268,7 @@ export function RolesPage() {
                 const perm = permissions?.find((p) => p.key === key);
                 return (
                   <Tag key={key} bordered={false}>
-                    {perm ? bilingualName(perm.nameAr, perm.nameEn, isAr) : key}
+                    {perm ? permissionLabel(perm, isAr) : key}
                   </Tag>
                 );
               })}
@@ -422,7 +423,7 @@ export function RolesPage() {
             optionFilterProp="label"
             options={(permissions ?? []).map((p) => ({
               value: p.key,
-              label: bilingualName(p.nameAr, p.nameEn, isAr),
+              label: permissionLabel(p, isAr),
             }))}
           />
         )}
