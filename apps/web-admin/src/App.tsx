@@ -73,7 +73,7 @@ const SHADOW_LG_DARK = "0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba
 
 function AppInner() {
   const { i18n } = useTranslation();
-  const isAr = i18n.language === "ar";
+  const isAr = i18n.language.startsWith("ar");
   const { isDark } = useTheme();
   const palette = isDark ? DARK : LIGHT;
 

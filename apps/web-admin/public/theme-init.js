@@ -2,12 +2,7 @@
 (function () {
   try {
     var stored = localStorage.getItem("tarhib_theme");
-    var mode =
-      stored === "light" || stored === "dark"
-        ? stored
-        : window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
+    var mode = stored === "light" || stored === "dark" ? stored : "light";
     document.documentElement.dataset.theme = mode;
   } catch (e) {
     /* défaut light */

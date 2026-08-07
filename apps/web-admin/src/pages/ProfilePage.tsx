@@ -6,6 +6,7 @@ import { useAuth } from "../hooks/useAuth";
 import { permissionsApi, rolesApi, companiesApi, branchesApi } from "../lib/api";
 import { bilingualName } from "../lib/bilingualName";
 import { permissionLabel } from "../lib/permissionLabel";
+import { localizedPersonName } from "../lib/personName";
 import { permissionGroupLabel } from "./roles/shared";
 
 const { Title, Text } = Typography;
@@ -71,10 +72,7 @@ export function ProfilePage() {
 
   const label = (e: NamedEntity) => bilingualName(e.nameAr, e.nameEn, isAr);
 
-  const fullName =
-    isAr && firstNameAr
-      ? `${firstNameAr} ${lastNameAr ?? ""}`.trim()
-      : `${firstNameEn ?? ""} ${lastNameEn ?? ""}`.trim();
+  const fullName = localizedPersonName({ firstNameAr, firstNameEn, lastNameAr, lastNameEn }, isAr);
   const displayName = fullName || (email ?? "").split("@")[0];
 
   const roleEntity = roles.find((r) => r.id === roleId);
@@ -95,10 +93,7 @@ export function ProfilePage() {
   const permGroupsMap = permissions.reduce<Record<string, string[]>>((acc, key) => {
     const group = key.split(".")[0];
     const perm = byKey.get(key);
-    acc[group] = [
-      ...(acc[group] ?? []),
-      perm ? permissionLabel(perm, isAr) : key,
-    ];
+    acc[group] = [...(acc[group] ?? []), perm ? permissionLabel(perm, isAr) : key];
     return acc;
   }, {});
   const permGroups = Object.entries(permGroupsMap);

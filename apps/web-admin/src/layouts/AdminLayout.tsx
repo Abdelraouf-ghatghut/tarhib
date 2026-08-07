@@ -59,6 +59,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
+import { localizedPersonName } from "../lib/personName";
 import { RightRail } from "../components/RightRail";
 import { RAIL_WIDTH, useAdminNotifications } from "../hooks/useAdminNotifications";
 
@@ -79,8 +80,18 @@ interface NavGroup {
 
 export function AdminLayout() {
   const { t, i18n } = useTranslation();
-  const { logout, email, hasPermission, isSuperadmin, impersonation, stopImpersonation } =
-    useAuth();
+  const {
+    logout,
+    email,
+    firstNameAr,
+    firstNameEn,
+    lastNameAr,
+    lastNameEn,
+    hasPermission,
+    isSuperadmin,
+    impersonation,
+    stopImpersonation,
+  } = useAuth();
   const { isDark, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -321,7 +332,9 @@ export function AdminLayout() {
   }, [navGroups, location.pathname, navigate, t]);
 
   const siderWidth = collapsed ? (isMobile ? 0 : 72) : 240;
-  const displayName = (email ?? "user").split("@")[0];
+  const displayName =
+    localizedPersonName({ firstNameAr, firstNameEn, lastNameAr, lastNameEn }, isAr) ||
+    (email ?? "user").split("@")[0];
   const userMenu: MenuProps["items"] = [
     {
       key: "profile",
