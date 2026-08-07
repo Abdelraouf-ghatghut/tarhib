@@ -115,6 +115,40 @@ describe('AuthService.getCurrentUser', () => {
     };
     expect(await svc.getCurrentUser(payload)).toBe(payload);
   });
+
+  it('loads profile names with the resolved employee id, not the Keycloak sub', async () => {
+    const svc = await buildService(makeRedis(), makeKeycloak());
+    const employeeRepo = (
+      svc as unknown as {
+        employeeRepo: {
+          findOne: jest.Mock;
+        };
+      }
+    ).employeeRepo;
+    employeeRepo.findOne.mockResolvedValue({
+      firstNameAr: 'عبدالروؤف',
+      lastNameAr: 'الغطغوط',
+      firstNameEn: 'Abdelraouf',
+      lastNameEn: 'Ghatghut',
+      departmentId: null,
+    });
+    const payload: JwtPayload = {
+      sub: 'keycloak-user-id',
+      employeeId: '3ed9cd39-621a-46d1-a98d-860b6e4daa51',
+      email: 'ghatghut.abdelraouf@gmail.com',
+      role: EmployeeRole.EMPLOYEE,
+      companyId: '',
+      permissions: [],
+    };
+
+    await expect(svc.getCurrentUser(payload)).resolves.toMatchObject({
+      firstNameAr: 'عبدالروؤف',
+      lastNameAr: 'الغطغوط',
+    });
+    expect(employeeRepo.findOne).toHaveBeenCalledWith({
+      where: { id: payload.employeeId },
+    });
+  });
 });
 
 describe('AuthService.login (TARHIB-21)', () => {

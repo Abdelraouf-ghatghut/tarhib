@@ -101,8 +101,12 @@ export class AuthService {
   > {
     // Le JWT ne porte que les claims d'autorisation — le nom affiché dans le
     // profil vient de la fiche employé.
+    // `sub` is the Keycloak user id, not the employees primary key. The JWT
+    // strategy resolves and exposes the internal id as `employeeId`.
     const employee = await this.employeeRepo.findOne({
-      where: { id: payload.sub },
+      where: payload.employeeId
+        ? { id: payload.employeeId }
+        : [{ keycloakId: payload.sub }, { email: payload.email }],
     });
     if (!employee) return payload;
     return {
