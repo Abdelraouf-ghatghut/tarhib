@@ -67,6 +67,10 @@ export class EmployeesService {
     const firstNameEn = dto.firstNameEn?.trim() || dto.firstNameAr;
     const lastNameEn = dto.lastNameEn?.trim() || dto.lastNameAr;
 
+    const primaryRole = dto.roleId
+      ? await this.roleRepo.findOne({ where: { id: dto.roleId } })
+      : null;
+
     // Keycloak échoue, donc non-fatal)
     let keycloakId: string | null = null;
     if (dto.password) {
@@ -78,9 +82,13 @@ export class EmployeesService {
           lastNameEn,
         );
       } catch (err) {
-        this.logger.warn(
-          `Keycloak account not created for ${dto.email}: ${String(err)}`,
-        );
+        // A previous DB failure may have left the Keycloak account behind.
+        // Reattach it and reset the requested password instead of creating an
+        // employee that can never log in.
+        keycloakId = await this.keycloakService.findUserIdByEmail(dto.email);
+        if (!keycloakId) throw err;
+        await this.keycloakService.resetUserPassword(dto.email, dto.password);
+        this.logger.warn(`Reusing existing Keycloak account for ${dto.email}`);
       }
     }
 
@@ -96,6 +104,7 @@ export class EmployeesService {
       lastNameEn,
       email: dto.email,
       phoneNumber: dto.phoneNumber,
+      role: primaryRole?.nameEn?.trim() || primaryRole?.nameAr || 'employee',
       roleId: dto.roleId ?? null,
       scope: dto.scope ?? EmployeeScope.CLIENT,
       active: dto.active ?? true,

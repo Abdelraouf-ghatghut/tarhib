@@ -340,6 +340,23 @@ export class KeycloakService {
   }
 
   /** Create a new user in Keycloak and return the keycloakId (UUID). */
+  async findUserIdByEmail(email: string): Promise<string | null> {
+    const adminBase = this.config.get<string>(
+      'KEYCLOAK_ADMIN_URL',
+      'http://localhost:8080',
+    );
+    const realm = this.config.get<string>('KEYCLOAK_REALM', 'tarhib');
+    const adminToken = await this.getAdminToken(adminBase);
+    const { data: users } = await firstValueFrom(
+      this.http.get<{ id: string }[]>(
+        `${adminBase}/admin/realms/${realm}/users?email=${encodeURIComponent(email)}&exact=true`,
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      ),
+    );
+    return users[0]?.id ?? null;
+  }
+
+  /** Create a new user in Keycloak and return the keycloakId (UUID). */
   async createUser(
     email: string,
     password: string,

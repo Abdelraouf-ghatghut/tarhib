@@ -24,6 +24,8 @@ const mockRepo = () => ({
 
 const mockKeycloak = () => ({
   createUser: jest.fn().mockResolvedValue('kc-1'),
+  findUserIdByEmail: jest.fn().mockResolvedValue(null),
+  resetUserPassword: jest.fn().mockResolvedValue(undefined),
   revokeUserSessions: jest.fn().mockResolvedValue(undefined),
 });
 
@@ -47,6 +49,7 @@ describe('EmployeesService', () => {
   let service: EmployeesService;
   let repo: ReturnType<typeof mockRepo>;
   let keycloak: ReturnType<typeof mockKeycloak>;
+  let roleRepo: ReturnType<typeof mockRepo>;
   let expenseRepo: ReturnType<typeof mockRepo>;
   let periodRepo: ReturnType<typeof mockRepo>;
 
@@ -69,6 +72,12 @@ describe('EmployeesService', () => {
     service = module.get<EmployeesService>(EmployeesService);
     repo = module.get(getRepositoryToken(Employee));
     keycloak = module.get(KeycloakService);
+    roleRepo = module.get(getRepositoryToken(Role));
+    roleRepo.findOne.mockResolvedValue({
+      id: 'role-1',
+      nameAr: 'المدير العام',
+      nameEn: 'General Director',
+    });
     expenseRepo = module.get(getRepositoryToken(FinanceExpense));
     expenseRepo.findOne.mockResolvedValue(null);
     expenseRepo.create.mockImplementation((v: unknown) => v);
@@ -104,10 +113,33 @@ describe('EmployeesService', () => {
 
       const result = await service.create(dto);
       expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ roleId: 'role-1', scope: 'TARHIB' }),
+        expect.objectContaining({
+          role: 'General Director',
+          roleId: 'role-1',
+          scope: 'TARHIB',
+        }),
       );
       expect(result.roleId).toBe('role-1');
       expect(result.email).toBe('m.ali@co.com');
+    });
+
+    it('reattaches an existing Keycloak account after a previous DB failure', async () => {
+      repo.findOne.mockResolvedValue(null);
+      const entity = baseEmployee();
+      repo.create.mockReturnValue(entity);
+      repo.save.mockResolvedValue(entity);
+      keycloak.createUser.mockRejectedValue(new Error('409 Conflict'));
+      keycloak.findUserIdByEmail.mockResolvedValue('existing-kc-id');
+
+      await service.create({ ...dto, password: 'Secret123!' });
+
+      expect(keycloak.resetUserPassword).toHaveBeenCalledWith(
+        dto.email,
+        'Secret123!',
+      );
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ keycloakId: 'existing-kc-id' }),
+      );
     });
 
     it('should create the Keycloak account when a password is provided', async () => {
