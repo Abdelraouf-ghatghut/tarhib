@@ -14,9 +14,9 @@ const ARABIC_PERMISSION_LABELS: Record<string, string> = {
   "branch.manage": "إدارة الفروع",
   "employee.manage": "إدارة الموظفين",
   "employee.salary.manage": "إدارة رواتب الموظفين",
-  "employee.impersonate": "تسجيل الدخول كموظف",
+  "employee.impersonate": "تقمص دور موظف",
   "role.manage": "إدارة الأدوار",
-  "role.impersonate": "تجربة دور آخر",
+  "role.impersonate": "تقمص دور آخر",
   "report.view": "عرض التقارير",
   "procurement.cost.view": "عرض تكاليف المشتريات",
   "procurement.view": "عرض المشتريات",
@@ -97,4 +97,3 @@ export function permissionLabel(permission: LocalizedPermission, isArabic: boole
   }
   return permission.nameEn?.trim() ?? permission.nameAr?.trim() ?? permission.key;
 }
-

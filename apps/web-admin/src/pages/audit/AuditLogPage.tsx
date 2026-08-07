@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { DownloadOutlined } from "@ant-design/icons";
 import { auditApi } from "../../lib/api";
 import { exportToCsv } from "../../lib/exportCsv";
+import { auditActionCode, auditActionLabel, auditEntityLabel } from "../../lib/auditLabels";
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -28,6 +29,7 @@ const METHOD_COLORS: Record<string, string> = {
   PATCH: "blue",
   PUT: "blue",
   DELETE: "red",
+  IMPERSONATE: "purple",
 };
 
 const ENTITIES = [
@@ -48,6 +50,16 @@ const ENTITIES = [
   "sla-levels",
   "roles",
   "auth",
+  "accounting",
+  "finance",
+  "hr",
+  "cleaning-tasks",
+  "cleaning-stock",
+  "meeting-preparations",
+  "inventory-replenishments",
+  "notifications",
+  "registrations",
+  "audit",
 ];
 
 export default function AuditLogPage() {
@@ -90,15 +102,12 @@ export default function AuditLogPage() {
       width: 220,
       // action = "PATCH:procurement" → « تعديل — المشتريات »
       render: (action: string, row: AuditLog) => {
-        const method = action.split(":")[0];
-        const actionKey = `audit.action_${method}`;
-        const actionLabel = t(actionKey);
-        const entityLabel = t(`audit.entity_${row.entity}`, { defaultValue: row.entity });
+        const method = auditActionCode(action);
+        const actionLabel = auditActionLabel(action, t);
+        const entityLabel = auditEntityLabel(row.entity, t);
         return (
           <Space>
-            <Tag color={METHOD_COLORS[method] ?? "default"}>
-              {actionLabel === actionKey ? method : actionLabel}
-            </Tag>
+            <Tag color={METHOD_COLORS[method] ?? "default"}>{actionLabel}</Tag>
             <span>{entityLabel}</span>
           </Space>
         );
@@ -108,7 +117,7 @@ export default function AuditLogPage() {
       title: t("audit.entity"),
       dataIndex: "entity",
       width: 140,
-      render: (v: string) => <Tag>{t(`audit.entity_${v}`, { defaultValue: v })}</Tag>,
+      render: (v: string) => <Tag>{auditEntityLabel(v, t)}</Tag>,
     },
     {
       title: t("audit.entityId"),
@@ -186,7 +195,7 @@ export default function AuditLogPage() {
             placeholder={t("audit.filterEntity")}
             style={{ width: 180 }}
             options={ENTITIES.map((e) => ({
-              label: t(`audit.entity_${e}`, { defaultValue: e }),
+              label: auditEntityLabel(e, t),
               value: e,
             }))}
             onChange={(v) => {
@@ -230,8 +239,8 @@ export default function AuditLogPage() {
                     label: t("audit.date"),
                     value: (r) => dayjs(r.createdAt).format("YYYY-MM-DD HH:mm:ss"),
                   },
-                  { label: t("audit.action"), value: (r) => r.action },
-                  { label: t("audit.entity"), value: (r) => r.entity },
+                  { label: t("audit.action"), value: (r) => auditActionLabel(r.action, t) },
+                  { label: t("audit.entity"), value: (r) => auditEntityLabel(r.entity, t) },
                   { label: t("audit.entityId"), value: (r) => r.entityId },
                   { label: t("audit.user"), value: (r) => r.userEmail ?? r.userId },
                   { label: t("audit.ip"), value: (r) => r.ipAddress },

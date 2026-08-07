@@ -7,6 +7,7 @@ import { useAuth } from "../hooks/useAuth";
 import type { AdminNotification } from "../hooks/useAdminNotifications";
 import { RAIL_WIDTH } from "../hooks/useAdminNotifications";
 import { auditApi } from "../lib/api";
+import { auditEventLabel } from "../lib/auditLabels";
 
 const { Text } = Typography;
 
@@ -183,7 +184,7 @@ export function RightRail({
                       textOverflow: "ellipsis",
                     }}
                   >
-                    {a.action} · {a.entity}
+                    {auditEventLabel(a.action, a.entity, t)}
                   </Text>
                   <Text style={{ fontSize: 11.5, color: "var(--fg-body-subtle)" }}>
                     {relativeTime(a.createdAt, i18n.language)}
