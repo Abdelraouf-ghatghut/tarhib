@@ -81,7 +81,10 @@ export class GeneralDirectorBasePermissions1786300000000 implements MigrationInt
     for (const permission of GENERAL_DIRECTOR_PERMISSIONS) {
       await queryRunner.query(
         `INSERT INTO role_permissions (role_id, permission_key)
-         SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM permissions WHERE key = $2)
+         SELECT $1::uuid, $2::varchar
+         WHERE EXISTS (
+           SELECT 1 FROM permissions WHERE key = $2::varchar
+         )
          ON CONFLICT DO NOTHING`,
         [roleId, permission],
       );
