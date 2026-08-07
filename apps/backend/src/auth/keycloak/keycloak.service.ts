@@ -242,8 +242,9 @@ export class KeycloakService {
 
     // 4. Revoke all sessions (TARHIB-23 requirement)
     await firstValueFrom(
-      this.http.delete(
-        `${adminBase}/admin/realms/${realm}/users/${userId}/sessions`,
+      this.http.post(
+        `${adminBase}/admin/realms/${realm}/users/${userId}/logout`,
+        undefined,
         { headers: { Authorization: `Bearer ${adminToken}` } },
       ),
     );
@@ -298,8 +299,9 @@ export class KeycloakService {
       }
 
       await firstValueFrom(
-        this.http.delete(
-          `${adminBase}/admin/realms/${realm}/users/${users[0].id}/sessions`,
+        this.http.post(
+          `${adminBase}/admin/realms/${realm}/users/${users[0].id}/logout`,
+          undefined,
           { headers: { Authorization: `Bearer ${adminToken}` } },
         ),
       );
