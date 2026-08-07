@@ -24,3 +24,26 @@ for DATABASE_NAME in tarhib keycloak; do
 done
 
 find "$BACKUP_DIR" -type f -name '*.dump' -mtime +7 -delete
+
+RESTIC_ENV="/home/tarhibadmin/.config/tarhib/restic-r2.env"
+
+source "$RESTIC_ENV"
+
+restic backup \
+  /var/backups/tarhib/postgres \
+  /opt/tarhib/.env.production \
+  /opt/tarhib/Caddyfile \
+  /opt/tarhib/docker-compose.prod.yml \
+  /opt/tarhib/deployment/keycloak/tarhib-realm.json \
+  /opt/tarhib/deployment/postgres/01-create-keycloak.sql \
+  /opt/tarhib/scripts-prod/backup-postgres.sh \
+  /etc/systemd/system/tarhib-postgres-backup.service \
+  /etc/systemd/system/tarhib-postgres-backup.timer \
+  --tag tarhib-production
+
+restic forget \
+  --tag tarhib-production \
+  --keep-daily 30 \
+  --keep-weekly 8 \
+  --keep-monthly 12 \
+  --prune
