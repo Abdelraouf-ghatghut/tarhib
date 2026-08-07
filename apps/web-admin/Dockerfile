@@ -9,7 +9,7 @@
 # doc Vite elle-même (le type-check n'est pas requis pour produire un bundle
 # fonctionnel). Ne dispense pas de corriger les erreurs tsc existantes.
 
-FROM node:20.11.0-alpine AS base
+FROM node:22-alpine AS base
 WORKDIR /app
 # Voir apps/backend/Dockerfile pour le détail — désactive proprement le hook
 # "prepare": "husky" du package.json racine (pas de .git dans ce contexte).

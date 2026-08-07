@@ -1,0 +1,32 @@
+tarhib.ly, www.tarhib.ly {
+	redir https://admin.tarhib.ly{uri} permanent
+}
+
+admin.tarhib.ly {
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+	reverse_proxy web-admin:8080
+}
+
+api.tarhib.ly {
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		-Server
+	}
+	reverse_proxy backend:3000
+}
+
+auth.tarhib.ly {
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	reverse_proxy keycloak:8080
+}

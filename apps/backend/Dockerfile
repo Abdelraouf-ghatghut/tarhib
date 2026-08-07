@@ -6,7 +6,7 @@
 # package.json racine pour que le lockfile résolve correctement, même si
 # seul apps/backend est réellement compilé/exécuté ici.
 
-FROM node:20.11.0-alpine AS base
+FROM node:22-alpine AS base
 WORKDIR /app
 # Le package.json racine déclare "prepare": "husky" — sans .git dans le
 # contexte de build, husky se dégrade proprement (voir sa propre doc Docker/CI),
@@ -37,11 +37,11 @@ COPY apps/backend apps/backend
 RUN npm run build -w apps/backend
 
 FROM base AS prod-deps
-RUN npm ci --omit=dev
+RUN npm pkg delete scripts.prepare && npm ci --omit=dev
 
 # Image finale : seuls dist/ + node_modules de prod, jamais les sources TS
 # ni les devDependencies (nest-cli, typescript, jest, eslint...).
-FROM node:20.11.0-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup -S tarhib && adduser -S tarhib -G tarhib
