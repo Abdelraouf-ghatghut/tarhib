@@ -192,6 +192,14 @@ export class EmployeesService {
       if (dup) throw new ConflictException('phoneAlreadyRegistered');
     }
 
+    const previousEmail = entity.email;
+    const emailChanged = dto.email !== undefined && dto.email !== previousEmail;
+    let keycloakEmailUpdated = false;
+    if (emailChanged && entity.keycloakId) {
+      await this.keycloakService.updateUserEmail(entity.keycloakId, dto.email!);
+      keycloakEmailUpdated = true;
+    }
+
     if (dto.firstNameAr !== undefined) entity.firstNameAr = dto.firstNameAr;
     if (dto.firstNameEn !== undefined)
       entity.firstNameEn = dto.firstNameEn?.trim() || entity.firstNameAr;
@@ -222,10 +230,35 @@ export class EmployeesService {
       entity.salary = dto.salary ?? null;
     }
     if (dto.hireDate !== undefined) entity.hireDate = dto.hireDate ?? null;
-    const saved = await this.repo.save(entity);
+    let saved: Employee;
+    try {
+      saved = await this.repo.save(entity);
+    } catch (err) {
+      // L'appel Keycloak est externe à la transaction PostgreSQL. Si la DB
+      // refuse finalement la sauvegarde, restaurer l'identifiant précédent
+      // pour ne pas laisser les deux systèmes désynchronisés.
+      if (keycloakEmailUpdated && entity.keycloakId) {
+        try {
+          await this.keycloakService.updateUserEmail(
+            entity.keycloakId,
+            previousEmail,
+          );
+        } catch (rollbackErr) {
+          this.logger.error(
+            `Keycloak email rollback failed for employee ${entity.id}: ${String(rollbackErr)}`,
+          );
+        }
+      }
+      throw err;
+    }
     // Rôle/société/branche/statut ont pu changer : le profil d'accès mis en
     // cache (PR-1.0) serait sinon périmé jusqu'à son TTL.
     await this.accessCache.invalidate(saved.keycloakId);
+    if (emailChanged && saved.keycloakId) {
+      // Les jetons existants contiennent encore l'ancien e-mail. Leur
+      // révocation force une reconnexion cohérente avec le nouvel identifiant.
+      await this.keycloakService.revokeUserSessions(saved.email);
+    }
     await this.syncCurrentMonthSalaryExpense(saved);
     return this.toDto(saved);
   }

@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -356,6 +357,55 @@ export class KeycloakService {
       ),
     );
     return users[0]?.id ?? null;
+  }
+
+  /**
+   * Synchronise l'identifiant de connexion et l'adresse e-mail d'un compte
+   * existant. Le keycloakId est utilisé plutôt que l'ancien e-mail afin que
+   * le lien reste fiable même pendant le changement d'identifiant.
+   */
+  async updateUserEmail(keycloakId: string, email: string): Promise<void> {
+    const adminBase = this.config.get<string>(
+      'KEYCLOAK_ADMIN_URL',
+      'http://localhost:8080',
+    );
+    const realm = this.config.get<string>('KEYCLOAK_REALM', 'tarhib');
+    const adminToken = await this.getAdminToken(adminBase);
+    const headers = { Authorization: `Bearer ${adminToken}` };
+
+    const { data: matches } = await firstValueFrom(
+      this.http.get<{ id: string }[]>(
+        `${adminBase}/admin/realms/${realm}/users?email=${encodeURIComponent(email)}&exact=true`,
+        { headers },
+      ),
+    );
+    if (matches.some((user) => user.id !== keycloakId)) {
+      throw new ConflictException('emailAlreadyRegistered');
+    }
+
+    try {
+      await firstValueFrom(
+        this.http.put(
+          `${adminBase}/admin/realms/${realm}/users/${keycloakId}`,
+          { username: email, email, emailVerified: true },
+          { headers },
+        ),
+      );
+    } catch (err: unknown) {
+      const status =
+        err &&
+        typeof err === 'object' &&
+        'response' in err &&
+        err.response &&
+        typeof err.response === 'object' &&
+        'status' in err.response
+          ? (err.response as { status: number }).status
+          : 0;
+      if (status === 409) {
+        throw new ConflictException('emailAlreadyRegistered');
+      }
+      throw err;
+    }
   }
 
   /** Create a new user in Keycloak and return the keycloakId (UUID). */

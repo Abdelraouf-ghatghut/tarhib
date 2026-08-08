@@ -25,6 +25,7 @@ const mockRepo = () => ({
 const mockKeycloak = () => ({
   createUser: jest.fn().mockResolvedValue('kc-1'),
   findUserIdByEmail: jest.fn().mockResolvedValue(null),
+  updateUserEmail: jest.fn().mockResolvedValue(undefined),
   resetUserPassword: jest.fn().mockResolvedValue(undefined),
   revokeUserSessions: jest.fn().mockResolvedValue(undefined),
 });
@@ -174,6 +175,60 @@ describe('EmployeesService', () => {
       repo.findOne.mockResolvedValue(null);
       await expect(service.findOne('unknown')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('update', () => {
+    it('synchronizes a changed email with Keycloak before saving it', async () => {
+      const entity = { ...baseEmployee(), keycloakId: 'kc-1' };
+      repo.findOne.mockResolvedValueOnce(entity).mockResolvedValueOnce(null);
+      repo.save.mockResolvedValue({ ...entity, email: 'new@co.com' });
+
+      const result = await service.update('emp-1', { email: 'new@co.com' });
+
+      expect(keycloak.updateUserEmail).toHaveBeenCalledWith(
+        'kc-1',
+        'new@co.com',
+      );
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'new@co.com' }),
+      );
+      expect(keycloak.revokeUserSessions).toHaveBeenCalledWith('new@co.com');
+      expect(result.email).toBe('new@co.com');
+    });
+
+    it('does not change PostgreSQL when Keycloak rejects the new email', async () => {
+      const entity = { ...baseEmployee(), keycloakId: 'kc-1' };
+      repo.findOne.mockResolvedValueOnce(entity).mockResolvedValueOnce(null);
+      keycloak.updateUserEmail.mockRejectedValue(
+        new ConflictException('emailAlreadyRegistered'),
+      );
+
+      await expect(
+        service.update('emp-1', { email: 'taken@co.com' }),
+      ).rejects.toThrow(ConflictException);
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(entity.email).toBe('m.ali@co.com');
+    });
+
+    it('restores the Keycloak email when PostgreSQL saving fails', async () => {
+      const entity = { ...baseEmployee(), keycloakId: 'kc-1' };
+      repo.findOne.mockResolvedValueOnce(entity).mockResolvedValueOnce(null);
+      repo.save.mockRejectedValue(new Error('database unavailable'));
+
+      await expect(
+        service.update('emp-1', { email: 'new@co.com' }),
+      ).rejects.toThrow('database unavailable');
+      expect(keycloak.updateUserEmail).toHaveBeenNthCalledWith(
+        1,
+        'kc-1',
+        'new@co.com',
+      );
+      expect(keycloak.updateUserEmail).toHaveBeenNthCalledWith(
+        2,
+        'kc-1',
+        'm.ali@co.com',
       );
     });
   });
