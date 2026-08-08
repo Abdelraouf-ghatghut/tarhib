@@ -122,6 +122,10 @@ export class PayslipService {
     );
   }
 
+  async findByExpenseId(expenseId: string): Promise<Payslip | null> {
+    return this.payslipRepo.findOne({ where: { expenseId } });
+  }
+
   async findAllPayslips(filters: {
     employeeId?: string;
     period?: string;

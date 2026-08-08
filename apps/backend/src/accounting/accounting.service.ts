@@ -449,7 +449,7 @@ export class AccountingService {
     incomeTaxAmount: number;
     stampDutyAmount: number;
     netPay: number;
-  }): Promise<void> {
+  }): Promise<boolean> {
     try {
       const grossAccount = await this.getAccountByCode('641000');
       const employerChargeAccount = await this.getAccountByCode('645000');
@@ -494,10 +494,12 @@ export class AccountingService {
         sourceId: payslip.id,
         lines,
       });
+      return true;
     } catch (err) {
       this.logger.error(
         `Failed to post payroll entry for payslip ${payslip.id}: ${String(err)}`,
       );
+      return false;
     }
   }
 

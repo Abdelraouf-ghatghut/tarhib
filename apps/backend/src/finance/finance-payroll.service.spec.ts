@@ -43,11 +43,13 @@ const mockPayslipService = () => ({
     stampDutyAmount: 8,
     netPay: 2500,
   }),
+  findByExpenseId: jest.fn().mockResolvedValue(null),
   createPayslip: jest.fn().mockResolvedValue({ id: 'payslip-1' }),
 });
 
 const mockAccountingService = () => ({
-  postPayrollEntry: jest.fn().mockResolvedValue(undefined),
+  postPayrollEntry: jest.fn().mockResolvedValue(true),
+  removeExpenseEntry: jest.fn().mockResolvedValue(undefined),
 });
 
 const baseEmployee = (overrides: Record<string, unknown> = {}) => ({
@@ -166,12 +168,51 @@ describe('FinancePayrollService', () => {
 
   it('skips employees who already have a row for that period', async () => {
     employeeRepo.find.mockResolvedValue([baseEmployee()]);
-    expenseRepo.findOne.mockResolvedValue({ id: 'exp-1' });
+    expenseRepo.findOne.mockResolvedValue({ id: 'exp-1', amount: 3000 });
+    payslipService.findByExpenseId.mockResolvedValue({ id: 'payslip-1' });
 
     const result = await service.runPayroll('2026-07');
 
     expect(result).toEqual({ created: 0, skipped: 1 });
     expect(expenseRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('creates a missing payslip from an existing salary expense without duplicating it', async () => {
+    employeeRepo.find.mockResolvedValue([baseEmployee()]);
+    expenseRepo.findOne.mockResolvedValue({ id: 'exp-1', amount: '2750.50' });
+    payslipService.findByExpenseId.mockResolvedValue(null);
+
+    const result = await service.runPayroll('2026-07');
+
+    expect(result).toEqual({ created: 1, skipped: 0 });
+    expect(expenseRepo.save).not.toHaveBeenCalled();
+    expect(payslipService.compute).toHaveBeenCalledWith(
+      2750.5,
+      expect.any(Object),
+    );
+    expect(payslipService.createPayslip).toHaveBeenCalledWith(
+      expect.objectContaining({
+        employeeId: 'emp-1',
+        period: '2026-07',
+        grossSalary: 2750.5,
+        expenseId: 'exp-1',
+      }),
+    );
+    expect(accountingService.postPayrollEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'payslip-1', grossSalary: 2750.5 }),
+    );
+    expect(accountingService.removeExpenseEntry).toHaveBeenCalledWith('exp-1');
+  });
+
+  it('keeps the existing expense entry when detailed payroll accounting fails', async () => {
+    employeeRepo.find.mockResolvedValue([baseEmployee()]);
+    expenseRepo.findOne.mockResolvedValue({ id: 'exp-1', amount: 3000 });
+    payslipService.findByExpenseId.mockResolvedValue(null);
+    accountingService.postPayrollEntry.mockResolvedValue(false);
+
+    await service.runPayroll('2026-07');
+
+    expect(accountingService.removeExpenseEntry).not.toHaveBeenCalled();
   });
 
   it('skips employees without a salary', async () => {

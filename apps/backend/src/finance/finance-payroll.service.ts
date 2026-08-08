@@ -108,40 +108,53 @@ export class FinancePayrollService {
         continue;
       }
 
-      const existing = await this.expenseRepo.findOne({
+      const existingExpense = await this.expenseRepo.findOne({
         where: {
           employeeId: employee.id,
           category: ExpenseCategory.SALARIES,
           payrollPeriod: period,
         },
       });
-      if (existing) {
-        skipped++;
-        continue;
+      if (existingExpense) {
+        const existingPayslip = await this.payslipService.findByExpenseId(
+          existingExpense.id,
+        );
+        if (existingPayslip) {
+          skipped++;
+          continue;
+        }
       }
 
-      const amount = computeProratedSalary(salary, employee.hireDate, period);
+      // EmployeesService peut avoir créé la dépense du mois immédiatement
+      // lors de la saisie du salaire. Dans ce cas, elle est la source de
+      // vérité : la réutiliser et compléter le bulletin manquant au lieu de
+      // considérer à tort toute la paie comme déjà traitée.
+      const amount = existingExpense
+        ? Number(existingExpense.amount)
+        : computeProratedSalary(salary, employee.hireDate, period);
       if (amount === null) {
         skipped++; // prise de fonction postérieure à ce mois
         continue;
       }
 
       const label = `${employee.firstNameEn} ${employee.lastNameEn}`.trim();
-      const savedExpense = await this.expenseRepo.save(
-        this.expenseRepo.create({
-          category: ExpenseCategory.SALARIES,
-          label: label || employee.email,
-          amount,
-          expenseDate: `${period}-01`,
-          // Le site d'affectation (companyId) est une mission, pas un lien
-          // financier : le salaire d'un employé Tarhib ne dépend d'aucune
-          // société cliente (même règle appliquée par FinanceService).
-          companyId: null,
-          employeeId: employee.id,
-          payrollPeriod: period,
-          notes: null,
-        }),
-      );
+      const savedExpense =
+        existingExpense ??
+        (await this.expenseRepo.save(
+          this.expenseRepo.create({
+            category: ExpenseCategory.SALARIES,
+            label: label || employee.email,
+            amount,
+            expenseDate: `${period}-01`,
+            // Le site d'affectation (companyId) est une mission, pas un lien
+            // financier : le salaire d'un employé Tarhib ne dépend d'aucune
+            // société cliente (même règle appliquée par FinanceService).
+            companyId: null,
+            employeeId: employee.id,
+            payrollPeriod: period,
+            notes: null,
+          }),
+        ));
       created++;
 
       // Bulletin de paie + écriture comptable — fire-and-forget non-fatal :
@@ -156,12 +169,20 @@ export class FinancePayrollService {
           expenseId: savedExpense.id,
           computed,
         });
-        await this.accountingService.postPayrollEntry({
-          id: payslip.id,
-          date: `${period}-01`,
-          grossSalary: amount,
-          ...computed,
-        });
+        const payrollEntryPosted =
+          await this.accountingService.postPayrollEntry({
+            id: payslip.id,
+            date: `${period}-01`,
+            grossSalary: amount,
+            ...computed,
+          });
+        if (existingExpense && payrollEntryPosted) {
+          // Une dépense créée depuis l'écran Finance peut déjà avoir une
+          // écriture EXPENSE simplifiée. Le bulletin produit l'écriture PAYROLL
+          // détaillée qui la remplace ; ne supprimer l'ancienne qu'après le
+          // succès de la nouvelle pour ne jamais perdre la comptabilisation.
+          await this.accountingService.removeExpenseEntry(existingExpense.id);
+        }
       } catch (err) {
         this.logger.error(
           `Failed to generate payslip for employee ${employee.id}, period ${period}: ${String(err)}`,

@@ -113,4 +113,16 @@ describe('PayslipService', () => {
       );
     });
   });
+
+  describe('findByExpenseId', () => {
+    it('returns the payslip linked to an existing salary expense', async () => {
+      const payslip = { id: 'payslip-1', expenseId: 'exp-1' };
+      payslipRepo.findOne.mockResolvedValue(payslip);
+
+      await expect(service.findByExpenseId('exp-1')).resolves.toBe(payslip);
+      expect(payslipRepo.findOne).toHaveBeenCalledWith({
+        where: { expenseId: 'exp-1' },
+      });
+    });
+  });
 });
