@@ -688,6 +688,8 @@
   "jobTitle": "Job title",
   "baseSalary": "Base salary",
   "contractStatusHr_ACTIVE": "Active",
+  "contractType_CDI": "Indefinite-term contract",
+  "contractType_CDD": "Fixed-term contract",
   "contractStatusHr_ENDED": "Ended",
   "contractStatusHr_RENEWED": "Renewed",
   "contractDocument": "Scanned contract",
