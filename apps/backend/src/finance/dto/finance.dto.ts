@@ -118,6 +118,7 @@ export class FinanceContractDto {
   })
   isExpired!: boolean;
   @ApiProperty({ nullable: true }) notes!: string | null;
+  @ApiProperty({ nullable: true }) documentUrl!: string | null;
 }
 
 // ---- Expenses ----

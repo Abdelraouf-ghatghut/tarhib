@@ -4,22 +4,30 @@ import {
   Delete,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Patch,
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import {
   RequireAnyPermission,
@@ -27,6 +35,10 @@ import {
 } from '../auth/decorators/require-permission.decorator.js';
 import { FinanceService } from './finance.service.js';
 import { FinancePayrollService } from './finance-payroll.service.js';
+import {
+  ContractDocumentService,
+  type ContractUpload,
+} from '../hr/contract-document.service.js';
 import {
   CorrectFinanceExpenseDto,
   CreateFinanceAccountDto,
@@ -58,6 +70,7 @@ export class FinanceController {
   constructor(
     private readonly service: FinanceService,
     private readonly payrollService: FinancePayrollService,
+    private readonly contractDocuments: ContractDocumentService,
   ) {}
 
   /** Salaire : donnée sensible, jamais exposée (même en liste ou agrégée)
@@ -106,8 +119,73 @@ export class FinanceController {
   @RequirePermission('finance.manage')
   @HttpCode(204)
   @ApiResponse({ status: 204 })
-  removeContract(@Param('id') id: string): Promise<void> {
-    return this.service.removeContract(id);
+  async removeContract(@Param('id') id: string): Promise<void> {
+    const contract = await this.service.findContractEntity(id);
+    await this.service.removeContract(id);
+    await this.contractDocuments.remove(contract.documentRef);
+  }
+
+  @Post('contracts/:id/document')
+  @RequirePermission('finance.manage')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { files: 1, fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  async uploadContractDocument(
+    @Param('id') id: string,
+    @UploadedFile() file: ContractUpload,
+  ): Promise<FinanceContractDto> {
+    const contract = await this.service.findContractEntity(id);
+    const previousReference = contract.documentRef;
+    const newReference = await this.contractDocuments.store(id, file);
+    try {
+      const updated = await this.service.setContractDocument(id, newReference);
+      await this.contractDocuments.remove(previousReference);
+      return updated;
+    } catch (err) {
+      await this.contractDocuments.remove(newReference);
+      throw err;
+    }
+  }
+
+  @Get('contracts/:id/document')
+  async downloadContractDocument(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const contract = await this.service.findContractEntity(id);
+    if (!contract.documentRef) {
+      throw new NotFoundException('contractDocumentNotFound');
+    }
+    const document = await this.contractDocuments.read(contract.documentRef);
+    response.set({
+      'Content-Type': document.contentType,
+      'Content-Disposition': `inline; filename="commercial-contract-${id}.${document.extension}"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return new StreamableFile(document.buffer);
+  }
+
+  @Delete('contracts/:id/document')
+  @RequirePermission('finance.manage')
+  async deleteContractDocument(
+    @Param('id') id: string,
+  ): Promise<FinanceContractDto> {
+    const contract = await this.service.findContractEntity(id);
+    const reference = contract.documentRef;
+    const updated = await this.service.setContractDocument(id, null);
+    await this.contractDocuments.remove(reference);
+    return updated;
   }
 
   // ---- Expenses ----

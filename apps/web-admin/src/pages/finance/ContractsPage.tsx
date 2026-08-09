@@ -15,13 +15,21 @@ import {
   message,
   Tag,
   Typography,
+  Upload,
 } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  EyeOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
 import dayjs from "dayjs";
 import { financeApi, companiesApi } from "../../lib/api";
 import { getErrorMessage } from "../../lib/errors";
 import { bilingualName } from "../../lib/bilingualName";
 import { useAuth } from "../../hooks/useAuth";
+import { compressScannedImage } from "../../lib/contractDocuments";
 
 const { Title } = Typography;
 
@@ -42,6 +50,7 @@ interface Contract {
   status: "DRAFT" | "ACTIVE" | "CANCELLED";
   isExpired: boolean;
   notes: string | null;
+  documentUrl: string | null;
 }
 
 const STATUS_COLOR: Record<Contract["status"], string> = {
@@ -60,6 +69,7 @@ export function ContractsPage() {
   const [form] = Form.useForm();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Contract | null>(null);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
 
   const { data: companies = [] } = useQuery({
     queryKey: ["companies"],
@@ -82,17 +92,30 @@ export function ContractsPage() {
         startDate: dayjs(values.startDate as dayjs.Dayjs).format("YYYY-MM-DD"),
         endDate: dayjs(values.endDate as dayjs.Dayjs).format("YYYY-MM-DD"),
       };
-      return editing
+      const response = editing
         ? financeApi.contracts.update(editing.id, payload)
         : financeApi.contracts.create(payload);
+      const saved = await response;
+      let documentUploadFailed = false;
+      if (documentFile) {
+        try {
+          const compressed = await compressScannedImage(documentFile);
+          await financeApi.contracts.uploadDocument(saved.data.id, compressed);
+        } catch {
+          documentUploadFailed = true;
+        }
+      }
+      return { documentUploadFailed };
     },
-    onSuccess: () => {
-      message.success(t("saved"));
+    onSuccess: ({ documentUploadFailed }) => {
+      if (documentUploadFailed) message.warning(t("contractSavedDocumentFailed"));
+      else message.success(t("saved"));
       queryClient.invalidateQueries({ queryKey: ["finance", "contracts"] });
       queryClient.invalidateQueries({ queryKey: ["finance", "overview"] });
       setModalOpen(false);
       form.resetFields();
       setEditing(null);
+      setDocumentFile(null);
     },
     onError: (err) => message.error(getErrorMessage(err, t)),
   });
@@ -110,13 +133,30 @@ export function ContractsPage() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
+    setDocumentFile(null);
     setModalOpen(true);
   };
 
   const openEdit = (c: Contract) => {
     setEditing(c);
+    setDocumentFile(null);
     form.setFieldsValue({ ...c, startDate: dayjs(c.startDate), endDate: dayjs(c.endDate) });
     setModalOpen(true);
+  };
+
+  const openDocument = async (contract: Contract) => {
+    const preview = window.open("about:blank", "_blank");
+    if (preview) preview.opener = null;
+    try {
+      const response = await financeApi.contracts.downloadDocument(contract.id);
+      const url = URL.createObjectURL(response.data as Blob);
+      if (preview) preview.location.href = url;
+      else window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      preview?.close();
+      message.error(getErrorMessage(err, t));
+    }
   };
 
   const columns = [
@@ -145,6 +185,19 @@ export function ContractsPage() {
           {r.isExpired && <Tag color="orange">{t("contractStatus_EXPIRED")}</Tag>}
         </Space>
       ),
+    },
+    {
+      title: t("contractDocument"),
+      dataIndex: "documentUrl",
+      key: "documentUrl",
+      render: (value: string | null, contract: Contract) =>
+        value ? (
+          <Button size="small" icon={<EyeOutlined />} onClick={() => void openDocument(contract)}>
+            {t("viewDocument")}
+          </Button>
+        ) : (
+          <Tag>{t("noDocument")}</Tag>
+        ),
     },
     ...(canManage
       ? [
@@ -213,6 +266,7 @@ export function ContractsPage() {
         onCancel={() => {
           setModalOpen(false);
           setEditing(null);
+          setDocumentFile(null);
           form.resetFields();
         }}
         onOk={() => form.submit()}
@@ -261,6 +315,39 @@ export function ContractsPage() {
           </Form.Item>
           <Form.Item name="notes" label={t("notes")}>
             <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item label={t("contractDocument")} extra={t("contractDocumentHint")}>
+            <Upload
+              accept="application/pdf,image/jpeg,image/png"
+              maxCount={1}
+              beforeUpload={(file) => {
+                if (file.size > 15 * 1024 * 1024) {
+                  message.error(t("contractDocumentTooLarge"));
+                  return Upload.LIST_IGNORE;
+                }
+                setDocumentFile(file as File);
+                return false;
+              }}
+              onRemove={() => {
+                setDocumentFile(null);
+                return true;
+              }}
+              fileList={
+                documentFile
+                  ? [
+                      {
+                        uid: "commercial-contract-document",
+                        name: documentFile.name,
+                        status: "done",
+                      },
+                    ]
+                  : []
+              }
+            >
+              <Button icon={<UploadOutlined />}>
+                {editing?.documentUrl ? t("replaceDocument") : t("selectDocument")}
+              </Button>
+            </Upload>
           </Form.Item>
         </Form>
       </Modal>

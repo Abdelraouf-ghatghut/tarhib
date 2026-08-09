@@ -74,6 +74,7 @@ export class FinanceService {
       billingFrequency: dto.billingFrequency,
       status: dto.status ?? ContractStatus.DRAFT,
       notes: dto.notes ?? null,
+      documentRef: null,
     });
     const saved = await this.contractRepo.save(entity);
 
@@ -110,6 +111,21 @@ export class FinanceService {
     const result = await this.contractRepo.delete(id);
     if (!result.affected)
       throw new NotFoundException(`Contract ${id} not found`);
+  }
+
+  async findContractEntity(id: string): Promise<FinanceContract> {
+    const entity = await this.contractRepo.findOne({ where: { id } });
+    if (!entity) throw new NotFoundException(`Contract ${id} not found`);
+    return entity;
+  }
+
+  async setContractDocument(
+    id: string,
+    documentReference: string | null,
+  ): Promise<FinanceContractDto> {
+    const entity = await this.findContractEntity(id);
+    entity.documentRef = documentReference;
+    return this.toContractDto(await this.contractRepo.save(entity));
   }
 
   // ---- Expenses ----
@@ -556,6 +572,7 @@ export class FinanceService {
       status: e.status,
       isExpired: e.endDate < new Date().toISOString().slice(0, 10),
       notes: e.notes,
+      documentUrl: e.documentRef ? `/finance/contracts/${e.id}/document` : null,
     };
   }
 

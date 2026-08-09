@@ -62,6 +62,9 @@ export class FinanceContract {
   @Column({ type: 'text', nullable: true })
   notes!: string | null;
 
+  @Column({ name: 'document_ref', type: 'text', nullable: true })
+  documentRef!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

@@ -26,6 +26,6 @@ import { ContractDocumentService } from './contract-document.service.js';
   ],
   providers: [HrService, PayslipService, ContractDocumentService],
   controllers: [HrController],
-  exports: [PayslipService],
+  exports: [PayslipService, ContractDocumentService],
 })
 export class HrModule {}

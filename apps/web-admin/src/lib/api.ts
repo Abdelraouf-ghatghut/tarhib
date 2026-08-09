@@ -206,6 +206,14 @@ export const financeApi = {
     create: (d: unknown) => api.post("/finance/contracts", d),
     update: (id: string, d: unknown) => api.patch(`/finance/contracts/${id}`, d),
     remove: (id: string) => api.delete(`/finance/contracts/${id}`),
+    uploadDocument: (id: string, file: File) => {
+      const body = new FormData();
+      body.append("file", file);
+      return api.post(`/finance/contracts/${id}/document`, body);
+    },
+    downloadDocument: (id: string) =>
+      api.get(`/finance/contracts/${id}/document`, { responseType: "blob" }),
+    removeDocument: (id: string) => api.delete(`/finance/contracts/${id}/document`),
   },
   expenses: {
     list: (params?: Record<string, string>) => api.get("/finance/expenses", { params }),
