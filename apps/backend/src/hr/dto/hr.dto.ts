@@ -191,10 +191,6 @@ export class CreateEmploymentContractDto {
   @IsOptional()
   @IsEnum(EmploymentContractStatus)
   status?: EmploymentContractStatus;
-  @ApiPropertyOptional({ nullable: true })
-  @IsOptional()
-  @IsString()
-  documentUrl?: string | null;
 }
 
 export class UpdateEmploymentContractDto {
@@ -217,10 +213,6 @@ export class UpdateEmploymentContractDto {
   @IsOptional()
   @IsEnum(EmploymentContractStatus)
   status?: EmploymentContractStatus;
-  @ApiPropertyOptional({ nullable: true })
-  @IsOptional()
-  @IsString()
-  documentUrl?: string | null;
 }
 
 export class EmploymentContractDto {

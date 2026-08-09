@@ -12,9 +12,10 @@ import {
   Table,
   Tag,
   Typography,
+  Upload,
   message,
 } from "antd";
-import { PlusOutlined, EditOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { hrApi, employeesApi } from "../../lib/api";
 import { getErrorMessage } from "../../lib/errors";
@@ -48,6 +49,29 @@ const STATUS_COLOR: Record<EmploymentContract["status"], string> = {
   RENEWED: "blue",
 };
 
+async function compressScannedImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  const bitmap = await createImageBitmap(file);
+  const maxDimension = 2200;
+  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const context = canvas.getContext("2d");
+  if (!context) return file;
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.78),
+  );
+  if (!blob || blob.size >= file.size) return file;
+  return new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), {
+    type: "image/jpeg",
+  });
+}
+
 export function ContractsPage() {
   const { t, i18n } = useTranslation();
   const isAr = i18n.language.startsWith("ar");
@@ -57,6 +81,7 @@ export function ContractsPage() {
   const [form] = Form.useForm();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EmploymentContract | null>(null);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
 
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
@@ -74,22 +99,35 @@ export function ContractsPage() {
   });
 
   const save = useMutation({
-    mutationFn: (values: Record<string, unknown>) => {
+    mutationFn: async (values: Record<string, unknown>) => {
       const payload = {
         ...values,
         startDate: dayjs(values.startDate as dayjs.Dayjs).format("YYYY-MM-DD"),
         endDate: values.endDate ? dayjs(values.endDate as dayjs.Dayjs).format("YYYY-MM-DD") : null,
       };
-      return editing
+      const response = editing
         ? hrApi.contracts.update(editing.id, payload)
         : hrApi.contracts.create(payload);
+      const saved = await response;
+      let documentUploadFailed = false;
+      if (documentFile) {
+        try {
+          const compressed = await compressScannedImage(documentFile);
+          await hrApi.contracts.uploadDocument(saved.data.id, compressed);
+        } catch {
+          documentUploadFailed = true;
+        }
+      }
+      return { documentUploadFailed };
     },
-    onSuccess: () => {
-      message.success(t("saved"));
+    onSuccess: ({ documentUploadFailed }) => {
+      if (documentUploadFailed) message.warning(t("contractSavedDocumentFailed"));
+      else message.success(t("saved"));
       queryClient.invalidateQueries({ queryKey: ["hr", "contracts"] });
       setModalOpen(false);
       form.resetFields();
       setEditing(null);
+      setDocumentFile(null);
     },
     onError: (err) => message.error(getErrorMessage(err, t)),
   });
@@ -97,17 +135,34 @@ export function ContractsPage() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
+    setDocumentFile(null);
     setModalOpen(true);
   };
 
   const openEdit = (c: EmploymentContract) => {
     setEditing(c);
+    setDocumentFile(null);
     form.setFieldsValue({
       ...c,
       startDate: dayjs(c.startDate),
       endDate: c.endDate ? dayjs(c.endDate) : null,
     });
     setModalOpen(true);
+  };
+
+  const openDocument = async (contract: EmploymentContract) => {
+    const preview = window.open("about:blank", "_blank");
+    if (preview) preview.opener = null;
+    try {
+      const response = await hrApi.contracts.downloadDocument(contract.id);
+      const url = URL.createObjectURL(response.data as Blob);
+      if (preview) preview.location.href = url;
+      else window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      preview?.close();
+      message.error(getErrorMessage(err, t));
+    }
   };
 
   const columns = [
@@ -134,6 +189,19 @@ export function ContractsPage() {
       render: (v: EmploymentContract["status"]) => (
         <Tag color={STATUS_COLOR[v]}>{t(`contractStatusHr_${v}`)}</Tag>
       ),
+    },
+    {
+      title: t("contractDocument"),
+      dataIndex: "documentUrl",
+      key: "documentUrl",
+      render: (value: string | null, contract: EmploymentContract) =>
+        value ? (
+          <Button size="small" icon={<EyeOutlined />} onClick={() => void openDocument(contract)}>
+            {t("viewDocument")}
+          </Button>
+        ) : (
+          <Tag>{t("noDocument")}</Tag>
+        ),
     },
     ...(canManage
       ? [
@@ -185,6 +253,7 @@ export function ContractsPage() {
         onCancel={() => {
           setModalOpen(false);
           setEditing(null);
+          setDocumentFile(null);
           form.resetFields();
         }}
         onOk={() => form.submit()}
@@ -222,6 +291,33 @@ export function ContractsPage() {
                 label: t(`contractStatusHr_${v}`),
               }))}
             />
+          </Form.Item>
+          <Form.Item label={t("contractDocument")} extra={t("contractDocumentHint")}>
+            <Upload
+              accept="application/pdf,image/jpeg,image/png"
+              maxCount={1}
+              beforeUpload={(file) => {
+                if (file.size > 15 * 1024 * 1024) {
+                  message.error(t("contractDocumentTooLarge"));
+                  return Upload.LIST_IGNORE;
+                }
+                setDocumentFile(file as File);
+                return false;
+              }}
+              onRemove={() => {
+                setDocumentFile(null);
+                return true;
+              }}
+              fileList={
+                documentFile
+                  ? [{ uid: "contract-document", name: documentFile.name, status: "done" }]
+                  : []
+              }
+            >
+              <Button icon={<UploadOutlined />}>
+                {editing?.documentUrl ? t("replaceDocument") : t("selectDocument")}
+              </Button>
+            </Upload>
           </Form.Item>
         </Form>
       </Modal>

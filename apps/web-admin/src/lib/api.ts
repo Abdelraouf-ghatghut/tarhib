@@ -280,6 +280,14 @@ export const hrApi = {
       api.get("/hr/contracts", { params: employeeId ? { employeeId } : {} }),
     create: (d: unknown) => api.post("/hr/contracts", d),
     update: (id: string, d: unknown) => api.patch(`/hr/contracts/${id}`, d),
+    uploadDocument: (id: string, file: File) => {
+      const body = new FormData();
+      body.append("file", file);
+      return api.post(`/hr/contracts/${id}/document`, body);
+    },
+    downloadDocument: (id: string) =>
+      api.get(`/hr/contracts/${id}/document`, { responseType: "blob" }),
+    removeDocument: (id: string) => api.delete(`/hr/contracts/${id}/document`),
   },
   performanceReviews: {
     list: (employeeId?: string) =>

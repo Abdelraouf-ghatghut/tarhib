@@ -1,20 +1,30 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import {
   RequireAnyPermission,
@@ -25,6 +35,10 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import { HrService } from './hr.service.js';
 import { PayslipService } from './payslip.service.js';
 import { LeaveRequestStatus } from './entities/leave-request.entity.js';
+import {
+  ContractDocumentService,
+  type ContractUpload,
+} from './contract-document.service.js';
 import {
   CreateEmploymentContractDto,
   CreateLeaveRequestDto,
@@ -55,6 +69,7 @@ export class HrController {
   constructor(
     private readonly service: HrService,
     private readonly payslipService: PayslipService,
+    private readonly contractDocuments: ContractDocumentService,
   ) {}
 
   // ---- Leave types ----
@@ -172,6 +187,70 @@ export class HrController {
     @Body() dto: UpdateEmploymentContractDto,
   ): Promise<EmploymentContractDto> {
     return this.service.updateContract(id, dto);
+  }
+
+  @Post('contracts/:id/document')
+  @RequirePermission('hr.contract.manage')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { files: 1, fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  async uploadContractDocument(
+    @Param('id') id: string,
+    @UploadedFile() file: ContractUpload,
+  ): Promise<EmploymentContractDto> {
+    const contract = await this.service.findContractEntity(id);
+    const previousReference = contract.documentUrl;
+    const newReference = await this.contractDocuments.store(id, file);
+    try {
+      const updated = await this.service.setContractDocument(id, newReference);
+      await this.contractDocuments.remove(previousReference);
+      return updated;
+    } catch (err) {
+      await this.contractDocuments.remove(newReference);
+      throw err;
+    }
+  }
+
+  @Get('contracts/:id/document')
+  @RequirePermission('hr.contract.manage')
+  async downloadContractDocument(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const contract = await this.service.findContractEntity(id);
+    if (!contract.documentUrl) {
+      throw new NotFoundException('contractDocumentNotFound');
+    }
+    const document = await this.contractDocuments.read(contract.documentUrl);
+    response.set({
+      'Content-Type': document.contentType,
+      'Content-Disposition': `inline; filename="contract-${id}.${document.extension}"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return new StreamableFile(document.buffer);
+  }
+
+  @Delete('contracts/:id/document')
+  @RequirePermission('hr.contract.manage')
+  async deleteContractDocument(
+    @Param('id') id: string,
+  ): Promise<EmploymentContractDto> {
+    const contract = await this.service.findContractEntity(id);
+    const reference = contract.documentUrl;
+    const updated = await this.service.setContractDocument(id, null);
+    await this.contractDocuments.remove(reference);
+    return updated;
   }
 
   // ---- Performance reviews ----

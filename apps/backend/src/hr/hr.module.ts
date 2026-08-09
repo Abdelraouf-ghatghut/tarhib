@@ -10,6 +10,7 @@ import { PerformanceReview } from './entities/performance-review.entity.js';
 import { HrService } from './hr.service.js';
 import { PayslipService } from './payslip.service.js';
 import { HrController } from './hr.controller.js';
+import { ContractDocumentService } from './contract-document.service.js';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { HrController } from './hr.controller.js';
       PerformanceReview,
     ]),
   ],
-  providers: [HrService, PayslipService],
+  providers: [HrService, PayslipService, ContractDocumentService],
   controllers: [HrController],
   exports: [PayslipService],
 })

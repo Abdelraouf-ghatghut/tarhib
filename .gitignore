@@ -32,6 +32,7 @@ Thumbs.db
 # Tests
 coverage/
 .backups/
+.data/
 
 # Mobile — Flutter / Dart (apps/mobile)
 **/.dart_tool/

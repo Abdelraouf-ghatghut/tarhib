@@ -45,6 +45,7 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup -S tarhib && adduser -S tarhib -G tarhib
+RUN mkdir -p /data/contracts && chown -R tarhib:tarhib /data/contracts
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/apps/backend/dist ./dist
 COPY apps/backend/package.json ./package.json

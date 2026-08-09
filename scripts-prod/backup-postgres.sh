@@ -3,6 +3,7 @@ set -Eeuo pipefail
 umask 077
 
 BACKUP_DIR="/var/backups/tarhib/postgres"
+CONTRACT_BACKUP_DIR="/var/backups/tarhib/contracts"
 COMPOSE_FILE="/opt/tarhib/docker-compose.prod.yml"
 ENV_FILE="/opt/tarhib/.env.production"
 RESTIC_ENV="/home/tarhibadmin/.config/tarhib/restic-r2.env"
@@ -36,6 +37,8 @@ cronitor_ping run
 
 cd /opt/tarhib
 
+mkdir -p "$BACKUP_DIR" "$CONTRACT_BACKUP_DIR"
+
 for DATABASE_NAME in tarhib keycloak; do
   TARGET="$BACKUP_DIR/${DATABASE_NAME}_${TIMESTAMP}.dump"
 
@@ -50,8 +53,19 @@ done
 
 find "$BACKUP_DIR" -type f -name '*.dump' -mtime +7 -delete
 
+# Export chiffré ensuite par Restic du volume privé des contrats. L'archive
+# locale est remplacée à chaque exécution et n'est jamais exposée par Caddy.
+docker compose \
+  --env-file "$ENV_FILE" \
+  -f "$COMPOSE_FILE" \
+  exec -T backend \
+  tar -C /data/contracts -czf - . > "$CONTRACT_BACKUP_DIR/contracts_latest.tar.gz"
+
+test -s "$CONTRACT_BACKUP_DIR/contracts_latest.tar.gz"
+
 restic backup \
   /var/backups/tarhib/postgres \
+  /var/backups/tarhib/contracts \
   /opt/tarhib/.env.production \
   /opt/tarhib/Caddyfile \
   /opt/tarhib/docker-compose.prod.yml \

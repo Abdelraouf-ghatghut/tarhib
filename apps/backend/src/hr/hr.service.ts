@@ -235,7 +235,7 @@ export class HrService {
       jobTitle: dto.jobTitle,
       baseSalary: dto.baseSalary,
       status: dto.status ?? EmploymentContractStatus.ACTIVE,
-      documentUrl: dto.documentUrl ?? null,
+      documentUrl: null,
     });
     return this.toContractDto(await this.contractRepo.save(entity));
   }
@@ -258,6 +258,22 @@ export class HrService {
     if (!entity)
       throw new NotFoundException(`Employment contract ${id} not found`);
     Object.assign(entity, dto);
+    return this.toContractDto(await this.contractRepo.save(entity));
+  }
+
+  async findContractEntity(id: string): Promise<EmploymentContract> {
+    const entity = await this.contractRepo.findOne({ where: { id } });
+    if (!entity)
+      throw new NotFoundException(`Employment contract ${id} not found`);
+    return entity;
+  }
+
+  async setContractDocument(
+    id: string,
+    documentReference: string | null,
+  ): Promise<EmploymentContractDto> {
+    const entity = await this.findContractEntity(id);
+    entity.documentUrl = documentReference;
     return this.toContractDto(await this.contractRepo.save(entity));
   }
 
@@ -334,7 +350,7 @@ export class HrService {
       jobTitle: e.jobTitle,
       baseSalary: Number(e.baseSalary),
       status: e.status,
-      documentUrl: e.documentUrl,
+      documentUrl: e.documentUrl ? `/hr/contracts/${e.id}/document` : null,
     };
   }
 

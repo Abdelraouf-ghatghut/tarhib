@@ -96,6 +96,9 @@ services:
       OTP_HASH_SECRET: ${OTP_HASH_SECRET}
       OTP_SMS_ENABLED: "false"
       OTP_WHATSAPP_ENABLED: "false"
+      CONTRACT_DOCUMENTS_DIR: /data/contracts
+    volumes:
+      - contract_documents:/data/contracts
     depends_on:
       postgres:
         condition: service_healthy
@@ -145,3 +148,4 @@ volumes:
   redis_data:
   caddy_data:
   caddy_config:
+  contract_documents:
