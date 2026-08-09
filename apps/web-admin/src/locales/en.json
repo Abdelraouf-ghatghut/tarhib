@@ -431,6 +431,7 @@
     "entity_meeting-service-packages": "Meeting service packages",
     "entity_quotas": "Quotas",
     "entity_sla-levels": "Priority levels",
+    "entity_role": "Role",
     "entity_roles": "Roles",
     "entity_auth": "Authentication",
     "entity_accounting": "Accounting",
