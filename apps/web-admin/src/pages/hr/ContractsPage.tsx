@@ -21,6 +21,7 @@ import { hrApi, employeesApi } from "../../lib/api";
 import { getErrorMessage } from "../../lib/errors";
 import { useAuth } from "../../hooks/useAuth";
 import { compressScannedImage } from "../../lib/contractDocuments";
+import { SecureDocumentViewer } from "../../components/SecureDocumentViewer";
 
 const { Title } = Typography;
 
@@ -60,6 +61,7 @@ export function ContractsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EmploymentContract | null>(null);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [viewingContract, setViewingContract] = useState<EmploymentContract | null>(null);
 
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
@@ -128,21 +130,6 @@ export function ContractsPage() {
     setModalOpen(true);
   };
 
-  const openDocument = async (contract: EmploymentContract) => {
-    const preview = window.open("about:blank", "_blank");
-    if (preview) preview.opener = null;
-    try {
-      const response = await hrApi.contracts.downloadDocument(contract.id);
-      const url = URL.createObjectURL(response.data as Blob);
-      if (preview) preview.location.href = url;
-      else window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (err) {
-      preview?.close();
-      message.error(getErrorMessage(err, t));
-    }
-  };
-
   const columns = [
     { title: t("employee"), dataIndex: "employeeId", key: "employeeId", render: employeeName },
     {
@@ -179,7 +166,7 @@ export function ContractsPage() {
       key: "documentUrl",
       render: (value: string | null, contract: EmploymentContract) =>
         value ? (
-          <Button size="small" icon={<EyeOutlined />} onClick={() => void openDocument(contract)}>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => setViewingContract(contract)}>
             {t("viewDocument")}
           </Button>
         ) : (
@@ -309,6 +296,13 @@ export function ContractsPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <SecureDocumentViewer
+        open={!!viewingContract}
+        documentId={viewingContract?.id ?? null}
+        title={viewingContract ? employeeName(viewingContract.employeeId) : t("contractDocument")}
+        loadDocument={hrApi.contracts.downloadDocument}
+        onClose={() => setViewingContract(null)}
+      />
     </div>
   );
 }

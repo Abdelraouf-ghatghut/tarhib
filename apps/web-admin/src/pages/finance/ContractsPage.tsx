@@ -30,6 +30,7 @@ import { getErrorMessage } from "../../lib/errors";
 import { bilingualName } from "../../lib/bilingualName";
 import { useAuth } from "../../hooks/useAuth";
 import { compressScannedImage } from "../../lib/contractDocuments";
+import { SecureDocumentViewer } from "../../components/SecureDocumentViewer";
 
 const { Title } = Typography;
 
@@ -70,6 +71,7 @@ export function ContractsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Contract | null>(null);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [viewingContract, setViewingContract] = useState<Contract | null>(null);
 
   const { data: companies = [] } = useQuery({
     queryKey: ["companies"],
@@ -144,21 +146,6 @@ export function ContractsPage() {
     setModalOpen(true);
   };
 
-  const openDocument = async (contract: Contract) => {
-    const preview = window.open("about:blank", "_blank");
-    if (preview) preview.opener = null;
-    try {
-      const response = await financeApi.contracts.downloadDocument(contract.id);
-      const url = URL.createObjectURL(response.data as Blob);
-      if (preview) preview.location.href = url;
-      else window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (err) {
-      preview?.close();
-      message.error(getErrorMessage(err, t));
-    }
-  };
-
   const columns = [
     { title: t("company"), dataIndex: "companyId", key: "companyId", render: companyName },
     { title: t("label"), dataIndex: "label", key: "label" },
@@ -192,7 +179,7 @@ export function ContractsPage() {
       key: "documentUrl",
       render: (value: string | null, contract: Contract) =>
         value ? (
-          <Button size="small" icon={<EyeOutlined />} onClick={() => void openDocument(contract)}>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => setViewingContract(contract)}>
             {t("viewDocument")}
           </Button>
         ) : (
@@ -351,6 +338,13 @@ export function ContractsPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <SecureDocumentViewer
+        open={!!viewingContract}
+        documentId={viewingContract?.id ?? null}
+        title={viewingContract?.label ?? t("contractDocument")}
+        loadDocument={financeApi.contracts.downloadDocument}
+        onClose={() => setViewingContract(null)}
+      />
     </div>
   );
 }

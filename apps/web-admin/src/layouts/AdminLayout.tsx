@@ -139,6 +139,13 @@ export function AdminLayout() {
     ];
 
     const config: NavItem[] = [];
+    if (hasPermission("company.manage")) {
+      config.push({
+        key: "/settings/company-documents",
+        label: t("companyDocuments"),
+        icon: <FileTextOutlined />,
+      });
+    }
     // Rôles & permissions en tête de section (demande métier)
     if (hasPermission("role.manage")) {
       config.push({ key: "/roles", label: t("rolesPermissions"), icon: <SafetyOutlined /> });

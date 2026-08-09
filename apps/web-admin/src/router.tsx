@@ -36,6 +36,7 @@ import { LeaveRequestsPage } from "./pages/hr/LeaveRequestsPage";
 import { ContractsPage as HrContractsPage } from "./pages/hr/ContractsPage";
 import { PerformanceReviewsPage } from "./pages/hr/PerformanceReviewsPage";
 import { PayslipsPage } from "./pages/hr/PayslipsPage";
+import CompanyDocumentsPage from "./pages/settings/CompanyDocumentsPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -48,6 +49,14 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <DashboardPage /> },
+      {
+        path: "settings/company-documents",
+        element: (
+          <RequirePermission anyOf={["company.manage"]}>
+            <CompanyDocumentsPage />
+          </RequirePermission>
+        ),
+      },
       {
         path: "roles",
         element: (

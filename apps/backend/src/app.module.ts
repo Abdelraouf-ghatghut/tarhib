@@ -50,6 +50,7 @@ import { AccountingModule } from './accounting/accounting.module.js';
 import { HrModule } from './hr/hr.module.js';
 import { MetricsModule } from './metrics/metrics.module.js';
 import { MetricsService } from './metrics/metrics.service.js';
+import { CompanyDocumentsModule } from './company-documents/company-documents.module.js';
 import { TypeOrmMetricsLogger } from './metrics/typeorm-metrics.logger.js';
 
 @Module({
@@ -153,6 +154,7 @@ import { TypeOrmMetricsLogger } from './metrics/typeorm-metrics.logger.js';
     AccountingModule,
     HrModule,
     FinanceModule,
+    CompanyDocumentsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -319,3 +319,15 @@ export const registrationsApi = {
   reject: (id: string) => api.patch(`/auth/registrations/${id}/reject`),
   invite: (d: unknown) => api.post("/auth/invite", d),
 };
+
+export const companyDocumentsApi = {
+  list: () => api.get("/company-documents"),
+  create: (name: string, file: File) => {
+    const body = new FormData();
+    body.append("name", name);
+    body.append("file", file);
+    return api.post("/company-documents", body);
+  },
+  download: (id: string) => api.get(`/company-documents/${id}/file`, { responseType: "blob" }),
+  remove: (id: string) => api.delete(`/company-documents/${id}`),
+};
