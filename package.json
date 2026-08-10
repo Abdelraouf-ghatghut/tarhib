@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "packageManager": "npm@10.0.0",
+  "overrides": {
+    "@nestjs/swagger@11.4.6": {
+      "js-yaml": "5.2.3"
+    }
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
