@@ -118,6 +118,33 @@ export function InventoryReportTab({
                 />
               </Card>
             </Col>
+            <Col xs={24} sm={8}>
+              <Card loading={loadingInvDetail}>
+                <Statistic
+                  title={t("valuationCoverage")}
+                  value={
+                    inventoryDetailData?.valuationCoverageRate == null
+                      ? "—"
+                      : inventoryDetailData.valuationCoverageRate * 100
+                  }
+                  precision={1}
+                  suffix={inventoryDetailData?.valuationCoverageRate == null ? undefined : "%"}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={8}>
+              <Card loading={loadingInvDetail}>
+                <Statistic
+                  title={t("unvaluedQuantity")}
+                  value={inventoryDetailData?.unvaluedQuantity ?? 0}
+                  valueStyle={
+                    (inventoryDetailData?.unvaluedQuantity ?? 0) > 0
+                      ? { color: "var(--fg-warning-subtle)" }
+                      : undefined
+                  }
+                />
+              </Card>
+            </Col>
           </Row>
 
           <Row gutter={[16, 16]}>

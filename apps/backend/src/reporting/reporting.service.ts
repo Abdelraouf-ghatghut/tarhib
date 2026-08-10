@@ -38,10 +38,15 @@ export interface InventoryReport {
 }
 
 export interface SlaReport {
+  /** Delivered orders eligible for the SLA calculation. */
   total: number;
   onTime: number;
   late: number;
-  complianceRate: number;
+  complianceRate: number | null;
+  openOverdue: number;
+  openAtRisk: number;
+  medianDeliveryMinutes: number | null;
+  p90DeliveryMinutes: number | null;
 }
 
 export interface UserActivityReport {
@@ -67,6 +72,9 @@ export interface MeetingRoomsReport {
   cancellationRate: number;
   mostBookedRoomId: string | null;
   avgDurationMinutes: number;
+  bookedMinutes: number;
+  availableMinutes: number;
+  occupancyRate: number | null;
 }
 
 export interface PurchasingReport {
@@ -100,6 +108,9 @@ export interface InventoryDetailRow {
 export interface InventoryDetailReport {
   totalQuantity: number;
   totalStockValue: number;
+  valuedQuantity: number;
+  unvaluedQuantity: number;
+  valuationCoverageRate: number | null;
   byProduct: Array<{ productId: string; quantity: number; stockValue: number }>;
   byProductBranch: Array<{
     productId: string;
@@ -139,11 +150,15 @@ export interface ExecutiveReport {
     deliveredCount: number;
     pendingCount: number;
     rejectedCount: number;
-    slaComplianceRate: number;
+    slaComplianceRate: number | null;
     avgDeliveryMinutes: number;
     totalStockValue: number;
     outOfStockCount: number;
     purchasingSpend: number;
+    fulfillmentRate: number | null;
+    medianDeliveryMinutes: number | null;
+    p90DeliveryMinutes: number | null;
+    purchaseCostPerDeliveredOrder: number | null;
   };
   ordersTrend: Array<{ bucket: string; count: number }>;
   slaTrend: Array<{ bucket: string; rate: number }>;
@@ -207,6 +222,10 @@ export class ReportingService {
   ): Promise<QuotaReport> {
     const NEAR_CAP_RATE = 0.8;
     const qb = this.quotaRepo.createQueryBuilder('q');
+    const today = new Date().toISOString().slice(0, 10);
+    qb.andWhere('q.period_start <= :today AND q.period_end >= :today', {
+      today,
+    });
     if (companyId) qb.andWhere('q.company_id = :companyId', { companyId });
     // Les quotas individuels ne portent pas branch_id — filtrage par branche
     // fait via les employés de cette branche si demandé (Quota.employeeId
@@ -233,8 +252,10 @@ export class ReportingService {
     const rateOf = (q: Quota) =>
       q.maxQuantity > 0 ? q.usedQuantity / q.maxQuantity : 0;
 
+    const totalMaximum = quotas.reduce((sum, q) => sum + q.maxQuantity, 0);
+    const totalUsed = quotas.reduce((sum, q) => sum + q.usedQuantity, 0);
     const averageConsumptionRate =
-      quotas.reduce((sum, q) => sum + rateOf(q), 0) / total;
+      totalMaximum > 0 ? totalUsed / totalMaximum : 0;
     const nearCapCount = quotas.filter(
       (q) => rateOf(q) >= NEAR_CAP_RATE,
     ).length;
@@ -348,29 +369,76 @@ export class ReportingService {
 
   async getSlaReport(
     companyId: string,
-    opts: { from?: string; to?: string } = {},
+    opts: { branchId?: string; from?: string; to?: string } = {},
   ): Promise<SlaReport> {
     const baseQb = this.orderRepo.createQueryBuilder('o');
     if (companyId) baseQb.andWhere('o.company_id = :companyId', { companyId });
-    if (opts.from)
-      baseQb.andWhere('o.created_at >= :from', { from: opts.from });
-    if (opts.to) baseQb.andWhere('o.created_at <= :to', { to: opts.to });
+    if (opts.branchId)
+      baseQb.andWhere('o.branch_id = :branchId', { branchId: opts.branchId });
 
-    const total = await baseQb.clone().getCount();
-
-    const onTime = await baseQb
+    const deliveredQb = baseQb
       .clone()
       .andWhere('o.status = :status', { status: OrderStatus.DELIVERED })
-      .getCount();
+      .andWhere('o.delivered_at IS NOT NULL');
+    if (opts.from)
+      deliveredQb.andWhere('o.delivered_at >= :from', { from: opts.from });
+    if (opts.to) deliveredQb.andWhere('o.delivered_at <= :to', { to: opts.to });
 
-    const late = await baseQb
-      .clone()
-      .andWhere('o.status != :status', { status: OrderStatus.DELIVERED })
-      .andWhere('o.sla_deadline < NOW()')
-      .getCount();
+    const openQb = baseQb.clone().andWhere('o.status NOT IN (:...closed)', {
+      closed: [
+        OrderStatus.DELIVERED,
+        OrderStatus.REJECTED,
+        OrderStatus.CANCELLED,
+      ],
+    });
+    if (opts.to) openQb.andWhere('o.created_at <= :to', { to: opts.to });
 
-    const complianceRate = total > 0 ? Math.round((onTime / total) * 100) : 100;
-    return { total, onTime, late, complianceRate };
+    const [row, openOverdue, openAtRisk] = await Promise.all([
+      deliveredQb
+        .select('COUNT(*)', 'total')
+        .addSelect(
+          'SUM(CASE WHEN o.delivered_at <= o.sla_deadline THEN 1 ELSE 0 END)',
+          'onTime',
+        )
+        .addSelect(
+          'PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (o.delivered_at - o.created_at)) / 60)',
+          'medianMinutes',
+        )
+        .addSelect(
+          'PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (o.delivered_at - o.created_at)) / 60)',
+          'p90Minutes',
+        )
+        .getRawOne<{
+          total: string;
+          onTime: string | null;
+          medianMinutes: string | null;
+          p90Minutes: string | null;
+        }>(),
+      openQb.clone().andWhere('o.sla_deadline < NOW()').getCount(),
+      openQb
+        .clone()
+        .andWhere(
+          "o.sla_deadline >= NOW() AND o.sla_deadline < NOW() + INTERVAL '30 minutes'",
+        )
+        .getCount(),
+    ]);
+    const total = parseInt(row?.total ?? '0', 10);
+    const onTime = parseInt(row?.onTime ?? '0', 10);
+    const late = total - onTime;
+    return {
+      total,
+      onTime,
+      late,
+      complianceRate: total > 0 ? Math.round((onTime / total) * 100) : null,
+      openOverdue,
+      openAtRisk,
+      medianDeliveryMinutes: row?.medianMinutes
+        ? Math.round(Number(row.medianMinutes))
+        : null,
+      p90DeliveryMinutes: row?.p90Minutes
+        ? Math.round(Number(row.p90Minutes))
+        : null,
+    };
   }
 
   async getUserActivityReport(
@@ -461,13 +529,19 @@ export class ReportingService {
 
   async getMeetingRoomsReport(
     companyId: string,
-    opts: { from?: string; to?: string } = {},
+    opts: { branchId?: string; from?: string; to?: string } = {},
   ): Promise<MeetingRoomsReport> {
     const baseQb = this.bookingRepo.createQueryBuilder('b');
     if (companyId) baseQb.andWhere('b.company_id = :companyId', { companyId });
+    if (opts.branchId)
+      baseQb
+        .innerJoin('b.room', 'room')
+        .andWhere('room.branch_id = :branchId', {
+          branchId: opts.branchId,
+        });
     if (opts.from)
-      baseQb.andWhere('b.created_at >= :from', { from: opts.from });
-    if (opts.to) baseQb.andWhere('b.created_at <= :to', { to: opts.to });
+      baseQb.andWhere('b.start_time >= :from', { from: opts.from });
+    if (opts.to) baseQb.andWhere('b.start_time <= :to', { to: opts.to });
 
     const totalBookings = await baseQb.clone().getCount();
     const confirmed = await baseQb
@@ -501,6 +575,32 @@ export class ReportingService {
     const avgDurationMinutes = durationRow?.avgMinutes
       ? Math.round(parseFloat(durationRow.avgMinutes))
       : 0;
+    const confirmedDuration = await baseQb
+      .clone()
+      .andWhere('b.status != :cancelled', {
+        cancelled: BookingStatus.CANCELLED,
+      })
+      .select(
+        'COALESCE(SUM(EXTRACT(EPOCH FROM (b.end_time - b.start_time)) / 60), 0)',
+        'minutes',
+      )
+      .getRawOne<{ minutes: string }>();
+    const bookedMinutes = Math.round(Number(confirmedDuration?.minutes ?? 0));
+    const roomQb = this.roomRepo
+      .createQueryBuilder('room')
+      .where('room.active = true');
+    if (companyId)
+      roomQb.andWhere('room.company_id = :companyId', { companyId });
+    if (opts.branchId)
+      roomQb.andWhere('room.branch_id = :branchId', {
+        branchId: opts.branchId,
+      });
+    const roomCount = await roomQb.getCount();
+    const rangeMinutes =
+      opts.from && opts.to
+        ? Math.max(0, (Date.parse(opts.to) - Date.parse(opts.from)) / 60_000)
+        : 0;
+    const availableMinutes = Math.round(roomCount * rangeMinutes);
 
     return {
       totalBookings,
@@ -509,6 +609,12 @@ export class ReportingService {
       cancellationRate,
       mostBookedRoomId,
       avgDurationMinutes,
+      bookedMinutes,
+      availableMinutes,
+      occupancyRate:
+        availableMinutes > 0
+          ? Math.round((bookedMinutes / availableMinutes) * 1000) / 10
+          : null,
     };
   }
 
@@ -555,9 +661,8 @@ export class ReportingService {
       baseQb.andWhere('pol.product_id = :productId', {
         productId: opts.productId,
       });
-    if (opts.from)
-      baseQb.andWhere('po.created_at >= :from', { from: opts.from });
-    if (opts.to) baseQb.andWhere('po.created_at <= :to', { to: opts.to });
+    if (opts.from) baseQb.andWhere('po.sent_at >= :from', { from: opts.from });
+    if (opts.to) baseQb.andWhere('po.sent_at <= :to', { to: opts.to });
 
     const rows = await baseQb
       .clone()
@@ -677,6 +782,12 @@ export class ReportingService {
 
     const totalQuantity = rows.reduce((s, r) => s + r.quantity, 0);
     const totalStockValue = rows.reduce((s, r) => s + r.stockValue, 0);
+    const valuedQuantity = rows
+      .filter((r) => r.unitCost != null)
+      .reduce((s, r) => s + r.quantity, 0);
+    const unvaluedQuantity = totalQuantity - valuedQuantity;
+    const valuationCoverageRate =
+      totalQuantity > 0 ? valuedQuantity / totalQuantity : null;
 
     const byProductMap = new Map<
       string,
@@ -719,7 +830,16 @@ export class ReportingService {
       (a, b) => b.stockValue - a.stockValue,
     );
 
-    return { totalQuantity, totalStockValue, byProduct, byProductBranch, rows };
+    return {
+      totalQuantity,
+      totalStockValue,
+      valuedQuantity,
+      unvaluedQuantity,
+      valuationCoverageRate,
+      byProduct,
+      byProductBranch,
+      rows,
+    };
   }
 
   /**
@@ -862,7 +982,19 @@ export class ReportingService {
           'AVG(EXTRACT(EPOCH FROM (o.delivered_at - o.created_at)) / 60)',
           'avgMinutes',
         )
-        .getRawOne<{ avgMinutes: string | null }>(),
+        .addSelect(
+          'PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (o.delivered_at - o.created_at)) / 60)',
+          'medianMinutes',
+        )
+        .addSelect(
+          'PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (o.delivered_at - o.created_at)) / 60)',
+          'p90Minutes',
+        )
+        .getRawOne<{
+          avgMinutes: string | null;
+          medianMinutes: string | null;
+          p90Minutes: string | null;
+        }>(),
       baseQb
         .clone()
         .select(`DATE_TRUNC('${granularity}', o.created_at)`, 'bucket')
@@ -945,11 +1077,17 @@ export class ReportingService {
     const slaComplianceRate =
       deliveredTotal > 0
         ? Math.round((onTimeCount / deliveredTotal) * 100)
-        : 100;
+        : null;
 
     const avgDeliveryMinutes = avgRow?.avgMinutes
       ? Math.round(parseFloat(avgRow.avgMinutes))
       : 0;
+    const medianDeliveryMinutes = avgRow?.medianMinutes
+      ? Math.round(parseFloat(avgRow.medianMinutes))
+      : null;
+    const p90DeliveryMinutes = avgRow?.p90Minutes
+      ? Math.round(parseFloat(avgRow.p90Minutes))
+      : null;
 
     const ordersTrend = trendRows.map((r) => ({
       bucket: new Date(r.bucket).toISOString(),
@@ -990,6 +1128,15 @@ export class ReportingService {
     const outOfStockCount = invDetail.rows.filter(
       (r) => r.quantity === 0,
     ).length;
+    const closedEligible = deliveredCount + rejectedCount;
+    const fulfillmentRate =
+      closedEligible > 0
+        ? Math.round((deliveredCount / closedEligible) * 1000) / 10
+        : null;
+    const purchaseCostPerDeliveredOrder =
+      deliveredCount > 0
+        ? Math.round((purchasing.totalSpend / deliveredCount) * 100) / 100
+        : null;
 
     return {
       kpis: {
@@ -1005,6 +1152,10 @@ export class ReportingService {
         totalStockValue,
         outOfStockCount,
         purchasingSpend: purchasing.totalSpend,
+        fulfillmentRate,
+        medianDeliveryMinutes,
+        p90DeliveryMinutes,
+        purchaseCostPerDeliveredOrder,
       },
       ordersTrend,
       slaTrend,

@@ -54,6 +54,7 @@ import {
   GlobalOutlined,
   BookOutlined,
   SolutionOutlined,
+  LineChartOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -224,6 +225,11 @@ export function AdminLayout() {
         label: t("finance"),
         items: [
           { key: "/finance", label: t("financeOverview"), icon: <WalletOutlined /> },
+          {
+            key: "/performance-management",
+            label: t("performanceManagement"),
+            icon: <LineChartOutlined />,
+          },
           { key: "/finance/contracts", label: t("contracts"), icon: <FileTextOutlined /> },
           { key: "/finance/expenses", label: t("expenses"), icon: <ShoppingCartOutlined /> },
           { key: "/finance/debts", label: t("debts"), icon: <BankOutlined /> },
@@ -565,7 +571,7 @@ export function AdminLayout() {
                 placement="bottom"
                 content={
                   <Segmented
-                    value={isAr ? "ar" : "en"}
+                    value={i18n.resolvedLanguage?.split("-")[0] ?? "ar"}
                     onChange={(v) => i18n.changeLanguage(String(v))}
                     options={[
                       { label: "AR", value: "ar" },

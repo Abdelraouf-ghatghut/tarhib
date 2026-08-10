@@ -29,17 +29,24 @@ export function buildTrend(orders: OrderRow[], from: Dayjs, to: Dayjs, locale: s
     cursor = cursor.add(1, unit);
   }
 
-  const buckets = starts.map(() => ({ total: 0, delivered: 0 }));
+  const buckets = starts.map(() => ({ total: 0, slaEligible: 0, onTime: 0 }));
+  const bucketIndex = (d: Dayjs) =>
+    unit === "month"
+      ? (d.year() - starts[0].year()) * 12 + d.month() - starts[0].month()
+      : d.startOf(unit).diff(starts[0], unit);
   for (const o of orders) {
-    const d = dayjs(o.createdAt);
-    if (d.isBefore(from) || d.isAfter(to)) continue;
-    const idx =
-      unit === "month"
-        ? (d.year() - starts[0].year()) * 12 + d.month() - starts[0].month()
-        : d.startOf(unit).diff(starts[0], unit);
+    const created = dayjs(o.createdAt);
+    if (!created.isBefore(from) && !created.isAfter(to)) {
+      const idx = bucketIndex(created);
+      if (idx >= 0 && idx < buckets.length) buckets[idx].total += 1;
+    }
+    if (!o.deliveredAt) continue;
+    const delivered = dayjs(o.deliveredAt);
+    if (delivered.isBefore(from) || delivered.isAfter(to)) continue;
+    const idx = bucketIndex(delivered);
     if (idx < 0 || idx >= buckets.length) continue;
-    buckets[idx].total += 1;
-    if (o.status === "DELIVERED") buckets[idx].delivered += 1;
+    buckets[idx].slaEligible += 1;
+    if (!delivered.isAfter(dayjs(o.slaDeadline))) buckets[idx].onTime += 1;
   }
 
   const monthFmt = new Intl.DateTimeFormat(locale, { month: "short" });
@@ -54,7 +61,7 @@ export function buildTrend(orders: OrderRow[], from: Dayjs, to: Dayjs, locale: s
   return {
     labels,
     orders: buckets.map((b) => b.total),
-    sla: buckets.map((b) => (b.total === 0 ? null : (b.delivered / b.total) * 100)),
+    sla: buckets.map((b) => (b.slaEligible === 0 ? null : (b.onTime / b.slaEligible) * 100)),
     hasData: buckets.some((b) => b.total > 0),
   };
 }

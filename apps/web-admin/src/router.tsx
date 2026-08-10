@@ -37,6 +37,7 @@ import { ContractsPage as HrContractsPage } from "./pages/hr/ContractsPage";
 import { PerformanceReviewsPage } from "./pages/hr/PerformanceReviewsPage";
 import { PayslipsPage } from "./pages/hr/PayslipsPage";
 import CompanyDocumentsPage from "./pages/settings/CompanyDocumentsPage";
+import PerformanceManagementPage from "./pages/performance-management/PerformanceManagementPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -233,6 +234,16 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission anyOf={["finance.view", "finance.manage"]}>
             <AccountsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "performance-management",
+        element: (
+          <RequirePermission
+            anyOf={["finance.view", "finance.manage", "report.view", "company.manage"]}
+          >
+            <PerformanceManagementPage />
           </RequirePermission>
         ),
       },

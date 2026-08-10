@@ -454,6 +454,12 @@ export class FinanceOverviewDto {
   })
   activeContractsRevenue!: number;
 
+  @ApiProperty({
+    description:
+      'Valeur contractuelle active a date (ne constitue pas un revenu reconnu sur la periode)',
+  })
+  activeContractsValue!: number;
+
   @ApiProperty({ description: 'Somme des dépenses sur la période demandée' })
   totalExpenses!: number;
 

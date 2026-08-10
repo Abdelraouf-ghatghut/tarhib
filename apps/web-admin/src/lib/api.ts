@@ -244,6 +244,47 @@ export const financeApi = {
   },
 };
 
+export const performanceManagementApi = {
+  dashboard: (params: Record<string, string>) =>
+    api.get("/performance-management/dashboard", { params }),
+  invoices: {
+    list: (companyId?: string) =>
+      api.get("/performance-management/invoices", { params: { companyId } }),
+    create: (data: unknown) => api.post("/performance-management/invoices", data),
+    issue: (id: string) => api.post(`/performance-management/invoices/${id}/issue`),
+    pay: (id: string, data: unknown) =>
+      api.post(`/performance-management/invoices/${id}/payments`, data),
+    pdf: (id: string, language: string) =>
+      api.get(`/performance-management/invoices/${id}/pdf`, {
+        params: { language },
+        responseType: "blob",
+      }),
+  },
+  recognizeRevenue: (asOf?: string) =>
+    api.post("/performance-management/revenue-recognition/run", undefined, { params: { asOf } }),
+  budgets: {
+    list: (year?: number) => api.get("/performance-management/budgets", { params: { year } }),
+    create: (data: unknown) => api.post("/performance-management/budgets", data),
+    status: (id: string, status: string) =>
+      api.patch(`/performance-management/budgets/${id}/status`, { status }),
+    variance: (id: string) => api.get(`/performance-management/budgets/${id}/variance`),
+  },
+  costs: { create: (data: unknown) => api.post("/performance-management/costs", data) },
+  feedback: { create: (data: unknown) => api.post("/performance-management/feedback", data) },
+  attendance: {
+    set: (bookingId: string, data: unknown) =>
+      api.patch(`/performance-management/attendance/${bookingId}`, data),
+    markNoShows: (graceMinutes = 30) =>
+      api.post("/performance-management/attendance/mark-no-shows", undefined, {
+        params: { graceMinutes },
+      }),
+  },
+  forecasts: {
+    list: (kind?: string) => api.get("/performance-management/forecasts", { params: { kind } }),
+    generate: (data: unknown) => api.post("/performance-management/forecasts/generate", data),
+  },
+};
+
 export const accountingApi = {
   accounts: {
     list: () => api.get("/accounting/accounts"),

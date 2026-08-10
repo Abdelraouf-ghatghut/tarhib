@@ -14,7 +14,11 @@ export interface SlaReport {
   total: number;
   onTime: number;
   late: number;
-  complianceRate: number;
+  complianceRate: number | null;
+  openOverdue: number;
+  openAtRisk: number;
+  medianDeliveryMinutes: number | null;
+  p90DeliveryMinutes: number | null;
 }
 
 export interface QuotaReport {
@@ -60,6 +64,9 @@ export interface MeetingRoomsReport {
   cancellationRate: number;
   mostBookedRoomId: string | null;
   avgDurationMinutes: number;
+  bookedMinutes: number;
+  availableMinutes: number;
+  occupancyRate: number | null;
 }
 
 export interface PurchasingReport {
@@ -83,11 +90,15 @@ export interface ExecutiveReport {
     deliveredCount: number;
     pendingCount: number;
     rejectedCount: number;
-    slaComplianceRate: number;
+    slaComplianceRate: number | null;
     avgDeliveryMinutes: number;
     totalStockValue: number;
     outOfStockCount: number;
     purchasingSpend: number;
+    fulfillmentRate: number | null;
+    medianDeliveryMinutes: number | null;
+    p90DeliveryMinutes: number | null;
+    purchaseCostPerDeliveredOrder: number | null;
   };
   ordersTrend: Array<{ bucket: string; count: number }>;
   slaTrend: Array<{ bucket: string; rate: number }>;
@@ -115,6 +126,9 @@ export interface InventoryDetailRow {
 export interface InventoryDetailReport {
   totalQuantity: number;
   totalStockValue: number;
+  valuedQuantity: number;
+  unvaluedQuantity: number;
+  valuationCoverageRate: number | null;
   byProduct: Array<{ productId: string; quantity: number; stockValue: number }>;
   byProductBranch: Array<{
     productId: string;

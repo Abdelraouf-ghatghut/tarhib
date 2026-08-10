@@ -17,6 +17,10 @@ const makeReport = (): ExecutiveReport => ({
     totalStockValue: 12345.67,
     outOfStockCount: 4,
     purchasingSpend: 9999.99,
+    fulfillmentRate: 75,
+    medianDeliveryMinutes: 18,
+    p90DeliveryMinutes: 35,
+    purchaseCostPerDeliveredOrder: 12.5,
   },
   ordersTrend: [],
   slaTrend: [],
@@ -108,6 +112,7 @@ describe('ReportingController — plafond de plage from/to (PR-1.5)', () => {
       controller.getSlaReport(
         makeReq(['report.view']),
         undefined,
+        undefined,
         '2026-06-01',
         '2026-01-01',
       ),
@@ -136,5 +141,20 @@ describe('ReportingController — plafond de plage from/to (PR-1.5)', () => {
         undefined,
       ),
     ).resolves.toBeDefined();
+  });
+
+  it('forwards branch scope to the SLA service', async () => {
+    await controller.getSlaReport(
+      makeReq(['report.view']),
+      'co-1',
+      'br-1',
+      '2026-01-01',
+      '2026-01-31',
+    );
+    expect(service.getSlaReport).toHaveBeenCalledWith('co-1', {
+      branchId: 'br-1',
+      from: '2026-01-01',
+      to: '2026-01-31',
+    });
   });
 });

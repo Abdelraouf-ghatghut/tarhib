@@ -27,7 +27,8 @@ export function OrdersReportTab({ params }: { params: Record<string, string> }) 
     queryFn: () => reportingApi.sla(params).then((r) => r.data as SlaReport),
   });
 
-  const complianceRate = Math.round(slaData?.complianceRate ?? 0);
+  const complianceRate =
+    slaData?.complianceRate == null ? null : Math.round(slaData.complianceRate);
 
   return (
     <>
@@ -85,15 +86,52 @@ export function OrdersReportTab({ params }: { params: Record<string, string> }) 
           <Card title={t("complianceRate")} loading={loadingSla}>
             <Progress
               type="circle"
-              percent={complianceRate}
+              percent={complianceRate ?? 0}
+              format={() => (complianceRate == null ? "—" : `${complianceRate}%`)}
               size={100}
               strokeColor={
-                complianceRate >= 90
+                (complianceRate ?? 0) >= 90
                   ? "var(--fg-success)"
-                  : complianceRate >= 70
+                  : (complianceRate ?? 0) >= 70
                     ? "var(--fg-warning-subtle)"
                     : "var(--fg-danger)"
               }
+            />
+          </Card>
+        </Col>
+      </Row>
+      <Row gutter={[16, 16]} style={{ marginBlockStart: 16 }}>
+        <Col xs={24} sm={6}>
+          <Card>
+            <Statistic
+              title={t("openOverdue")}
+              value={slaData?.openOverdue ?? 0}
+              valueStyle={
+                (slaData?.openOverdue ?? 0) > 0 ? { color: "var(--fg-danger)" } : undefined
+              }
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={6}>
+          <Card>
+            <Statistic title={t("openAtRisk30")} value={slaData?.openAtRisk ?? 0} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={6}>
+          <Card>
+            <Statistic
+              title={t("medianDeliveryTime")}
+              value={slaData?.medianDeliveryMinutes ?? "—"}
+              suffix={slaData?.medianDeliveryMinutes == null ? undefined : t("minutes")}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={6}>
+          <Card>
+            <Statistic
+              title={t("p90DeliveryTime")}
+              value={slaData?.p90DeliveryMinutes ?? "—"}
+              suffix={slaData?.p90DeliveryMinutes == null ? undefined : t("minutes")}
             />
           </Card>
         </Col>

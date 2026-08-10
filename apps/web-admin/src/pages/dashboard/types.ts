@@ -4,6 +4,7 @@ export interface OrderRow {
   priority: string;
   slaDeadline: string;
   createdAt: string;
+  deliveredAt: string | null;
 }
 
 export interface InventoryReport {
@@ -17,7 +18,11 @@ export interface StockAlertItem {
 }
 
 export interface SlaReport {
-  complianceRate: number;
+  complianceRate: number | null;
+  openOverdue: number;
+  openAtRisk: number;
+  medianDeliveryMinutes: number | null;
+  p90DeliveryMinutes: number | null;
 }
 
 export interface OrdersReport {

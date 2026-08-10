@@ -93,6 +93,35 @@ export function MeetingRoomsReportTab({
           </Card>
         </Col>
       </Row>
+      <Row gutter={[16, 16]} style={{ marginBlockStart: 16 }}>
+        <Col xs={24} sm={8}>
+          <Card loading={loadingMeeting}>
+            <Statistic
+              title={t("occupancyRate")}
+              value={meetingData?.occupancyRate ?? "—"}
+              suffix={meetingData?.occupancyRate == null ? undefined : "%"}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card loading={loadingMeeting}>
+            <Statistic
+              title={t("bookedMinutes")}
+              value={meetingData?.bookedMinutes ?? 0}
+              suffix={t("minutes")}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card loading={loadingMeeting}>
+            <Statistic
+              title={t("availableMinutes")}
+              value={meetingData?.availableMinutes ?? 0}
+              suffix={t("minutes")}
+            />
+          </Card>
+        </Col>
+      </Row>
     </>
   );
 }

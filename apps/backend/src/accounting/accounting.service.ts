@@ -383,6 +383,93 @@ export class AccountingService {
     }
   }
 
+  async postInvoiceEntry(invoice: {
+    id: string;
+    companyId: string;
+    issueDate: string;
+    totalAmount: number;
+    number: string;
+  }): Promise<void> {
+    const receivable = await this.getAccountByCode('411000');
+    const deferredRevenue = await this.getAccountByCode('487000');
+    await this.postEntry({
+      date: invoice.issueDate,
+      label: `Facture ${invoice.number}`,
+      source: JournalEntrySource.INVOICE,
+      sourceId: invoice.id,
+      lines: [
+        {
+          accountId: receivable.id,
+          debit: invoice.totalAmount,
+          companyId: invoice.companyId,
+        },
+        {
+          accountId: deferredRevenue.id,
+          credit: invoice.totalAmount,
+          companyId: invoice.companyId,
+        },
+      ],
+    });
+  }
+
+  async postRevenueRecognitionEntry(recognition: {
+    id: string;
+    companyId: string;
+    invoiceNumber: string;
+    date: string;
+    amount: number;
+  }): Promise<void> {
+    const deferredRevenue = await this.getAccountByCode('487000');
+    const revenue = await this.getAccountByCode('706000');
+    await this.postEntry({
+      date: recognition.date,
+      label: `Reconnaissance revenu ${recognition.invoiceNumber}`,
+      source: JournalEntrySource.INVOICE,
+      sourceId: recognition.id,
+      lines: [
+        {
+          accountId: deferredRevenue.id,
+          debit: recognition.amount,
+          companyId: recognition.companyId,
+        },
+        {
+          accountId: revenue.id,
+          credit: recognition.amount,
+          companyId: recognition.companyId,
+        },
+      ],
+    });
+  }
+
+  async postInvoicePaymentEntry(payment: {
+    id: string;
+    invoiceId: string;
+    companyId: string;
+    paidAt: string;
+    amount: number;
+  }): Promise<void> {
+    const bank = await this.getAccountByCode('512000');
+    const receivable = await this.getAccountByCode('411000');
+    await this.postEntry({
+      date: payment.paidAt.slice(0, 10),
+      label: `Encaissement facture ${payment.invoiceId}`,
+      source: JournalEntrySource.INVOICE,
+      sourceId: payment.id,
+      lines: [
+        {
+          accountId: bank.id,
+          debit: payment.amount,
+          companyId: payment.companyId,
+        },
+        {
+          accountId: receivable.id,
+          credit: payment.amount,
+          companyId: payment.companyId,
+        },
+      ],
+    });
+  }
+
   /** Supprime l'écriture liée à une dépense supprimée — appelé uniquement
    * quand la dépense elle-même vient d'être supprimée avec succès (donc dans
    * une période encore ouverte, voir FinanceService.removeExpense). */

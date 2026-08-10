@@ -79,13 +79,14 @@ export function OverviewReportTab({
   });
 
   const deltaLabel = t("vsPrevious");
-  const slaRate = data?.kpis.slaComplianceRate ?? 0;
+  const slaRate = data?.kpis.slaComplianceRate ?? null;
   const slaDelta =
-    prevData?.kpis.slaComplianceRate === undefined
+    prevData?.kpis.slaComplianceRate == null || slaRate == null
       ? null
       : {
           text: `${slaRate - prevData.kpis.slaComplianceRate >= 0 ? "+" : ""}${(slaRate - prevData.kpis.slaComplianceRate).toFixed(1)}%`,
           up: slaRate - prevData.kpis.slaComplianceRate >= 0,
+          favorable: slaRate - prevData.kpis.slaComplianceRate >= 0,
         };
 
   // Fusionne ordersTrend/slaTrend (deux séries indépendantes côté API) en un
@@ -143,11 +144,70 @@ export function OverviewReportTab({
             tone="violet"
             icon={<LineChartOutlined />}
             title={t("complianceRate")}
-            value={`${slaRate.toFixed(1)}%`}
+            value={slaRate == null ? "—" : `${slaRate.toFixed(1)}%`}
             delta={slaDelta}
             deltaLabel={deltaLabel}
           />
         </Col>
+      </Row>
+
+      <Row gutter={[16, 16]} style={{ marginBlockEnd: 16 }}>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            tone="success"
+            icon={<CheckCircleOutlined />}
+            title={t("fulfillmentRate")}
+            value={
+              data?.kpis.fulfillmentRate == null ? "—" : `${data.kpis.fulfillmentRate.toFixed(1)}%`
+            }
+            delta={null}
+            deltaLabel=""
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            tone="brand"
+            icon={<FieldTimeOutlined />}
+            title={t("medianDeliveryTime")}
+            value={
+              data?.kpis.medianDeliveryMinutes == null
+                ? "—"
+                : `${data.kpis.medianDeliveryMinutes} ${t("minutes")}`
+            }
+            delta={null}
+            deltaLabel=""
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            tone="brand"
+            icon={<FieldTimeOutlined />}
+            title={t("p90DeliveryTime")}
+            value={
+              data?.kpis.p90DeliveryMinutes == null
+                ? "—"
+                : `${data.kpis.p90DeliveryMinutes} ${t("minutes")}`
+            }
+            delta={null}
+            deltaLabel=""
+          />
+        </Col>
+        {canViewCosts && (
+          <Col xs={24} sm={12} xl={6}>
+            <StatCard
+              tone="violet"
+              icon={<DollarOutlined />}
+              title={t("purchaseCostPerDeliveredOrder")}
+              value={
+                data?.kpis.purchaseCostPerDeliveredOrder == null
+                  ? "—"
+                  : `${data.kpis.purchaseCostPerDeliveredOrder.toFixed(2)} ${t("currencyUnit")}`
+              }
+              delta={null}
+              deltaLabel=""
+            />
+          </Col>
+        )}
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginBlockEnd: 16 }}>
@@ -167,7 +227,9 @@ export function OverviewReportTab({
             icon={<ClockCircleOutlined />}
             title={t("pending")}
             value={String(data?.kpis.pendingCount ?? 0)}
-            delta={deltaInfo(data?.kpis.pendingCount, prevData?.kpis.pendingCount)}
+            delta={deltaInfo(data?.kpis.pendingCount, prevData?.kpis.pendingCount, {
+              lowerIsBetter: true,
+            })}
             deltaLabel={deltaLabel}
           />
         </Col>
@@ -177,7 +239,9 @@ export function OverviewReportTab({
             icon={<StopOutlined />}
             title={t("rejected")}
             value={String(data?.kpis.rejectedCount ?? 0)}
-            delta={deltaInfo(data?.kpis.rejectedCount, prevData?.kpis.rejectedCount)}
+            delta={deltaInfo(data?.kpis.rejectedCount, prevData?.kpis.rejectedCount, {
+              lowerIsBetter: true,
+            })}
             deltaLabel={deltaLabel}
           />
         </Col>
@@ -187,7 +251,9 @@ export function OverviewReportTab({
             icon={<FieldTimeOutlined />}
             title={t("avgDeliveryTime")}
             value={`${data?.kpis.avgDeliveryMinutes ?? 0} ${t("minutes")}`}
-            delta={deltaInfo(data?.kpis.avgDeliveryMinutes, prevData?.kpis.avgDeliveryMinutes)}
+            delta={deltaInfo(data?.kpis.avgDeliveryMinutes, prevData?.kpis.avgDeliveryMinutes, {
+              lowerIsBetter: true,
+            })}
             deltaLabel={deltaLabel}
           />
         </Col>
@@ -221,7 +287,9 @@ export function OverviewReportTab({
               icon={<ShoppingCartOutlined />}
               title={t("totalSpend")}
               value={`${(data?.kpis.purchasingSpend ?? 0).toFixed(2)} ${t("currencyUnit")}`}
-              delta={deltaInfo(data?.kpis.purchasingSpend, prevData?.kpis.purchasingSpend)}
+              delta={deltaInfo(data?.kpis.purchasingSpend, prevData?.kpis.purchasingSpend, {
+                lowerIsBetter: true,
+              })}
               deltaLabel={deltaLabel}
             />
           </Col>

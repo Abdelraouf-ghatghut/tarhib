@@ -22,6 +22,7 @@ function presetRange(preset: PeriodPreset): [string, string] | null {
 
 interface FinanceOverview {
   activeContractsRevenue: number;
+  activeContractsValue: number;
   totalExpenses: number;
   totalDebtRemaining: number;
   totalAccountsBalance: number;
@@ -69,8 +70,8 @@ export function FinanceOverviewPage() {
         <Col xs={24} sm={12} lg={6}>
           <Card loading={isPending}>
             <Statistic
-              title={t("activeContractsRevenue")}
-              value={data?.activeContractsRevenue ?? 0}
+              title={t("activeContractsValue")}
+              value={data?.activeContractsValue ?? data?.activeContractsRevenue ?? 0}
               precision={2}
               suffix={t("currencyUnit")}
               valueStyle={{ color: "var(--fg-success)" }}

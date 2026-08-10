@@ -137,6 +137,30 @@ describe('ReportingService — getQuotaReport (§3 CLAUDE.md, règle centrale qu
     ]);
   });
 
+  it('weights average quota consumption by configured quantity', async () => {
+    quotaRepo.createQueryBuilder.mockReturnValue(
+      makeQb([
+        {
+          employeeId: 'emp-1',
+          productId: 'small',
+          maxQuantity: 10,
+          usedQuantity: 10,
+          periodEnd: '2026-12-31',
+        },
+        {
+          employeeId: 'emp-2',
+          productId: 'large',
+          maxQuantity: 90,
+          usedQuantity: 0,
+          periodEnd: '2026-12-31',
+        },
+      ]),
+    );
+
+    const result = await service.getQuotaReport('co-1');
+    expect(result.averageConsumptionRate).toBe(0.1);
+  });
+
   it('treats a maxQuantity of 0 as 0% consumption instead of dividing by zero', async () => {
     quotaRepo.createQueryBuilder.mockReturnValue(
       makeQb([

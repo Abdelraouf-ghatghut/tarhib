@@ -44,7 +44,10 @@ export function StatCard({
         ) : (
           <Text
             strong
-            style={{ fontSize: 12, color: delta.up ? "var(--fg-success)" : "var(--fg-danger)" }}
+            style={{
+              fontSize: 12,
+              color: delta.favorable ? "var(--fg-success)" : "var(--fg-danger)",
+            }}
           >
             {delta.up ? <RiseOutlined /> : <FallOutlined />} {delta.text}
           </Text>

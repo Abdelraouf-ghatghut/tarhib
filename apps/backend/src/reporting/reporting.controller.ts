@@ -115,17 +115,23 @@ export class ReportingController {
     summary: 'Rapport SLA : taux de conformité des délais de livraison',
   })
   @ApiQuery({ name: 'companyId', required: false })
+  @ApiQuery({ name: 'branchId', required: false })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
   getSlaReport(
     @Req() req: Request & { user: JwtPayload },
     @Query('companyId') qCompanyId?: string,
+    @Query('branchId') branchId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<SlaReport> {
     this.assertReportPeriod(from, to);
     const companyId = req.user?.companyId || qCompanyId || '';
-    return this.reportingService.getSlaReport(companyId, { from, to });
+    return this.reportingService.getSlaReport(companyId, {
+      branchId,
+      from,
+      to,
+    });
   }
 
   @Get('quotas')
@@ -178,17 +184,23 @@ export class ReportingController {
       'Rapport salles de réunion : bookings, taux annulation, durée moyenne',
   })
   @ApiQuery({ name: 'companyId', required: false })
+  @ApiQuery({ name: 'branchId', required: false })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
   getMeetingRoomsReport(
     @Req() req: Request & { user: JwtPayload },
     @Query('companyId') qCompanyId?: string,
+    @Query('branchId') branchId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<MeetingRoomsReport> {
     this.assertReportPeriod(from, to);
     const companyId = req.user?.companyId || qCompanyId || '';
-    return this.reportingService.getMeetingRoomsReport(companyId, { from, to });
+    return this.reportingService.getMeetingRoomsReport(companyId, {
+      branchId,
+      from,
+      to,
+    });
   }
 
   @Get('purchasing')

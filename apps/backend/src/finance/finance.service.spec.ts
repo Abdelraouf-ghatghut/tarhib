@@ -100,6 +100,7 @@ describe('FinanceService', () => {
 
       expect(overview).toEqual({
         activeContractsRevenue: 1500.5,
+        activeContractsValue: 1500.5,
         totalExpenses: 200,
         totalDebtRemaining: 300,
         totalAccountsBalance: 3849.75,
@@ -117,6 +118,7 @@ describe('FinanceService', () => {
 
       expect(overview).toEqual({
         activeContractsRevenue: 0,
+        activeContractsValue: 0,
         totalExpenses: 0,
         totalDebtRemaining: 0,
         totalAccountsBalance: 0,

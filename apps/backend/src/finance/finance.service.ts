@@ -551,6 +551,7 @@ export class FinanceService {
 
     return {
       activeContractsRevenue,
+      activeContractsValue: activeContractsRevenue,
       totalExpenses,
       totalDebtRemaining,
       totalAccountsBalance,

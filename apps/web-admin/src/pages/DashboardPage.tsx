@@ -25,6 +25,7 @@ import {
   RightOutlined,
   LeftOutlined,
   PieChartOutlined,
+  FieldTimeOutlined,
 } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -183,13 +184,14 @@ export function DashboardPage() {
 
   const pending = ordersReport?.byStatus?.["PENDING"] ?? 0;
   const delivered = ordersReport?.byStatus?.["DELIVERED"] ?? 0;
-  const slaRate = slaReport?.complianceRate ?? 100;
+  const slaRate = slaReport?.complianceRate ?? null;
   const slaDelta: DeltaInfo | null =
-    slaPrev?.complianceRate === undefined
+    slaPrev?.complianceRate == null || slaRate == null
       ? null
       : {
           text: `${slaRate - slaPrev.complianceRate >= 0 ? "+" : ""}${(slaRate - slaPrev.complianceRate).toFixed(1)}%`,
           up: slaRate - slaPrev.complianceRate >= 0,
+          favorable: slaRate - slaPrev.complianceRate >= 0,
         };
   const deltaLabel = period === "today" ? t("vsYesterday") : t("vsPrevious");
   const criticalCount = (alertItems ?? []).filter((a) => a.quantity <= a.minThreshold / 2).length;
@@ -297,7 +299,7 @@ export function DashboardPage() {
           <StatCard
             tone="brand"
             icon={<CodeSandboxOutlined />}
-            title={t("todayOrders")}
+            title={period === "today" ? t("todayOrders") : t("totalOrders")}
             value={String(ordersReport?.total ?? 0)}
             delta={deltaInfo(ordersReport?.total, ordersPrev?.total)}
             deltaLabel={deltaLabel}
@@ -312,6 +314,7 @@ export function DashboardPage() {
             delta={deltaInfo(
               pending,
               ordersPrev?.byStatus?.["PENDING"] ?? (ordersPrev ? 0 : undefined),
+              { lowerIsBetter: true },
             )}
             deltaLabel={deltaLabel}
           />
@@ -320,7 +323,7 @@ export function DashboardPage() {
           <StatCard
             tone="success"
             icon={<CheckCircleOutlined />}
-            title={t("deliveredToday")}
+            title={period === "today" ? t("deliveredToday") : t("delivered")}
             value={String(delivered)}
             delta={deltaInfo(
               delivered,
@@ -334,7 +337,7 @@ export function DashboardPage() {
             tone="violet"
             icon={<LineChartOutlined />}
             title={t("slaRate")}
-            value={`${slaRate.toFixed(1)}%`}
+            value={slaRate == null ? "—" : `${slaRate.toFixed(1)}%`}
             delta={slaDelta}
             deltaLabel={deltaLabel}
           />
@@ -347,6 +350,57 @@ export function DashboardPage() {
             value={`${((quotaReport?.averageConsumptionRate ?? 0) * 100).toFixed(0)}%`}
             delta={null}
             deltaLabel={t("quotaNearCapCount", { count: quotaReport?.nearCapCount ?? 0 })}
+          />
+        </Col>
+      </Row>
+
+      <Row gutter={[16, 16]} style={{ marginBlockEnd: 16 }}>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            tone="danger"
+            icon={<AlertOutlined />}
+            title={t("openOverdue")}
+            value={String(slaReport?.openOverdue ?? 0)}
+            delta={null}
+            deltaLabel=""
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            tone="violet"
+            icon={<ClockCircleOutlined />}
+            title={t("openAtRisk30")}
+            value={String(slaReport?.openAtRisk ?? 0)}
+            delta={null}
+            deltaLabel=""
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            tone="brand"
+            icon={<FieldTimeOutlined />}
+            title={t("medianDeliveryTime")}
+            value={
+              slaReport?.medianDeliveryMinutes == null
+                ? "—"
+                : `${slaReport.medianDeliveryMinutes} ${t("minutes")}`
+            }
+            delta={null}
+            deltaLabel=""
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            tone="brand"
+            icon={<FieldTimeOutlined />}
+            title={t("p90DeliveryTime")}
+            value={
+              slaReport?.p90DeliveryMinutes == null
+                ? "—"
+                : `${slaReport.p90DeliveryMinutes} ${t("minutes")}`
+            }
+            delta={null}
+            deltaLabel=""
           />
         </Col>
       </Row>
