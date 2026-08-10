@@ -115,6 +115,8 @@ export function PerformanceManagementPage() {
     value: c.id,
     label: i18n.language.startsWith("ar") ? c.nameAr : c.nameEn || c.nameAr,
   }));
+  const enumLabel = (group: string, value: string) =>
+    t(`${group}_${value}`, { defaultValue: value });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["performance"] });
   const mutate = useMutation({
     mutationFn: (fn: () => Promise<unknown>) => fn(),
@@ -174,7 +176,7 @@ export function PerformanceManagementPage() {
         <Col xs={24} sm={12} xl={6}>
           <Card>
             <Statistic
-              title="CSAT"
+              title={t("customerSatisfactionIndex")}
               value={summary.csat ?? "—"}
               suffix={summary.csat == null ? undefined : "%"}
             />
@@ -220,7 +222,11 @@ export function PerformanceManagementPage() {
           },
           { title: t("issueDate"), dataIndex: "issueDate" },
           { title: t("dueDate"), dataIndex: "dueDate" },
-          { title: t("status"), dataIndex: "status", render: (v: string) => <Tag>{v}</Tag> },
+          {
+            title: t("status"),
+            dataIndex: "status",
+            render: (v: string) => <Tag>{enumLabel("invoiceStatus", v)}</Tag>,
+          },
           {
             title: t("total"),
             dataIndex: "totalAmount",
@@ -292,7 +298,11 @@ export function PerformanceManagementPage() {
         columns={[
           { title: t("fiscalYear"), dataIndex: "fiscalYear" },
           { title: t("version"), dataIndex: "version" },
-          { title: t("status"), dataIndex: "status", render: (v: string) => <Tag>{v}</Tag> },
+          {
+            title: t("status"),
+            dataIndex: "status",
+            render: (v: string) => <Tag>{enumLabel("budgetStatus", v)}</Tag>,
+          },
           {
             title: t("budget"),
             dataIndex: "totalAmount",
@@ -433,7 +443,7 @@ export function PerformanceManagementPage() {
                     <Select
                       options={["PENDING", "CHECKED_IN", "COMPLETED", "NO_SHOW"].map((v) => ({
                         value: v,
-                        label: v,
+                        label: enumLabel("attendanceStatus", v),
                       }))}
                     />
                   </Form.Item>
@@ -497,7 +507,7 @@ export function PerformanceManagementPage() {
               )
             }
           >
-            {t("generate")} {kind}
+            {t("generate")} {enumLabel("forecastKind", kind)}
           </Button>
         ))}
       </Space>
@@ -507,7 +517,11 @@ export function PerformanceManagementPage() {
         dataSource={forecasts}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: t("type"), dataIndex: "kind" },
+          {
+            title: t("type"),
+            dataIndex: "kind",
+            render: (v: string) => enumLabel("forecastKind", v),
+          },
           { title: t("date"), dataIndex: "forecastDate" },
           {
             title: t("forecast"),
@@ -678,7 +692,7 @@ export function PerformanceManagementPage() {
             <Select
               options={["BANK_TRANSFER", "CARD", "CASH", "OTHER"].map((v) => ({
                 value: v,
-                label: v,
+                label: enumLabel("paymentMethod", v),
               }))}
             />
           </Form.Item>
@@ -730,7 +744,10 @@ export function PerformanceManagementPage() {
                       <Input placeholder="YYYY-MM" />
                     </Form.Item>
                     <Form.Item name={[name, "costCenter"]} rules={[{ required: true }]}>
-                      <Input placeholder={t("costCenter")} />
+                      <Select
+                        placeholder={t("costCenter")}
+                        options={[{ value: "OPERATIONS", label: t("costCenterOperations") }]}
+                      />
                     </Form.Item>
                     <Form.Item name={[name, "accountCode"]}>
                       <Input placeholder={t("accountCode")} />
