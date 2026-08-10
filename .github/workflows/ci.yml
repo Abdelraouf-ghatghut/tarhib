@@ -67,16 +67,6 @@ jobs:
       - name: Web Admin build
         run: npm run build -w apps/web-admin
 
-      - name: Mobile type checks
-        run: |
-          npm run typecheck -w apps/mobile-employee
-          npm run typecheck -w apps/mobile-operations
-
-      - name: Validate Expo configurations
-        run: |
-          cd apps/mobile-employee && npx expo config --type public >/dev/null
-          cd ../mobile-operations && npx expo config --type public >/dev/null
-
       - name: Production dependency audit (Backend and Web Admin)
         run: npm audit --omit=dev --audit-level=high -w apps/backend -w apps/web-admin
 
@@ -142,7 +132,7 @@ jobs:
         run: npm run test:int -w apps/backend
 
   # ──────────────────────────────────────────────────────────────
-  # Job 2 : Flutter mobile — génération client Dart + QA + build
+  # Job 2 : React Native / Expo — QA et génération des bundles Android
   #         Démarre seulement si build-test-node passe
   # ──────────────────────────────────────────────────────────────
   build-test-mobile:
@@ -152,51 +142,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download OpenAPI spec
-        uses: actions/download-artifact@v4
+      - uses: actions/setup-node@v4
         with:
-          name: openapi-spec
-          path: apps/backend/openapi
+          node-version-file: ".nvmrc"
+          cache: "npm"
 
-      - name: Setup Java (for openapi-generator-cli)
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Generate Dart API client
+      - name: Type-check mobile applications
         run: |
-          npx @openapitools/openapi-generator-cli generate \
-            -i apps/backend/openapi/openapi.json \
-            -g dart-dio \
-            -o apps/mobile/packages/tarhib_api_client \
-            --additional-properties=pubName=tarhib_api_client,nullSafe=true,pubAuthor=Tarhib
+          npm run typecheck -w apps/mobile-employee
+          npm run typecheck -w apps/mobile-operations
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - name: Validate Expo configurations
+        run: |
+          cd apps/mobile-employee && npx expo config --type public >/dev/null
+          cd ../mobile-operations && npx expo config --type public >/dev/null
+
+      - name: Export Employee Android bundle
+        run: npx expo export --platform android --output-dir dist-ci
+        working-directory: apps/mobile-employee
+
+      - name: Export Operations Android bundle
+        run: npx expo export --platform android --output-dir dist-ci
+        working-directory: apps/mobile-operations
+
+      - name: Upload mobile bundles
+        uses: actions/upload-artifact@v4
         with:
-          flutter-version-file: apps/mobile/.fvmrc
-
-      - name: Flutter pub get
-        run: flutter pub get
-        working-directory: apps/mobile
-
-      - name: Generate built_value code (*.g.dart)
-        run: dart run build_runner build
-        working-directory: apps/mobile/packages/tarhib_api_client
-
-      - name: Check Dart formatting
-        run: dart format --output=none --set-exit-if-changed lib
-        working-directory: apps/mobile
-
-      - name: Flutter analyze
-        run: flutter analyze
-        working-directory: apps/mobile
-
-      - name: Flutter test
-        run: flutter test --coverage
-        working-directory: apps/mobile
-
-      - name: Build APK (debug)
-        run: flutter build apk --debug
-        working-directory: apps/mobile
+          name: expo-android-bundles
+          path: |
+            apps/mobile-employee/dist-ci
+            apps/mobile-operations/dist-ci
+          retention-days: 1

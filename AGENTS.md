@@ -72,7 +72,7 @@ Deux applications mobiles distinctes sont prévues :
 
 ## Mobile
 
-Deux applications Flutter indépendantes :
+Deux applications React Native / Expo indépendantes :
 
 - Tarhib Employee
 - Tarhib Operations
@@ -757,7 +757,7 @@ Interfaces modernes.
 
 Technologies :
 
-- Flutter Material 3
+- React Native / Expo avec le design system partagé Snow UI
 - React + Ant Design
 
 Thèmes :

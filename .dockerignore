@@ -9,7 +9,7 @@ node_modules
 **/.turbo
 **/.expo
 **/.next
-apps/mobile
+archive/mobile-flutter
 apps/mobile-employee/android
 apps/mobile-employee/ios
 apps/mobile-operations/android

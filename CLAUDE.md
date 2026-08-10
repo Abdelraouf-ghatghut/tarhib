@@ -77,7 +77,7 @@ Deux applications **React Native (Expo)** indépendantes, partageant `packages/m
 - Tarhib Employee — `apps/mobile-employee` (couleur principale : vert `#55CFA8`)
 - Tarhib Operations — `apps/mobile-operations` (couleur principale : bleu `#5B8CFF`)
 
-> **Transition en cours** : l'ancienne app Flutter (`apps/mobile`) est en cours de remplacement par React Native et n'est pas encore retirée. Tant que la parité n'est pas atteinte, tout nouveau développement mobile cible React Native ; Flutter ne reçoit que des hotfixes. Ne pas ajouter de fonctionnalité à `apps/mobile`.
+> **Archive historique** : l'ancienne app Flutter est conservée dans `archive/mobile-flutter` et n'est plus construite par la CI. Tout développement mobile actif cible exclusivement les deux applications React Native / Expo.
 
 ---
 
@@ -759,7 +759,7 @@ Interfaces modernes.
 
 Technologies :
 
-- Flutter Material 3
+- React Native / Expo avec le design system partagé Snow UI
 - React + Ant Design
 
 Thèmes :
