@@ -4,31 +4,53 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
 import {
   CleaningTask,
   CleaningTaskStatus,
 } from './entities/cleaning-task.entity.js';
+import { OperationalZonesService } from '../operational-zones/operational-zones.service.js';
+import { OperationalZoneType } from '../operational-zones/entities/operational-zone.entity.js';
 
 @Injectable()
 export class CleaningTasksService {
   constructor(
     @InjectRepository(CleaningTask)
     private readonly repo: Repository<CleaningTask>,
+    private readonly operationalZones: OperationalZonesService,
   ) {}
 
   findAll(filters: {
     companyId?: string;
     branchId?: string;
     assignedEmployeeId?: string;
+    operationalZoneIds?: string[];
   }): Promise<CleaningTask[]> {
     const where: FindOptionsWhere<CleaningTask> = {};
     Object.assign(
       where,
-      Object.fromEntries(Object.entries(filters).filter(([, value]) => value)),
+      Object.fromEntries(
+        Object.entries(filters)
+          .filter(([key, value]) => key !== 'operationalZoneIds' && value)
+          .map(([key, value]) => [key, value]),
+      ),
     );
+    const zoneIds = filters.operationalZoneIds ?? [];
+    const scopedWhere:
+      | FindOptionsWhere<CleaningTask>[]
+      | FindOptionsWhere<CleaningTask> =
+      filters.assignedEmployeeId && zoneIds.length
+        ? [
+            where,
+            {
+              ...where,
+              assignedEmployeeId: IsNull(),
+              operationalZoneId: In(zoneIds),
+            },
+          ]
+        : where;
     return this.repo.find({
-      where,
+      where: scopedWhere,
       order: { dueDate: 'ASC', createdAt: 'DESC' },
     });
   }
@@ -39,8 +61,52 @@ export class CleaningTasksService {
     return task;
   }
 
-  create(input: Partial<CleaningTask>): Promise<CleaningTask> {
+  async create(input: Partial<CleaningTask>): Promise<CleaningTask> {
+    if (input.operationalZoneId) {
+      const zone = await this.operationalZones.findOne(input.operationalZoneId);
+      if (
+        zone.type !== OperationalZoneType.CLEANING ||
+        zone.companyId !== input.companyId ||
+        zone.branchId !== input.branchId ||
+        (input.floor &&
+          !zone.floors.some(
+            (floor) =>
+              this.operationalZones.floorKey(floor) ===
+              this.operationalZones.floorKey(input.floor!),
+          ))
+      ) {
+        throw new BadRequestException('cleaningTaskOutsideSelectedZone');
+      }
+    }
     return this.repo.save(this.repo.create(input));
+  }
+
+  async claimAndStart(
+    id: string,
+    employeeId: string,
+    allowedZoneIds: string[],
+  ): Promise<CleaningTask> {
+    if (!allowedZoneIds.length) {
+      throw new BadRequestException('cleaningZoneAssignmentRequired');
+    }
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(CleaningTask)
+      .set({
+        assignedEmployeeId: employeeId,
+        status: CleaningTaskStatus.IN_PROGRESS,
+      })
+      .where('id = :id', { id })
+      .andWhere('status = :status', { status: CleaningTaskStatus.PENDING })
+      .andWhere('assigned_employee_id IS NULL')
+      .andWhere('operational_zone_id IN (:...zoneIds)', {
+        zoneIds: allowedZoneIds,
+      })
+      .execute();
+    if (result.affected !== 1) {
+      throw new BadRequestException('cleaningTaskAlreadyClaimedOrOutsideZone');
+    }
+    return this.findOne(id);
   }
 
   async assign(id: string, employeeId: string): Promise<CleaningTask> {

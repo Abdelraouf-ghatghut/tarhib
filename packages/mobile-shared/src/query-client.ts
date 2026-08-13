@@ -1,6 +1,26 @@
 import { useEffect } from "react";
 import { AppState, type AppStateStatus } from "react-native";
-import { focusManager } from "@tanstack/react-query";
+import { focusManager, QueryClient } from "@tanstack/react-query";
+
+/** Politique commune : lectures rejouées seulement sur erreurs transitoires,
+ * mutations jamais rejouées automatiquement (évite les doubles écritures). */
+export function createMobileQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: (failureCount, error) => {
+          const status = (error as { response?: { status?: number } })?.response?.status;
+          if (status && status >= 400 && status < 500 && status !== 408 && status !== 429)
+            return false;
+          return failureCount < 2;
+        },
+        retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 8_000),
+        refetchOnReconnect: true,
+      },
+      mutations: { retry: false },
+    },
+  });
+}
 
 /**
  * TanStack Query ne connaît nativement que le focus du DOM (web) — sans ce

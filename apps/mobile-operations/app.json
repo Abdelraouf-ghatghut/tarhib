@@ -10,7 +10,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.tarhib.operations",
+      "buildNumber": "1",
       "infoPlist": {
+        "CFBundleDevelopmentRegion": "ar",
+        "CFBundleAllowMixedLocalizations": true,
         "NSUserNotificationsUsageDescription": "Tarhib uses notifications for assigned operational tasks and urgent incidents."
       }
     },

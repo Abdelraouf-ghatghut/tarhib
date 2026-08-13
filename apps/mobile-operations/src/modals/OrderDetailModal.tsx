@@ -14,6 +14,7 @@ import {
   type Copy,
   type Lang,
   type Order,
+  type OrderLine,
   type SnowTheme,
 } from "@tarhib/mobile-shared";
 import { formatMinutesUntil, orderCode, productName } from "../lib/format";
@@ -30,6 +31,11 @@ type Props = {
   busy: boolean;
   onStart: (id: string) => void;
   onReady: (id: string) => void;
+  onUpdatePreparationLine: (
+    orderId: string,
+    lineId: string,
+    status: OrderLine["preparationStatus"],
+  ) => void;
   onDeliver: (id: string) => void;
   onReportIncident: (id: string, reason: string, description: string) => void;
   onClose: () => void;
@@ -46,6 +52,7 @@ export const OrderDetailModal = ({
   busy,
   onStart,
   onReady,
+  onUpdatePreparationLine,
   onDeliver,
   onReportIncident,
   onClose,
@@ -70,7 +77,10 @@ export const OrderDetailModal = ({
           : "Low priority";
   const deadline = new Date(order.slaDeadline);
   const canAct = ["APPROVED", "IN_PROGRESS", "READY"].includes(order.status);
-  const visibleLines = order.lines.slice(0, 4);
+  const visibleLines = order.lines;
+  const preparationComplete = order.lines
+    .filter((line) => line.validationStatus === "APPROVED")
+    .every((line) => line.preparationStatus !== "PENDING");
   const issueTypes = [
     { key: "MISSING_INGREDIENTS", en: "Missing ingredients", ar: "مكونات ناقصة" },
     { key: "DAMAGED_ITEM", en: "Damaged item", ar: "عنصر تالف" },
@@ -265,45 +275,80 @@ export const OrderDetailModal = ({
                 const product = productsById.get(line.productId);
                 const image = product ? operationsProductImage(product) : null;
                 return (
-                  <View key={`${line.productId}-${index}`} style={styles.itemRow}>
-                    <View style={[styles.itemIcon, { borderColor: theme.border }]}>
-                      {image || product?.imageUrl ? (
-                        <Image
-                          source={image ?? { uri: product!.imageUrl! }}
-                          resizeMode="contain"
-                          style={styles.image}
-                        />
-                      ) : (
-                        <Ionicons
-                          name={
-                            index === 0
-                              ? "restaurant-outline"
-                              : index === 1
-                                ? "leaf-outline"
-                                : index === 2
-                                  ? "cafe-outline"
-                                  : "water-outline"
-                          }
-                          size={22}
-                          color={theme.text}
-                        />
-                      )}
+                  <View key={line.id || `${line.productId}-${index}`} style={styles.checklistItem}>
+                    <View style={styles.itemRow}>
+                      <View style={[styles.itemIcon, { borderColor: theme.border }]}>
+                        {image || product?.imageUrl ? (
+                          <Image
+                            source={image ?? { uri: product!.imageUrl! }}
+                            resizeMode="contain"
+                            style={styles.image}
+                          />
+                        ) : (
+                          <Ionicons
+                            name={
+                              index === 0
+                                ? "restaurant-outline"
+                                : index === 1
+                                  ? "leaf-outline"
+                                  : index === 2
+                                    ? "cafe-outline"
+                                    : "water-outline"
+                            }
+                            size={22}
+                            color={theme.text}
+                          />
+                        )}
+                      </View>
+                      <Text numberOfLines={1} style={[styles.itemName, { color: theme.text }]}>
+                        {productName(product, lang, line.productId)}
+                      </Text>
+                      <Text style={[styles.quantity, { color: theme.text }]}>
+                        x {line.quantity}
+                      </Text>
                     </View>
-                    <Text numberOfLines={1} style={[styles.itemName, { color: theme.text }]}>
-                      {productName(product, lang, line.productId)}
-                    </Text>
-                    <Text style={[styles.quantity, { color: theme.text }]}>x {line.quantity}</Text>
+                    {order.status === "IN_PROGRESS" && line.validationStatus === "APPROVED" ? (
+                      <View style={styles.checklistActions}>
+                        {(
+                          [
+                            ["DONE", lang === "ar" ? "مكتمل" : "Done"],
+                            ["SUBSTITUTED", lang === "ar" ? "مستبدل" : "Substituted"],
+                            ["OUT_OF_STOCK", lang === "ar" ? "غير متوفر" : "Unavailable"],
+                          ] as const
+                        ).map(([status, label]) => {
+                          const active = line.preparationStatus === status;
+                          return (
+                            <Pressable
+                              key={status}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: active, disabled: busy }}
+                              disabled={busy}
+                              onPress={() => onUpdatePreparationLine(order.id, line.id, status)}
+                              style={[
+                                styles.checklistButton,
+                                {
+                                  borderColor: active ? theme.primaryStrong : theme.border,
+                                  backgroundColor: active ? theme.primaryStrong : theme.surfaceAlt,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.checklistText,
+                                  { color: active ? "#FFFFFF" : theme.text },
+                                ]}
+                              >
+                                {label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
                   </View>
                 );
               })}
             </View>
-            {order.lines.length > visibleLines.length ? (
-              <Text style={[styles.more, { color: theme.muted }]}>
-                + {order.lines.length - visibleLines.length}{" "}
-                {lang === "ar" ? "عناصر أخرى" : "more items"}
-              </Text>
-            ) : null}
-
             <View style={[styles.rule, styles.noteRule, { backgroundColor: theme.border }]} />
             <Text style={[styles.noteTitle, { color: theme.text }]}>
               {lang === "ar" ? "ملاحظة" : "Note"}
@@ -353,12 +398,21 @@ export const OrderDetailModal = ({
                 />
               ) : null}
               {order.status === "IN_PROGRESS" && canPrepare ? (
-                <PrimaryButton
-                  label={copy.markReady}
-                  theme={theme}
-                  disabled={busy}
-                  onPress={() => onReady(order.id)}
-                />
+                <>
+                  <PrimaryButton
+                    label={copy.markReady}
+                    theme={theme}
+                    disabled={busy || !preparationComplete}
+                    onPress={() => onReady(order.id)}
+                  />
+                  {!preparationComplete ? (
+                    <Text style={[styles.checklistHint, { color: theme.warning }]}>
+                      {lang === "ar"
+                        ? "أكمل حالة كل عنصر قبل تحديد الطلب كجاهز"
+                        : "Complete every item before marking the order ready"}
+                    </Text>
+                  ) : null}
+                </>
               ) : null}
               {order.status === "READY" && canDeliver ? (
                 <PrimaryButton
@@ -432,6 +486,18 @@ const styles = createSnowStyles({
   image: { width: "90%", height: "90%" },
   itemName: { flex: 1, fontSize: 14 },
   quantity: { fontSize: 14, fontWeight: "700" },
+  checklistItem: { gap: 8 },
+  checklistActions: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  checklistButton: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checklistText: { fontSize: 12, fontWeight: "700" },
+  checklistHint: { fontSize: 13, lineHeight: 20, textAlign: "center" },
   more: { fontSize: 13 },
   noteRule: { marginTop: 4 },
   noteTitle: { fontSize: 15, fontWeight: "700" },

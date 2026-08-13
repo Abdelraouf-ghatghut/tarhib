@@ -1,13 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { UseQueryResult } from "@tanstack/react-query";
-import React from "react";
-import { Image, Pressable, Text, View } from "react-native";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import React, { useMemo, useState } from "react";
+import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   Card,
   appShadow,
   createSnowStyles,
   spacing,
+  fetchFavoriteProductIds,
+  setProductFavorite,
   type CatalogProduct,
   type Lang,
   type SnowTheme,
@@ -40,8 +43,35 @@ export const HomeTab = ({
   onRemove: (productId: string) => void;
   onGoToCart: () => void;
 }) => {
-  const drinks = catalogQuery.data ?? [];
-  const quotaTracked = drinks.filter((p) => p.quotaMax !== null && p.quotaRemaining !== null);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
+  const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
+  const queryClient = useQueryClient();
+  const favoritesQuery = useQuery({
+    queryKey: ["employee-favorites"],
+    queryFn: fetchFavoriteProductIds,
+  });
+  const favoriteIds = favoritesQuery.data ?? [];
+  const favoriteMutation = useMutation({
+    mutationFn: ({ productId, favorite }: { productId: string; favorite: boolean }) =>
+      setProductFavorite(productId, favorite),
+    onSuccess: (ids) => queryClient.setQueryData(["employee-favorites"], ids),
+  });
+  const allDrinks = catalogQuery.data ?? [];
+  const categories = useMemo(
+    () => [...new Set(allDrinks.map((product) => product.category).filter(Boolean))],
+    [allDrinks],
+  );
+  const drinks = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase();
+    return allDrinks.filter((product) => {
+      const categoryMatches = category === "all" || product.category === category;
+      const textMatches =
+        !term || `${product.nameAr} ${product.nameEn ?? ""}`.toLocaleLowerCase().includes(term);
+      return categoryMatches && textMatches;
+    });
+  }, [allDrinks, category, search]);
+  const quotaTracked = allDrinks.filter((p) => p.quotaMax !== null && p.quotaRemaining !== null);
 
   return (
     <>
@@ -63,6 +93,43 @@ export const HomeTab = ({
         </Text>
       </View>
 
+      <View
+        style={[styles.searchBox, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
+      >
+        <Ionicons name="search-outline" size={20} color={theme.muted} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder={arOrEn(lang, "ابحث بالعربية أو الإنجليزية", "Search in Arabic or English")}
+          placeholderTextColor={theme.muted}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+          style={[styles.searchInput, { color: theme.text }]}
+        />
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categories}
+      >
+        {["all", ...categories].map((item) => (
+          <Pressable
+            key={item}
+            onPress={() => setCategory(item)}
+            style={[
+              styles.categoryPill,
+              { backgroundColor: category === item ? theme.primary : theme.surfaceAlt },
+            ]}
+          >
+            <Text
+              style={[styles.categoryText, { color: category === item ? "#FFFFFF" : theme.text }]}
+            >
+              {item === "all" ? arOrEn(lang, "الكل", "All") : item}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
       {catalogQuery.isLoading ? (
         <LoadingState theme={theme} lang={lang} />
       ) : catalogQuery.isError ? (
@@ -81,6 +148,17 @@ export const HomeTab = ({
               lang={lang}
               product={product}
               quantity={quantities[product.id] ?? 0}
+              favorite={favoriteIds.includes(product.id)}
+              favoritePending={
+                favoriteMutation.isPending && favoriteMutation.variables?.productId === product.id
+              }
+              onToggleFavorite={() =>
+                favoriteMutation.mutate({
+                  productId: product.id,
+                  favorite: !favoriteIds.includes(product.id),
+                })
+              }
+              onOpenDetails={() => setSelectedProduct(product)}
               onAdd={() => onAdd(product.id)}
               onRemove={() => onRemove(product.id)}
             />
@@ -119,6 +197,12 @@ export const HomeTab = ({
           </View>
         </Pressable>
       ) : null}
+      <ProductDetailsModal
+        product={selectedProduct}
+        lang={lang}
+        theme={theme}
+        onClose={() => setSelectedProduct(null)}
+      />
 
       <Text style={[styles.consumptionTitle, { color: theme.text }]}>
         {arOrEn(lang, "استهلاك اليوم", "Today's consumption")}
@@ -197,6 +281,10 @@ const DrinkCard = ({
   lang,
   product,
   quantity,
+  favorite,
+  favoritePending,
+  onToggleFavorite,
+  onOpenDetails,
   onAdd,
   onRemove,
 }: {
@@ -204,11 +292,19 @@ const DrinkCard = ({
   lang: Lang;
   product: CatalogProduct;
   quantity: number;
+  favorite: boolean;
+  favoritePending: boolean;
+  onToggleFavorite: () => void;
+  onOpenDetails: () => void;
   onAdd: () => void;
   onRemove: () => void;
 }) => {
   const image = productImage(product);
   const subtitle = productSubtitle(product, lang);
+  const maximum = Math.max(
+    0,
+    Math.min(product.availableQuantity, product.quotaRemaining ?? Number.MAX_SAFE_INTEGER),
+  );
 
   return (
     <View
@@ -219,6 +315,23 @@ const DrinkCard = ({
       ]}
     >
       <View style={styles.drinkImageWrap}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={arOrEn(
+            lang,
+            favorite ? "إزالة من المفضلة" : "إضافة إلى المفضلة",
+            favorite ? "Remove from favorites" : "Add to favorites",
+          )}
+          disabled={favoritePending}
+          onPress={onToggleFavorite}
+          style={styles.favoriteButton}
+        >
+          <Ionicons
+            name={favorite ? "heart" : "heart-outline"}
+            size={22}
+            color={favorite ? theme.danger : theme.muted}
+          />
+        </Pressable>
         {image ? (
           <Image source={image} resizeMode="contain" style={styles.drinkImage} />
         ) : (
@@ -235,7 +348,19 @@ const DrinkCard = ({
       ) : (
         <View style={styles.drinkSubtitleSpacer} />
       )}
-      <DrinkStepper theme={theme} quantity={quantity} onAdd={onAdd} onRemove={onRemove} />
+      <Pressable accessibilityRole="button" onPress={onOpenDetails} style={styles.detailsButton}>
+        <Ionicons name="information-circle-outline" size={18} color={theme.primaryStrong} />
+        <Text style={[styles.detailsButtonText, { color: theme.primaryStrong }]}>
+          {arOrEn(lang, "التفاصيل", "Details")}
+        </Text>
+      </Pressable>
+      <DrinkStepper
+        theme={theme}
+        quantity={quantity}
+        maximum={maximum}
+        onAdd={onAdd}
+        onRemove={onRemove}
+      />
     </View>
   );
 };
@@ -247,16 +372,19 @@ const DrinkCard = ({
 const DrinkStepper = ({
   theme,
   quantity,
+  maximum,
   onAdd,
   onRemove,
 }: {
   theme: SnowTheme;
   quantity: number;
+  maximum: number;
   onAdd: () => void;
   onRemove: () => void;
 }) => (
   <View style={styles.drinkStepper}>
     <Pressable
+      disabled={quantity === 0}
       onPress={onRemove}
       style={[styles.drinkStepperButton, { backgroundColor: theme.surfaceAlt }]}
     >
@@ -264,12 +392,91 @@ const DrinkStepper = ({
     </Pressable>
     <Text style={[styles.drinkStepperText, { color: theme.text }]}>{quantity}</Text>
     <Pressable
+      disabled={quantity >= maximum}
       onPress={onAdd}
-      style={[styles.drinkStepperButton, { backgroundColor: theme.primarySoft }]}
+      style={[
+        styles.drinkStepperButton,
+        { backgroundColor: theme.primarySoft, opacity: quantity >= maximum ? 0.4 : 1 },
+      ]}
     >
       <Ionicons name="add" size={16} color={theme.primaryStrong} />
     </Pressable>
   </View>
+);
+
+const ProductDetailsModal = ({
+  product,
+  lang,
+  theme,
+  onClose,
+}: {
+  product: CatalogProduct | null;
+  lang: Lang;
+  theme: SnowTheme;
+  onClose: () => void;
+}) => (
+  <Modal visible={!!product} animationType="slide" onRequestClose={onClose}>
+    <SafeAreaView
+      style={[styles.detailsRoot, { backgroundColor: theme.background }]}
+      edges={["top", "bottom"]}
+    >
+      {product ? (
+        <ScrollView contentContainerStyle={styles.detailsContent}>
+          <View style={styles.detailsHeader}>
+            <Text style={[styles.detailsTitle, { color: theme.text }]}>
+              {productLabel(product, lang)}
+            </Text>
+            <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
+              <Ionicons name="close" size={26} color={theme.text} />
+            </Pressable>
+          </View>
+          <View style={[styles.detailsHero, { backgroundColor: theme.primarySoft }]}>
+            {productImage(product) ? (
+              <Image
+                source={productImage(product)!}
+                resizeMode="contain"
+                style={styles.detailsImage}
+              />
+            ) : (
+              <Ionicons name="cafe" size={96} color={theme.primaryStrong} />
+            )}
+          </View>
+          <Card theme={theme} style={styles.detailsSection}>
+            <Text style={[styles.detailsSectionTitle, { color: theme.text }]}>
+              {arOrEn(lang, "مسببات الحساسية", "Allergens")}
+            </Text>
+            <Text style={[styles.detailsBody, { color: theme.muted }]}>
+              {product.allergens?.length
+                ? product.allergens.join(" · ")
+                : arOrEn(lang, "لا توجد مسببات حساسية مسجلة", "No allergens recorded")}
+            </Text>
+          </Card>
+          <Card theme={theme} style={styles.detailsSection}>
+            <Text style={[styles.detailsSectionTitle, { color: theme.text }]}>
+              {arOrEn(lang, "القيم الغذائية", "Nutrition")}
+            </Text>
+            <View style={styles.nutritionGrid}>
+              {[
+                [arOrEn(lang, "السعرات", "Calories"), product.nutrition?.caloriesKcal, "kcal"],
+                [arOrEn(lang, "السكر", "Sugar"), product.nutrition?.sugarG, "g"],
+                [arOrEn(lang, "الكافيين", "Caffeine"), product.nutrition?.caffeineMg, "mg"],
+              ].map(([label, value, unit]) => (
+                <View
+                  key={String(label)}
+                  style={[styles.nutritionItem, { backgroundColor: theme.surfaceAlt }]}
+                >
+                  <Text style={[styles.nutritionValue, { color: theme.text }]}>
+                    {value ?? "—"} {value != null ? unit : ""}
+                  </Text>
+                  <Text style={[styles.nutritionLabel, { color: theme.muted }]}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          </Card>
+        </ScrollView>
+      ) : null}
+    </SafeAreaView>
+  </Modal>
 );
 
 const ConsumptionRow = ({
@@ -396,6 +603,25 @@ const styles = createSnowStyles({
     fontSize: 20,
     fontWeight: "700",
   },
+  searchBox: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  searchInput: { flex: 1, minHeight: 44, fontSize: 15 },
+  categories: { gap: 8, paddingVertical: 8 },
+  categoryPill: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryText: { fontSize: 14, fontWeight: "600" },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -417,6 +643,16 @@ const styles = createSnowStyles({
     alignItems: "center",
     justifyContent: "center",
   },
+  favoriteButton: {
+    position: "absolute",
+    zIndex: 2,
+    top: 0,
+    right: 0,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   drinkImage: {
     width: "100%",
     height: "100%",
@@ -435,6 +671,14 @@ const styles = createSnowStyles({
   drinkSubtitleSpacer: {
     height: 14,
   },
+  detailsButton: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  detailsButtonText: { fontSize: 12, fontWeight: "600" },
   drinkStepper: {
     width: "100%",
     height: 40,
@@ -579,4 +823,32 @@ const styles = createSnowStyles({
     alignItems: "center",
     justifyContent: "center",
   },
+  detailsRoot: { flex: 1 },
+  detailsContent: { padding: spacing.lg, paddingBottom: 48, gap: spacing.lg },
+  detailsHeader: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  detailsTitle: { flex: 1, fontSize: 24, fontWeight: "700" },
+  closeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  detailsHero: { height: 240, borderRadius: 24, alignItems: "center", justifyContent: "center" },
+  detailsImage: { width: "80%", height: "80%" },
+  detailsSection: { padding: spacing.lg, borderRadius: 16, gap: spacing.md },
+  detailsSectionTitle: { fontSize: 18, fontWeight: "700" },
+  detailsBody: { fontSize: 15, lineHeight: 22 },
+  nutritionGrid: { flexDirection: "row", gap: spacing.sm },
+  nutritionItem: {
+    flex: 1,
+    minHeight: 88,
+    borderRadius: 12,
+    padding: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  nutritionValue: { fontSize: 15, fontWeight: "700", textAlign: "center" },
+  nutritionLabel: { fontSize: 11, textAlign: "center" },
 });

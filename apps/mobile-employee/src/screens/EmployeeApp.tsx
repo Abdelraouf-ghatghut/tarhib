@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useRef, useState } from "react";
-import { ScrollView } from "react-native";
+import { Alert, Platform, ScrollView } from "react-native";
 
 import {
   BottomTabs,
   Screen,
   createOrder,
+  cancelMyOrder,
   createSnowStyles,
   fetchEmployeeCatalog,
   fetchMyOrders,
@@ -151,6 +152,40 @@ export const EmployeeApp = ({
     },
     onError: (err) => setOrderError(orderErrorMessage(err, lang, productsById)),
   });
+  const cancelMutation = useMutation({
+    mutationFn: cancelMyOrder,
+    onSuccess: (cancelled) => {
+      queryClient.setQueryData<Order[]>(["my-orders"], (current) =>
+        (current ?? []).map((order) => (order.id === cancelled.id ? cancelled : order)),
+      );
+      void queryClient.invalidateQueries({ queryKey: ["employee-catalog"] });
+      void queryClient.invalidateQueries({ queryKey: ["my-quotas"] });
+    },
+  });
+  const requestCancellation = (order: Order) => {
+    const execute = () => cancelMutation.mutate(order.id);
+    if (Platform.OS === "web") {
+      if (globalThis.confirm?.(arOrEn(lang, "هل تريد إلغاء الطلب؟", "Cancel this order?")))
+        execute();
+      return;
+    }
+    Alert.alert(
+      arOrEn(lang, "إلغاء الطلب", "Cancel order"),
+      arOrEn(
+        lang,
+        "يمكن إلغاء الطلب قبل بدء التحضير فقط.",
+        "The order can only be cancelled before preparation starts.",
+      ),
+      [
+        { text: arOrEn(lang, "رجوع", "Keep order"), style: "cancel" },
+        {
+          text: arOrEn(lang, "إلغاء الطلب", "Cancel order"),
+          style: "destructive",
+          onPress: execute,
+        },
+      ],
+    );
+  };
   const confirmOrder = () => {
     if (orderMutation.isPending || cart.lines.length === 0) return;
     setOrderError(null);
@@ -276,6 +311,8 @@ export const EmployeeApp = ({
         lang={lang}
         theme={theme}
         canBookRooms={canBookRooms}
+        cancellationPending={cancelMutation.isPending}
+        onCancelOrder={requestCancellation}
         onNavigate={(target) => {
           setTrackedOrderId(null);
           if (target === "rooms") {

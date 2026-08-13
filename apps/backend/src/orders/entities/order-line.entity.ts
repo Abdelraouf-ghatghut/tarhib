@@ -13,6 +13,13 @@ export enum LineValidationStatus {
   PENDING_APPROVAL = 'PENDING_APPROVAL',
 }
 
+export enum PreparationLineStatus {
+  PENDING = 'PENDING',
+  DONE = 'DONE',
+  SUBSTITUTED = 'SUBSTITUTED',
+  OUT_OF_STOCK = 'OUT_OF_STOCK',
+}
+
 @Entity('order_lines')
 export class OrderLine {
   @PrimaryGeneratedColumn('uuid')
@@ -46,4 +53,20 @@ export class OrderLine {
     nullable: true,
   })
   rejectionReason!: string | null;
+
+  @Column({
+    name: 'preparation_status',
+    type: 'varchar',
+    length: 20,
+    default: PreparationLineStatus.PENDING,
+  })
+  preparationStatus!: PreparationLineStatus;
+
+  @Column({
+    name: 'preparation_note',
+    type: 'varchar',
+    length: 250,
+    nullable: true,
+  })
+  preparationNote!: string | null;
 }

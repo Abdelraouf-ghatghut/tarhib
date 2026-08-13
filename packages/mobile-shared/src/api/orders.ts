@@ -21,10 +21,13 @@ export type LineRejectionReason =
   | "QUOTA_EXCEEDED";
 
 export interface OrderLine {
+  id: string;
   productId: string;
   quantity: number;
   validationStatus: LineValidationStatus;
   rejectionReason: LineRejectionReason | string | null;
+  preparationStatus: "PENDING" | "DONE" | "SUBSTITUTED" | "OUT_OF_STOCK";
+  preparationNote: string | null;
 }
 
 export interface Order {
@@ -132,6 +135,7 @@ export interface DeliveryTask {
     | "ASSIGNED"
     | "PICKED_UP"
     | "OUT_FOR_DELIVERY"
+    | "ARRIVED"
     | "ISSUE_REPORTED"
     | "DELIVERED"
     | "RETURNED"
@@ -141,7 +145,10 @@ export interface DeliveryTask {
   createdAt: string;
   updatedAt: string;
   pickedUpAt: string | null;
+  arrivedAt: string | null;
   deliveredAt: string | null;
+  recipientName: string | null;
+  recipientCode: string | null;
   order: Order;
   destination: {
     recipientNameAr: string;
@@ -163,14 +170,20 @@ export async function fetchDeliveryQueue(branchId?: string): Promise<DeliveryTas
 }
 export async function transitionDeliveryTask(
   id: string,
-  action: "accept" | "pickup" | "depart" | "deliver" | "issue",
+  action: "accept" | "pickup" | "depart" | "arrive" | "deliver" | "issue",
   reason?: string,
   description?: string,
+  proof?: {
+    recipientName: string;
+    recipientCode?: string;
+    clientRequestId: string;
+    occurredAt: string;
+  },
 ): Promise<DeliveryTask> {
   return (
     await api.patch<DeliveryTask>(
       `/delivery/tasks/${id}/${action}`,
-      reason ? { reason, ...(description ? { description } : {}) } : undefined,
+      proof ?? (reason ? { reason, ...(description ? { description } : {}) } : undefined),
     )
   ).data;
 }
@@ -191,11 +204,52 @@ export async function markReady(orderId: string): Promise<Order> {
   return data;
 }
 
+export async function reviewOrder(
+  orderId: string,
+  status: "APPROVED" | "REJECTED",
+  reason?: string,
+): Promise<Order> {
+  const { data } = await api.patch<Order>(`/orders/${orderId}/status`, {
+    status,
+    ...(reason?.trim() ? { reason: reason.trim() } : {}),
+  });
+  return data;
+}
+
+export async function updatePreparationLine(
+  orderId: string,
+  lineId: string,
+  status: OrderLine["preparationStatus"],
+  note?: string,
+): Promise<Order> {
+  const { data } = await api.patch<Order>(`/kitchen/orders/${orderId}/lines/${lineId}`, {
+    status,
+    ...(note?.trim() ? { note: note.trim() } : {}),
+  });
+  return data;
+}
+
 export async function markDelivered(orderId: string): Promise<Order> {
   const { data } = await api.patch<Order>(`/orders/${orderId}/status`, {
     status: "DELIVERED",
   });
   return data;
+}
+
+export async function cancelMyOrder(orderId: string): Promise<Order> {
+  const { data } = await api.patch<Order>(`/orders/${orderId}/status`, { status: "CANCELLED" });
+  return data;
+}
+
+export async function submitOrderFeedback(input: {
+  companyId: string;
+  orderId: string;
+  rating: number;
+  qualityRating?: number;
+  punctualityRating?: number;
+  comment?: string;
+}): Promise<void> {
+  await api.post("/performance-management/feedback", input);
 }
 
 /** Met la commande en attente et crée un incident opérationnel. */

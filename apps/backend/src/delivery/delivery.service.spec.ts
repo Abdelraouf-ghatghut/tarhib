@@ -12,6 +12,7 @@ import { Company } from '../companies/entities/company.entity.js';
 import { Branch } from '../branches/entities/branch.entity.js';
 import { Order } from '../orders/entities/order.entity.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { OperationalZonesService } from '../operational-zones/operational-zones.service.js';
 
 describe('DeliveryService', () => {
   const repo = {
@@ -30,6 +31,10 @@ describe('DeliveryService', () => {
     findBy: jest.fn().mockResolvedValue([]),
   };
   const notifications = { notifyByPermission: jest.fn() };
+  const operationalZones = {
+    assignedFloors: jest.fn().mockResolvedValue(new Set(['1'])),
+    floorKey: jest.fn((floor: string) => floor.trim().toLowerCase()),
+  };
   let service: DeliveryService;
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -43,6 +48,7 @@ describe('DeliveryService', () => {
         { provide: getRepositoryToken(Order), useValue: lookupRepo },
         { provide: NotificationsService, useValue: notifications },
         { provide: OrdersService, useValue: orders },
+        { provide: OperationalZonesService, useValue: operationalZones },
       ],
     }).compile();
     service = module.get(DeliveryService);

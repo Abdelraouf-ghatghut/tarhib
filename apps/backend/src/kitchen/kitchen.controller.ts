@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -20,6 +21,7 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import { constrainRequestedScope } from '../common/access/request-scope.js';
 import { OrderDto, OrderStatus } from '../orders/dto/order.dto.js';
 import { OrdersService } from '../orders/orders.service.js';
+import { UpdatePreparationLineDto } from './dto/update-preparation-line.dto.js';
 
 @ApiTags('kitchen')
 @ApiBearerAuth()
@@ -69,7 +71,11 @@ export class KitchenController {
         new Date(a.slaDeadline).getTime() - new Date(b.slaDeadline).getTime(),
     );
 
-    return combined;
+    if (user.permissions?.includes('order.queue.manage')) return combined;
+    return combined.filter(
+      (order) =>
+        order.status === OrderStatus.APPROVED || order.preparedBy === user.sub,
+    );
   }
 
   @Patch('orders/:id/start')
@@ -94,5 +100,24 @@ export class KitchenController {
     @CurrentUser() user: JwtPayload,
   ): Promise<OrderDto> {
     return this.ordersService.updateStatus(id, OrderStatus.READY, user);
+  }
+
+  @Patch('orders/:id/lines/:lineId')
+  @RequireAnyPermission('order.prepare')
+  @ApiOperation({ summary: 'Mettre à jour la checklist de préparation' })
+  @ApiResponse({ status: 200, type: OrderDto })
+  updatePreparationLine(
+    @Param('id') id: string,
+    @Param('lineId') lineId: string,
+    @Body() dto: UpdatePreparationLineDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OrderDto> {
+    return this.ordersService.updatePreparationLine(
+      id,
+      lineId,
+      dto.status,
+      dto.note,
+      user,
+    );
   }
 }

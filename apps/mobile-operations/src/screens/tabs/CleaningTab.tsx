@@ -15,6 +15,7 @@ import {
   fetchCleaningStockRequests,
   transitionCleaningStockRequest,
   fetchOperationsTeam,
+  fetchOperationalZones,
   spacing,
   startCleaningTask,
   useAuthStore,
@@ -25,6 +26,7 @@ import {
 import { CenteredTitle, EmptyText, LoadingCard, ui } from "../../components/ui";
 import { arOrEn, operationsStatusLabel } from "../../lib/format";
 import { RecordDetailModal } from "../../modals/RecordDetailModal";
+import { AssignedZonesCard } from "../../components/AssignedZonesCard";
 
 export const CleaningTab = ({
   theme,
@@ -49,6 +51,10 @@ export const CleaningTab = ({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+  const [zoneId, setZoneId] = useState("");
+  const [building, setBuilding] = useState("");
+  const [floor, setFloor] = useState("");
+  const [locationName, setLocationName] = useState("");
   const query = useQuery({
     queryKey: ["cleaning-tasks"],
     queryFn: fetchCleaningTasks,
@@ -58,6 +64,11 @@ export const CleaningTab = ({
     queryKey: ["operations-team"],
     queryFn: fetchOperationsTeam,
     enabled: canManage,
+  });
+  const zones = useQuery({
+    queryKey: ["operational-zones", "CLEANING", companyId, branchId],
+    queryFn: () => fetchOperationalZones("CLEANING", companyId, branchId),
+    enabled: canManage && Boolean(companyId && branchId),
   });
   const products = useQuery({
     queryKey: ["cleaning-products"],
@@ -96,6 +107,10 @@ export const CleaningTab = ({
         title: title.trim(),
         description: description.trim() || undefined,
         assignedEmployeeId: assigneeId || undefined,
+        operationalZoneId: zoneId,
+        building: building.trim() || undefined,
+        floor,
+        locationName: locationName.trim(),
       });
     },
     onSuccess: () => {
@@ -103,6 +118,10 @@ export const CleaningTab = ({
       setTitle("");
       setDescription("");
       setAssigneeId("");
+      setZoneId("");
+      setBuilding("");
+      setFloor("");
+      setLocationName("");
       void queryClient.invalidateQueries({ queryKey: ["cleaning-tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["operations-team"] });
     },
@@ -131,6 +150,7 @@ export const CleaningTab = ({
   return (
     <>
       <CenteredTitle title={arOrEn(lang, "مهام التنظيف", "My cleaning tasks")} theme={theme} />
+      {!canManage ? <AssignedZonesCard theme={theme} lang={lang} type="CLEANING" /> : null}
       {canManage && !creating ? (
         <PrimaryButton
           theme={theme}
@@ -150,6 +170,65 @@ export const CleaningTab = ({
             value={title}
             onChangeText={setTitle}
             placeholder={arOrEn(lang, "عنوان المهمة", "Task title")}
+            placeholderTextColor={theme.muted}
+            style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+          />
+          <Text style={[ui.small, { color: theme.muted }]}>
+            {arOrEn(lang, "منطقة التنظيف", "Cleaning zone")}
+          </Text>
+          <View style={styles.team}>
+            {(zones.data ?? []).map((zone) => (
+              <Pressable
+                key={zone.id}
+                onPress={() => {
+                  setZoneId(zone.id);
+                  setFloor("");
+                }}
+                style={[
+                  styles.person,
+                  { borderColor: zoneId === zone.id ? theme.primaryStrong : theme.border },
+                ]}
+              >
+                <Text style={[ui.small, { color: theme.text }]}>
+                  {lang === "ar" ? zone.nameAr : zone.nameEn || zone.nameAr}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {zoneId ? (
+            <>
+              <Text style={[ui.small, { color: theme.muted }]}>
+                {arOrEn(lang, "الطابق", "Floor")}
+              </Text>
+              <View style={styles.team}>
+                {(zones.data?.find((zone) => zone.id === zoneId)?.floors ?? []).map((zoneFloor) => (
+                  <Pressable
+                    key={zoneFloor}
+                    onPress={() => setFloor(zoneFloor)}
+                    style={[
+                      styles.person,
+                      {
+                        borderColor: floor === zoneFloor ? theme.primaryStrong : theme.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[ui.small, { color: theme.text }]}>{zoneFloor}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : null}
+          <TextInput
+            value={building}
+            onChangeText={setBuilding}
+            placeholder={arOrEn(lang, "المبنى (اختياري)", "Building (optional)")}
+            placeholderTextColor={theme.muted}
+            style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+          />
+          <TextInput
+            value={locationName}
+            onChangeText={setLocationName}
+            placeholder={arOrEn(lang, "الموقع أو الغرفة", "Location or room")}
             placeholderTextColor={theme.muted}
             style={[styles.input, { color: theme.text, borderColor: theme.border }]}
           />
@@ -192,7 +271,15 @@ export const CleaningTab = ({
           <PrimaryButton
             theme={theme}
             label={arOrEn(lang, "حفظ المهمة", "Save task")}
-            disabled={!title.trim() || !companyId || !branchId || managementMutation.isPending}
+            disabled={
+              !title.trim() ||
+              !companyId ||
+              !branchId ||
+              !zoneId ||
+              !floor ||
+              !locationName.trim() ||
+              managementMutation.isPending
+            }
             onPress={() => managementMutation.mutate({ action: "create" })}
           />
           <Pressable onPress={() => setCreating(false)} style={styles.cancel}>
@@ -213,11 +300,16 @@ export const CleaningTab = ({
             {task.description ? (
               <Text style={[ui.small, { color: theme.muted }]}>{task.description}</Text>
             ) : null}
+            {task.locationName || task.floor || task.building ? (
+              <Text style={[ui.small, { color: theme.text }]}>
+                {[task.building, task.floor, task.locationName].filter(Boolean).join(" · ")}
+              </Text>
+            ) : null}
             <Text style={[ui.badgeText, { color: theme.primaryStrong }]}>
               {operationsStatusLabel(task.status, lang)}
               {task.dueDate ? ` · ${task.dueDate}` : ""}
             </Text>
-            {canComplete && task.status === "ASSIGNED" ? (
+            {canComplete && ["PENDING", "ASSIGNED"].includes(task.status) ? (
               <PrimaryButton
                 theme={theme}
                 label={arOrEn(lang, "بدء المهمة", "Start task")}

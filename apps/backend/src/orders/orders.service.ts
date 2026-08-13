@@ -20,6 +20,7 @@ import { Order } from './entities/order.entity.js';
 import {
   OrderLine,
   LineValidationStatus,
+  PreparationLineStatus,
 } from './entities/order-line.entity.js';
 import {
   CreateOrderDto,
@@ -690,7 +691,15 @@ export class OrdersService {
         order.employeeId,
       );
       if (!allowed.includes(status)) {
-        if (order.status === status) return order; // déjà dans l'état cible
+        if (order.status === status) {
+          if (
+            status === OrderStatus.IN_PROGRESS &&
+            order.preparedBy !== caller.sub
+          ) {
+            throw new ConflictException('orderClaimedByAnotherCook');
+          }
+          return order;
+        }
         throw new BadRequestException(
           `Role ${caller.role} cannot transition ${order.status} → ${status}`,
         );
@@ -702,6 +711,28 @@ export class OrdersService {
         order.companyId !== caller.companyId
       ) {
         throw new ForbiddenException('crossTenantAccessDenied');
+      }
+
+      if (status === OrderStatus.REJECTED && !reason?.trim()) {
+        throw new BadRequestException('rejectionReasonRequired');
+      }
+
+      if (status === OrderStatus.READY) {
+        const canManageQueue =
+          caller.permissions?.includes('order.queue.manage');
+        if (order.preparedBy !== caller.sub && !canManageQueue) {
+          throw new ForbiddenException('orderOwnedByAnotherCook');
+        }
+        const pendingLines = await manager.count(OrderLine, {
+          where: {
+            orderId: order.id,
+            validationStatus: LineValidationStatus.APPROVED,
+            preparationStatus: PreparationLineStatus.PENDING,
+          },
+        });
+        if (pendingLines > 0) {
+          throw new BadRequestException('preparationChecklistIncomplete');
+        }
       }
 
       order.status = status;
@@ -793,6 +824,41 @@ export class OrdersService {
       relations: ['lines'],
     });
     return this.toDto(withLines ?? saved);
+  }
+
+  async updatePreparationLine(
+    orderId: string,
+    lineId: string,
+    status: PreparationLineStatus,
+    note: string | undefined,
+    caller: JwtPayload,
+  ): Promise<OrderDto> {
+    await this.orderRepo.manager.transaction(async (manager) => {
+      const order = await manager
+        .createQueryBuilder(Order, 'o')
+        .where('o.id = :orderId', { orderId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+      if (order.status !== OrderStatus.IN_PROGRESS) {
+        throw new BadRequestException('orderNotInPreparation');
+      }
+      const canManageQueue = caller.permissions?.includes('order.queue.manage');
+      if (order.preparedBy !== caller.sub && !canManageQueue) {
+        throw new ForbiddenException('orderOwnedByAnotherCook');
+      }
+      const line = await manager.findOne(OrderLine, {
+        where: { id: lineId, orderId },
+      });
+      if (!line) throw new NotFoundException(`Order line ${lineId} not found`);
+      if (line.validationStatus !== LineValidationStatus.APPROVED) {
+        throw new BadRequestException('rejectedLineCannotBePrepared');
+      }
+      line.preparationStatus = status;
+      line.preparationNote = note?.trim() || null;
+      await manager.save(OrderLine, line);
+    });
+    return this.findOne(orderId);
   }
 
   /**
@@ -965,10 +1031,14 @@ export class OrdersService {
     dto.note = o.note ?? null;
     dto.lines = (o.lines ?? []).map((l) => {
       const line = new OrderLineDto();
+      line.id = l.id;
       line.productId = l.productId;
       line.quantity = l.quantity;
       line.validationStatus = l.validationStatus;
       line.rejectionReason = l.rejectionReason ?? null;
+      line.preparationStatus =
+        l.preparationStatus ?? PreparationLineStatus.PENDING;
+      line.preparationNote = l.preparationNote ?? null;
       return line;
     });
     return dto;

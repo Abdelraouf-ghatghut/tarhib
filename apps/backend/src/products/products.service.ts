@@ -110,6 +110,8 @@ export class ProductsService {
       allowedRoles: dto.allowedRoles ?? null,
       allowedBranches: dto.allowedBranches ?? null,
       imageUrl: dto.imageUrl ?? null,
+      allergens: dto.allergens?.filter(Boolean) ?? null,
+      nutrition: dto.nutrition ?? null,
       unitCost: dto.unitCost ?? null,
       unit: dto.unit ?? null,
       purchaseUnit: dto.purchaseUnit ?? null,
@@ -300,6 +302,9 @@ export class ProductsService {
     if (dto.allowedBranches !== undefined)
       entity.allowedBranches = dto.allowedBranches ?? null;
     if (dto.imageUrl !== undefined) entity.imageUrl = dto.imageUrl ?? null;
+    if (dto.allergens !== undefined)
+      entity.allergens = dto.allergens?.filter(Boolean) ?? null;
+    if (dto.nutrition !== undefined) entity.nutrition = dto.nutrition ?? null;
     if (dto.unitCost !== undefined) entity.unitCost = dto.unitCost ?? null;
     if (dto.unit !== undefined) entity.unit = dto.unit ?? null;
     if (dto.purchaseUnit !== undefined)
@@ -386,6 +391,8 @@ export class ProductsService {
     dto.allowedRoles = e.allowedRoles ?? undefined;
     dto.allowedBranches = e.allowedBranches ?? undefined;
     dto.imageUrl = e.imageUrl;
+    dto.allergens = e.allergens;
+    dto.nutrition = e.nutrition;
     dto.active = e.active;
     dto.isPurchased = e.isPurchased;
     dto.isSold = e.isSold;
@@ -407,6 +414,8 @@ export class ProductsService {
     dto.allowedRoles = e.allowedRoles ?? undefined;
     dto.allowedBranches = e.allowedBranches ?? undefined;
     dto.imageUrl = e.imageUrl;
+    dto.allergens = e.allergens;
+    dto.nutrition = e.nutrition;
     dto.active = e.active;
     dto.isPurchased = e.isPurchased;
     dto.isSold = e.isSold;

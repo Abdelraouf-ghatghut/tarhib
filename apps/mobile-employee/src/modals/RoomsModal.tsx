@@ -147,6 +147,8 @@ export const RoomsModal = ({
   const [mode, setMode] = useState<Mode>("form");
   const [selectedRoom, setSelectedRoom] = useState<MeetingRoom | null>(null);
   const [roomSearch, setRoomSearch] = useState("");
+  const [minimumCapacity, setMinimumCapacity] = useState(0);
+  const [amenityFilter, setAmenityFilter] = useState<string | null>(null);
   const [participants, setParticipants] = useState(1);
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
   const [period, setPeriod] = useState<DayPeriod>("morning");
@@ -198,13 +200,28 @@ export const RoomsModal = ({
 
   const filteredRooms = useMemo(() => {
     const search = roomSearch.trim().toLowerCase();
-    return (roomsQuery.data ?? []).filter(
-      (room) =>
+    return (roomsQuery.data ?? []).filter((room) => {
+      const amenities = amenityKeys(room.amenities).map((value) => value.toLowerCase());
+      const textMatches =
         !search ||
         room.nameAr.toLowerCase().includes(search) ||
-        (room.nameEn ?? "").toLowerCase().includes(search),
-    );
-  }, [roomSearch, roomsQuery.data]);
+        (room.nameEn ?? "").toLowerCase().includes(search);
+      const amenityMatches =
+        !amenityFilter ||
+        (amenityFilter === "accessible"
+          ? amenities.some((value) => /access|wheelchair|disabled|ذوي|إعاقة/.test(value))
+          : amenities.includes(amenityFilter.toLowerCase()));
+      return textMatches && room.capacity >= minimumCapacity && amenityMatches;
+    });
+  }, [amenityFilter, minimumCapacity, roomSearch, roomsQuery.data]);
+  const roomAmenities = useMemo(
+    () =>
+      [...new Set((roomsQuery.data ?? []).flatMap((room) => amenityKeys(room.amenities)))].slice(
+        0,
+        6,
+      ),
+    [roomsQuery.data],
+  );
 
   const filteredBookings = useMemo(() => {
     const now = Date.now();
@@ -286,6 +303,8 @@ export const RoomsModal = ({
         minutesToDate(selectedDate, startMinutes).toISOString(),
         minutesToDate(selectedDate, endMinutes).toISOString(),
         packageId ?? undefined,
+        participants,
+        notes,
       );
     },
     onSuccess: (booking) => {
@@ -360,7 +379,12 @@ export const RoomsModal = ({
               roomsQuery={roomsQuery}
               rooms={filteredRooms}
               search={roomSearch}
+              minimumCapacity={minimumCapacity}
+              amenityFilter={amenityFilter}
+              amenities={roomAmenities}
               onSearch={setRoomSearch}
+              onMinimumCapacity={setMinimumCapacity}
+              onAmenityFilter={setAmenityFilter}
               onSelectRoom={openRoomDetail}
             />
           ) : mode === "detail" && selectedRoom ? (
@@ -586,7 +610,12 @@ const RoomListScreen = ({
   roomsQuery,
   rooms,
   search,
+  minimumCapacity,
+  amenityFilter,
+  amenities,
   onSearch,
+  onMinimumCapacity,
+  onAmenityFilter,
   onSelectRoom,
 }: {
   theme: SnowTheme;
@@ -594,7 +623,12 @@ const RoomListScreen = ({
   roomsQuery: ReturnType<typeof useQuery<MeetingRoom[]>>;
   rooms: MeetingRoom[];
   search: string;
+  minimumCapacity: number;
+  amenityFilter: string | null;
+  amenities: string[];
   onSearch: (value: string) => void;
+  onMinimumCapacity: (value: number) => void;
+  onAmenityFilter: (value: string | null) => void;
   onSelectRoom: (room: MeetingRoom) => void;
 }) => (
   <>
@@ -613,6 +647,63 @@ const RoomListScreen = ({
         </Pressable>
       ) : null}
     </View>
+
+    <Text style={[styles.filterLabel, { color: theme.text }]}>
+      {arOrEn(lang, "السعة الدنيا", "Minimum capacity")}
+    </Text>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.filterRow}
+    >
+      {[0, 4, 8, 12].map((value) => (
+        <Pressable
+          key={value}
+          onPress={() => onMinimumCapacity(value)}
+          style={[
+            styles.filterChip,
+            { backgroundColor: minimumCapacity === value ? theme.primary : theme.surfaceAlt },
+          ]}
+        >
+          <Text
+            style={[
+              styles.filterChipText,
+              { color: minimumCapacity === value ? "#FFFFFF" : theme.text },
+            ]}
+          >
+            {value === 0 ? arOrEn(lang, "أي سعة", "Any") : `${value}+`}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+    <Text style={[styles.filterLabel, { color: theme.text }]}>
+      {arOrEn(lang, "التجهيزات وإمكانية الوصول", "Equipment & accessibility")}
+    </Text>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.filterRow}
+    >
+      {["accessible", ...amenities].map((value) => (
+        <Pressable
+          key={value}
+          onPress={() => onAmenityFilter(amenityFilter === value ? null : value)}
+          style={[
+            styles.filterChip,
+            { backgroundColor: amenityFilter === value ? theme.primary : theme.surfaceAlt },
+          ]}
+        >
+          <Text
+            style={[
+              styles.filterChipText,
+              { color: amenityFilter === value ? "#FFFFFF" : theme.text },
+            ]}
+          >
+            {value === "accessible" ? arOrEn(lang, "دخول ميسّر", "Accessible") : value}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
 
     {roomsQuery.isLoading ? (
       <View style={styles.loadingSlot}>
@@ -2014,6 +2105,16 @@ const styles = createSnowStyles({
     gap: spacing.sm,
   },
   searchInput: { flex: 1, fontSize: 14, fontWeight: "400", paddingVertical: 0 },
+  filterLabel: { fontSize: 13, fontWeight: "700", marginTop: spacing.xs },
+  filterRow: { gap: spacing.sm, paddingVertical: spacing.xs },
+  filterChip: {
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterChipText: { fontSize: 13, fontWeight: "600" },
   bookingDetailRoot: { gap: spacing.md },
   bookingDetailHero: { alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl },
   bookingDetailIcon: {

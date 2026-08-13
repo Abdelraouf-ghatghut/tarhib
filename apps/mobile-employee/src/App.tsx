@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo } from "react";
 import { StatusBar } from "expo-status-bar";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAvoidingView, Platform } from "react-native";
 import {
   RootNavigator,
+  createMobileQueryClient,
   makeTheme,
   registerPushToken,
   registerThmanyahFonts,
@@ -16,7 +18,7 @@ import { EmployeeApp } from "./screens/EmployeeApp";
 
 registerThmanyahFonts();
 
-const queryClient = new QueryClient();
+const queryClient = createMobileQueryClient();
 const PREFS_KEY = "tarhib_employee_preferences";
 
 export default function App() {
@@ -40,20 +42,25 @@ export default function App() {
           edges={["top", "left", "right"]}
         >
           <StatusBar style={theme.mode === "dark" ? "light" : "dark"} />
-          <RootNavigator
-            appMode="employee"
-            theme={theme}
-            lang={lang}
-            renderMain={() => (
-              <EmployeeApp
-                lang={lang}
-                theme={theme}
-                onLogout={() => void logout()}
-                onSetTheme={setThemeMode}
-                onSetLang={setLang}
-              />
-            )}
-          />
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            <RootNavigator
+              appMode="employee"
+              theme={theme}
+              lang={lang}
+              renderMain={() => (
+                <EmployeeApp
+                  lang={lang}
+                  theme={theme}
+                  onLogout={() => void logout()}
+                  onSetTheme={setThemeMode}
+                  onSetLang={setLang}
+                />
+              )}
+            />
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </SafeAreaProvider>
     </QueryClientProvider>

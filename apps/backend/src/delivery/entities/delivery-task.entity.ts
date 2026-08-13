@@ -12,6 +12,7 @@ export enum DeliveryTaskStatus {
   ASSIGNED = 'ASSIGNED',
   PICKED_UP = 'PICKED_UP',
   OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  ARRIVED = 'ARRIVED',
   DELIVERED = 'DELIVERED',
   ISSUE_REPORTED = 'ISSUE_REPORTED',
   RETURNED = 'RETURNED',
@@ -53,6 +54,32 @@ export class DeliveryTask {
   previousDeliveryStatus!: DeliveryTaskStatus | null;
   @Column({ name: 'picked_up_at', type: 'timestamptz', nullable: true })
   pickedUpAt!: Date | null;
+  @Column({ name: 'arrived_at', type: 'timestamptz', nullable: true })
+  arrivedAt!: Date | null;
+  @Column({
+    name: 'recipient_name',
+    type: 'varchar',
+    length: 150,
+    nullable: true,
+  })
+  recipientName!: string | null;
+  @Column({
+    name: 'recipient_code',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  recipientCode!: string | null;
+  @Column({
+    name: 'delivery_request_id',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+    unique: true,
+  })
+  deliveryRequestId!: string | null;
+  @Column({ name: 'delivered_client_at', type: 'timestamptz', nullable: true })
+  deliveredClientAt!: Date | null;
   @Column({ name: 'delivered_at', type: 'timestamptz', nullable: true })
   deliveredAt!: Date | null;
   @CreateDateColumn({ name: 'created_at' }) createdAt!: Date;

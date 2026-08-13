@@ -49,6 +49,16 @@ export const employeesApi = {
   deactivate: (id: string) => api.patch(`/employees/${id}/deactivate`),
 };
 
+export const operationalZonesApi = {
+  list: (params?: Record<string, string>) => api.get("/operational-zones", { params }),
+  assignments: (zoneId: string) => api.get(`/operational-zones/${zoneId}/assignments`),
+  create: (data: unknown) => api.post("/operational-zones", data),
+  assign: (zoneId: string, data: unknown) =>
+    api.post(`/operational-zones/${zoneId}/assignments`, data),
+  setAssignmentActive: (assignmentId: string, active: boolean) =>
+    api.patch(`/operational-zones/assignments/${assignmentId}/status`, { active }),
+};
+
 /** /employees/admin renvoie salary — réservé à employee.salary.manage */
 export const employeesAdminApi = {
   list: (params?: Record<string, string>) => api.get("/employees/admin", { params }),

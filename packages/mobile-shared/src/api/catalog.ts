@@ -12,6 +12,8 @@ export interface MobileProduct {
   type: "COMMANDABLE" | "LIBRE_SERVICE_VIP";
   allowedRoles?: string[] | null;
   imageUrl?: string | null;
+  allergens?: string[] | null;
+  nutrition?: Record<string, number> | null;
   active: boolean;
 }
 
@@ -27,6 +29,16 @@ export interface CatalogProduct extends MobileProduct {
   stockStatus: "available" | "limited" | "unavailable";
   quotaRemaining: number | null;
   quotaMax: number | null;
+}
+
+export async function fetchFavoriteProductIds(): Promise<string[]> {
+  return (await api.get<string[]>("/products/favorites/ids")).data;
+}
+
+export async function setProductFavorite(productId: string, favorite: boolean): Promise<string[]> {
+  return favorite
+    ? (await api.post<string[]>(`/products/${productId}/favorite`)).data
+    : (await api.delete<string[]>(`/products/${productId}/favorite`)).data;
 }
 
 interface CatalogVersion {

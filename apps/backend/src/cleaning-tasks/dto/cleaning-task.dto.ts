@@ -29,6 +29,25 @@ export class CreateCleaningTaskDto {
   @IsOptional()
   assignedEmployeeId?: string;
 
+  @IsUUID()
+  @IsOptional()
+  operationalZoneId?: string;
+
+  @IsString()
+  @MaxLength(120)
+  @IsOptional()
+  building?: string;
+
+  @IsString()
+  @MaxLength(50)
+  @IsOptional()
+  floor?: string;
+
+  @IsString()
+  @MaxLength(160)
+  @IsOptional()
+  locationName?: string;
+
   @IsDateString()
   @IsOptional()
   dueDate?: string;

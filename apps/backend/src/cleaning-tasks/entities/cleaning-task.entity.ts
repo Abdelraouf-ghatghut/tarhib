@@ -49,6 +49,23 @@ export class CleaningTask {
   @Column({ name: 'room_id', type: 'uuid', nullable: true })
   roomId!: string | null;
 
+  @Column({ name: 'operational_zone_id', type: 'uuid', nullable: true })
+  operationalZoneId!: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  building!: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  floor!: string | null;
+
+  @Column({
+    name: 'location_name',
+    type: 'varchar',
+    length: 160,
+    nullable: true,
+  })
+  locationName!: string | null;
+
   @Column({ name: 'scheduled_start_at', type: 'timestamptz', nullable: true })
   scheduledStartAt!: Date | null;
 

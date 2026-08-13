@@ -131,6 +131,9 @@ export class MeetingRoomsService {
     const start = new Date(dto.startTime);
     const end = new Date(dto.endTime);
     if (start >= end) throw new BadRequestException('startTimeBeforeEndTime');
+    if (dto.participants && dto.participants > room.capacity) {
+      throw new BadRequestException('participantsExceedRoomCapacity');
+    }
 
     const conflict = await this.bookingRepo.findOne({
       where: {
@@ -145,7 +148,10 @@ export class MeetingRoomsService {
     // Package de service (نوع الخدمة) : snapshot bilingue dans le jsonb
     // `services` pour que l'admin l'affiche sans jointure, même si le
     // package est renommé/supprimé plus tard.
-    let services: Record<string, unknown> | null = null;
+    let services: Record<string, unknown> | null = {
+      participants: dto.participants ?? 1,
+      notes: dto.notes?.trim() || null,
+    };
     if (dto.packageId) {
       const pkg = await this.packageRepo.findOne({
         where: { id: dto.packageId },
@@ -156,6 +162,7 @@ export class MeetingRoomsService {
         throw new ForbiddenException('crossTenantAccessDenied');
       if (!pkg.isActive) throw new BadRequestException('packageInactive');
       services = {
+        ...services,
         packageId: pkg.id,
         packageNameAr: pkg.nameAr,
         packageNameEn: pkg.nameEn,

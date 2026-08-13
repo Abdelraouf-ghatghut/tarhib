@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo } from "react";
 import { StatusBar } from "expo-status-bar";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAvoidingView, Platform } from "react-native";
 import {
   RootNavigator,
+  createMobileQueryClient,
   makeTheme,
   registerPushToken,
   registerThmanyahFonts,
@@ -16,7 +18,7 @@ import { OperationsApp } from "./screens/OperationsApp";
 
 registerThmanyahFonts();
 
-const queryClient = new QueryClient();
+const queryClient = createMobileQueryClient();
 const PREFS_KEY = "tarhib_operations_preferences";
 
 export default function App() {
@@ -43,20 +45,25 @@ export default function App() {
           edges={["top", "left", "right"]}
         >
           <StatusBar style={theme.mode === "dark" ? "light" : "dark"} />
-          <RootNavigator
-            appMode="operations"
-            theme={theme}
-            lang={lang}
-            renderMain={() => (
-              <OperationsApp
-                lang={lang}
-                theme={theme}
-                onLogout={() => void logout()}
-                onToggleTheme={toggleTheme}
-                onToggleLang={toggleLang}
-              />
-            )}
-          />
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            <RootNavigator
+              appMode="operations"
+              theme={theme}
+              lang={lang}
+              renderMain={() => (
+                <OperationsApp
+                  lang={lang}
+                  theme={theme}
+                  onLogout={() => void logout()}
+                  onToggleTheme={toggleTheme}
+                  onToggleLang={toggleLang}
+                />
+              )}
+            />
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </SafeAreaProvider>
     </QueryClientProvider>

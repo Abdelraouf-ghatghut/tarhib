@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
-import { Image, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { useMutation } from "@tanstack/react-query";
+import React, { useState } from "react";
+import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
@@ -10,6 +11,7 @@ import {
   orderStatusLabel,
   rejectionReasonLabel,
   spacing,
+  submitOrderFeedback,
   type CatalogProduct,
   type Lang,
   type Order,
@@ -85,6 +87,8 @@ export const TrackingModal = ({
   lang,
   theme,
   canBookRooms,
+  cancellationPending,
+  onCancelOrder,
   onNavigate,
   onClose,
 }: {
@@ -93,9 +97,27 @@ export const TrackingModal = ({
   lang: Lang;
   theme: SnowTheme;
   canBookRooms: boolean;
+  cancellationPending: boolean;
+  onCancelOrder: (order: Order) => void;
   onNavigate: (target: "home" | "orders" | "rooms" | "profile") => void;
   onClose: () => void;
 }) => {
+  const [rating, setRating] = useState(0);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [ratedOrders, setRatedOrders] = useState<string[]>([]);
+  const feedbackMutation = useMutation({
+    mutationFn: (current: Order) =>
+      submitOrderFeedback({
+        companyId: current.companyId,
+        orderId: current.id,
+        rating,
+        comment: feedbackComment.trim() || undefined,
+      }),
+    onSuccess: () => {
+      if (order) setRatedOrders((current) => [...new Set([...current, order.id])]);
+      setFeedbackComment("");
+    },
+  });
   const isHistory = order?.status === "DELIVERED" || order?.status === "REJECTED";
   const statusColor =
     order?.status === "REJECTED"
@@ -275,6 +297,86 @@ export const TrackingModal = ({
                 </View>
               </Card>
             </View>
+
+            {order.status === "DELIVERED" && !ratedOrders.includes(order.id) ? (
+              <Card theme={theme} style={styles.feedbackCard}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                  {arOrEn(lang, "قيّم الخدمة", "Rate the service")}
+                </Text>
+                <Text style={[styles.trackingBodyText, { color: theme.muted }]}>
+                  {arOrEn(
+                    lang,
+                    "ساعدنا على تحسين الجودة وسرعة التسليم.",
+                    "Help us improve quality and delivery speed.",
+                  )}
+                </Text>
+                <View style={styles.ratingRow}>
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <Pressable
+                      key={value}
+                      accessibilityRole="button"
+                      onPress={() => setRating(value)}
+                      style={styles.ratingButton}
+                    >
+                      <Ionicons
+                        name={value <= rating ? "star" : "star-outline"}
+                        size={30}
+                        color={theme.warning}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput
+                  value={feedbackComment}
+                  onChangeText={setFeedbackComment}
+                  placeholder={arOrEn(lang, "ملاحظة اختيارية", "Optional comment")}
+                  placeholderTextColor={theme.muted}
+                  multiline
+                  style={[
+                    styles.feedbackInput,
+                    {
+                      color: theme.text,
+                      borderColor: theme.border,
+                      backgroundColor: theme.surfaceAlt,
+                    },
+                  ]}
+                />
+                <Pressable
+                  disabled={rating === 0 || feedbackMutation.isPending}
+                  onPress={() => feedbackMutation.mutate(order)}
+                  style={[
+                    styles.feedbackSubmit,
+                    {
+                      backgroundColor: theme.primary,
+                      opacity: rating === 0 || feedbackMutation.isPending ? 0.5 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={styles.feedbackSubmitText}>
+                    {feedbackMutation.isPending
+                      ? arOrEn(lang, "جارٍ الإرسال…", "Sending…")
+                      : arOrEn(lang, "إرسال التقييم", "Send rating")}
+                  </Text>
+                </Pressable>
+              </Card>
+            ) : null}
+
+            {order.status === "PENDING" || order.status === "APPROVED" ? (
+              <Pressable
+                disabled={cancellationPending}
+                onPress={() => onCancelOrder(order)}
+                style={[
+                  styles.ordersButton,
+                  { borderColor: theme.danger, opacity: cancellationPending ? 0.5 : 1 },
+                ]}
+              >
+                <Text style={[styles.ordersButtonText, { color: theme.danger }]}>
+                  {cancellationPending
+                    ? arOrEn(lang, "جارٍ الإلغاء…", "Cancelling…")
+                    : arOrEn(lang, "إلغاء الطلب", "Cancel order")}
+                </Text>
+              </Pressable>
+            ) : null}
 
             <Pressable
               onPress={onClose}
@@ -618,4 +720,22 @@ const styles = createSnowStyles({
     fontSize: 15,
     fontWeight: "700",
   },
+  feedbackCard: { borderRadius: 20, padding: spacing.lg, gap: spacing.md },
+  ratingRow: { flexDirection: "row", justifyContent: "center", gap: spacing.sm },
+  ratingButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  feedbackInput: {
+    minHeight: 72,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: spacing.md,
+    textAlignVertical: "top",
+    fontSize: 14,
+  },
+  feedbackSubmit: {
+    minHeight: 48,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  feedbackSubmitText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
 });

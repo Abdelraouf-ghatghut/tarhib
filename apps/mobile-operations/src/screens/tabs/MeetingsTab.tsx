@@ -11,6 +11,7 @@ import {
   spacing,
   toggleMeetingChecklist,
   transitionMeetingPreparation,
+  updateMeetingPreparationTeam,
   type Lang,
   type MeetingPreparation,
   type SnowTheme,
@@ -22,10 +23,12 @@ import { RecordDetailModal } from "../../modals/RecordDetailModal";
 export const MeetingsTab = ({
   theme,
   lang,
+  employeeId,
   canManage,
 }: {
   theme: SnowTheme;
   lang: Lang;
+  employeeId: string | null;
   canManage: boolean;
 }) => {
   const queryClient = useQueryClient();
@@ -38,7 +41,9 @@ export const MeetingsTab = ({
   const team = useQuery({
     queryKey: ["operations-team"],
     queryFn: fetchOperationsTeam,
-    enabled: canManage,
+    enabled:
+      canManage ||
+      Boolean(employeeId && query.data?.some((task) => task.assignedEmployeeId === employeeId)),
   });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["meeting-preparations"] });
   const transition = useMutation({
@@ -62,6 +67,16 @@ export const MeetingsTab = ({
       refresh();
       void queryClient.invalidateQueries({ queryKey: ["operations-team"] });
     },
+  });
+  const updateTeam = useMutation({
+    mutationFn: ({
+      id,
+      participantEmployeeIds,
+    }: {
+      id: string;
+      participantEmployeeIds: string[];
+    }) => updateMeetingPreparationTeam(id, participantEmployeeIds),
+    onSuccess: refresh,
   });
   const employeeName = (employee: NonNullable<typeof team.data>[number]) =>
     lang === "ar"
@@ -127,6 +142,53 @@ export const MeetingsTab = ({
                     </Text>
                   </Pressable>
                 ))}
+              </View>
+            ) : null}
+            {task.assignedEmployeeId &&
+            (canManage || task.assignedEmployeeId === employeeId) &&
+            !["COMPLETED", "VERIFIED"].includes(task.status) ? (
+              <View style={styles.list}>
+                <Text style={[ui.small, { color: theme.muted }]}>
+                  {arOrEn(lang, "فريق التحضير", "Preparation team")}
+                </Text>
+                {(team.data ?? [])
+                  .filter((employee) => employee.id !== task.assignedEmployeeId)
+                  .map((employee) => {
+                    const selected = task.participantEmployeeIds.includes(employee.id);
+                    return (
+                      <Pressable
+                        key={employee.id}
+                        disabled={updateTeam.isPending}
+                        onPress={() =>
+                          updateTeam.mutate({
+                            id: task.id,
+                            participantEmployeeIds: selected
+                              ? task.participantEmployeeIds.filter((id) => id !== employee.id)
+                              : [...task.participantEmployeeIds, employee.id],
+                          })
+                        }
+                        style={[
+                          styles.person,
+                          {
+                            borderColor: selected ? theme.primaryStrong : theme.border,
+                            backgroundColor: selected ? theme.primarySoft : theme.surface,
+                          },
+                        ]}
+                      >
+                        <Text style={[ui.small, { color: theme.text }]}>
+                          {selected ? "✓ " : ""}
+                          {employeeName(employee)}
+                        </Text>
+                        <Text style={[ui.badgeText, { color: theme.muted }]}>
+                          {arOrEn(
+                            lang,
+                            `${employee.activeTaskCount} مهام`,
+                            `${employee.activeTaskCount} active`,
+                          )}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
               </View>
             ) : null}
             <View style={styles.list}>

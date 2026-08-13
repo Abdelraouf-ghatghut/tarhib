@@ -17,6 +17,7 @@ export interface ChecklistItem {
   key: string;
   label: string;
   done: boolean;
+  assignedEmployeeId?: string | null;
 }
 @Entity('meeting_preparations')
 export class MeetingPreparation {

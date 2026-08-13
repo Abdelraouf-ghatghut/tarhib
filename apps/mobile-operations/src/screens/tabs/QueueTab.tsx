@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import React from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import {
@@ -60,6 +61,23 @@ export const QueueTab = ({
 }) => {
   const [scopeOpen, setScopeOpen] = React.useState(false);
   const [scopePicker, setScopePicker] = React.useState<"company" | "branch" | null>(null);
+  const [kitchenMode, setKitchenMode] = React.useState(false);
+  const [keepAwake, setKeepAwake] = React.useState(false);
+  React.useEffect(
+    () => () => {
+      deactivateKeepAwake("tarhib-kitchen");
+    },
+    [],
+  );
+  const toggleKeepAwake = async () => {
+    if (keepAwake) {
+      deactivateKeepAwake("tarhib-kitchen");
+      setKeepAwake(false);
+      return;
+    }
+    await activateKeepAwakeAsync("tarhib-kitchen");
+    setKeepAwake(true);
+  };
   const filters = allowedFilters ?? ["ALL", "APPROVED", "IN_PROGRESS", "READY"];
   const visible = orders.filter((order) => filter === "ALL" || order.status === filter);
   const groups = (["APPROVED", "IN_PROGRESS", "READY"] as const)
@@ -75,6 +93,53 @@ export const QueueTab = ({
         </Text>
         <Pressable onPress={() => scope && setScopeOpen(true)} style={styles.filterIcon}>
           <Ionicons name="filter-outline" size={25} color={theme.text} />
+        </Pressable>
+      </View>
+
+      <View
+        style={[
+          styles.kitchenTools,
+          {
+            backgroundColor: kitchenMode ? "#111827" : theme.surfaceAlt,
+            borderColor: kitchenMode ? "#FBBF24" : theme.border,
+          },
+        ]}
+      >
+        <Pressable
+          accessibilityRole="switch"
+          accessibilityState={{ checked: kitchenMode }}
+          onPress={() => setKitchenMode((value) => !value)}
+          style={styles.toolButton}
+        >
+          <Ionicons
+            name="contrast-outline"
+            size={21}
+            color={kitchenMode ? "#FBBF24" : theme.text}
+          />
+          <Text style={[styles.toolText, { color: kitchenMode ? "#FFFFFF" : theme.text }]}>
+            {lang === "ar" ? "تباين المطبخ" : "Kitchen contrast"}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="switch"
+          accessibilityState={{ checked: keepAwake }}
+          onPress={() => void toggleKeepAwake()}
+          style={styles.toolButton}
+        >
+          <Ionicons
+            name={keepAwake ? "sunny" : "moon-outline"}
+            size={21}
+            color={keepAwake ? "#FBBF24" : kitchenMode ? "#FFFFFF" : theme.text}
+          />
+          <Text style={[styles.toolText, { color: kitchenMode ? "#FFFFFF" : theme.text }]}>
+            {lang === "ar"
+              ? keepAwake
+                ? "الشاشة نشطة"
+                : "منع السكون"
+              : keepAwake
+                ? "Screen awake"
+                : "Prevent sleep"}
+          </Text>
         </Pressable>
       </View>
 
@@ -124,6 +189,7 @@ export const QueueTab = ({
               onReady={onReady}
               onDeliver={onDeliver}
               onOpen={() => onOpenOrder(order)}
+              highContrast={kitchenMode}
             />
           ))}
         </View>
@@ -166,6 +232,7 @@ const KitchenCard = ({
   onReady,
   onDeliver,
   onOpen,
+  highContrast,
 }: {
   theme: SnowTheme;
   lang: Lang;
@@ -179,11 +246,15 @@ const KitchenCard = ({
   onReady: (id: string) => void;
   onDeliver: (id: string) => void;
   onOpen: () => void;
+  highContrast: boolean;
 }) => {
   const first = order.lines[0];
   const product = first ? productsById.get(first.productId) : undefined;
   const localImage = product ? operationsProductImage(product) : null;
   const itemCount = order.lines.reduce((sum, line) => sum + line.quantity, 0);
+  const preparationComplete = order.lines
+    .filter((line) => line.validationStatus === "APPROVED")
+    .every((line) => line.preparationStatus !== "PENDING");
   const rank = priorityRank(order.priority);
   const priorityColor = rank <= 2 ? "#F04424" : rank === 3 ? "#E88A12" : theme.primaryStrong;
   const priorityLabel =
@@ -200,9 +271,17 @@ const KitchenCard = ({
           : "Low";
   return (
     <Pressable onPress={onOpen}>
-      <Card theme={theme} style={styles.card}>
+      <Card
+        theme={theme}
+        style={[
+          styles.card,
+          highContrast && { backgroundColor: "#111827", borderColor: "#FBBF24", borderWidth: 2 },
+        ]}
+      >
         <View style={[styles.topRow, lang === "ar" && styles.topRowRtl]}>
-          <Text style={[styles.code, { color: theme.text }]}>{orderCode(order.id)}</Text>
+          <Text style={[styles.code, { color: highContrast ? "#FFFFFF" : theme.text }]}>
+            {orderCode(order.id)}
+          </Text>
           <View style={[styles.priority, { backgroundColor: `${priorityColor}0D` }]}>
             <Text style={[styles.priorityText, { color: priorityColor }]}>{priorityLabel}</Text>
           </View>
@@ -223,7 +302,13 @@ const KitchenCard = ({
           <Text
             style={[
               styles.statusText,
-              { color: order.status === "APPROVED" ? theme.primaryStrong : theme.text },
+              {
+                color: highContrast
+                  ? "#FFFFFF"
+                  : order.status === "APPROVED"
+                    ? theme.primaryStrong
+                    : theme.text,
+              },
             ]}
           >
             {orderStatusLabel(order.status, lang)}
@@ -251,7 +336,7 @@ const KitchenCard = ({
             )}
           </View>
           <View style={styles.productCopy}>
-            <Text style={[styles.productName, { color: theme.text }]}>
+            <Text style={[styles.productName, { color: highContrast ? "#FFFFFF" : theme.text }]}>
               {first ? productName(product, lang, first.productId) : copy.order}
             </Text>
             {order.lines.length > 1 ? (
@@ -265,10 +350,12 @@ const KitchenCard = ({
               </Text>
             ) : null}
           </View>
-          <Text style={[styles.quantity, { color: theme.text }]}>x {first?.quantity ?? 0}</Text>
+          <Text style={[styles.quantity, { color: highContrast ? "#FFFFFF" : theme.text }]}>
+            x {first?.quantity ?? 0}
+          </Text>
         </View>
 
-        <Text style={[styles.total, { color: theme.text }]}>
+        <Text style={[styles.total, { color: highContrast ? "#FFFFFF" : theme.text }]}>
           {itemCount} {copy.items}
         </Text>
         {order.status === "APPROVED" && canPrepare ? (
@@ -283,7 +370,7 @@ const KitchenCard = ({
           <PrimaryButton
             label={copy.markReady}
             theme={theme}
-            disabled={busy}
+            disabled={busy || !preparationComplete}
             onPress={() => onReady(order.id)}
           />
         ) : null}
@@ -311,6 +398,23 @@ const styles = createSnowStyles({
   title: { fontSize: 20, fontWeight: "700" },
   filterIcon: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
   filters: { flexDirection: "row", gap: 12, marginBottom: 30 },
+  kitchenTools: {
+    minHeight: 56,
+    borderWidth: 1,
+    borderRadius: 12,
+    flexDirection: "row",
+    marginBottom: 20,
+    paddingHorizontal: 8,
+  },
+  toolButton: {
+    flex: 1,
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  toolText: { fontSize: 13, fontWeight: "700" },
   filter: {
     flex: 1,
     minHeight: 48,

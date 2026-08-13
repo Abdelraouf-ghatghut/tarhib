@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThan, Repository } from 'typeorm';
+import { DataSource, In, MoreThan, Repository } from 'typeorm';
 import {
   CleaningTask,
   CleaningTaskRecurrence,
@@ -19,16 +19,26 @@ import {
   MeetingPreparation,
   MeetingPreparationStatus,
 } from './entities/meeting-preparation.entity.js';
+import { MeetingPreparationParticipant } from './entities/meeting-preparation-participant.entity.js';
+import {
+  Employee,
+  EmployeeScope,
+} from '../employees/entities/employee.entity.js';
 
 @Injectable()
 export class MeetingPreparationsService {
   constructor(
     @InjectRepository(MeetingPreparation)
     private readonly repo: Repository<MeetingPreparation>,
+    @InjectRepository(MeetingPreparationParticipant)
+    private readonly participants: Repository<MeetingPreparationParticipant>,
     @InjectRepository(RoomBooking)
     private readonly bookings: Repository<RoomBooking>,
     @InjectRepository(CleaningTask)
     private readonly cleaningTasks: Repository<CleaningTask>,
+    @InjectRepository(Employee)
+    private readonly employees: Repository<Employee>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async list(companyId?: string, branchId?: string) {
@@ -74,8 +84,16 @@ export class MeetingPreparationsService {
       where: branchId ? { branchId } : companyId ? { companyId } : {},
       order: { createdAt: 'ASC' },
     });
+    const memberships = tasks.length
+      ? await this.participants.find({
+          where: { preparationId: In(tasks.map((task) => task.id)) },
+        })
+      : [];
     return tasks.map((task) => ({
       ...task,
+      participantEmployeeIds: memberships
+        .filter((membership) => membership.preparationId === task.id)
+        .map((membership) => membership.employeeId),
       booking:
         bookings.find((booking) => booking.id === task.bookingId) ?? null,
     }));
@@ -100,6 +118,66 @@ export class MeetingPreparationsService {
     task.assignedEmployeeId = employeeId;
     task.status = MeetingPreparationStatus.ASSIGNED;
     return this.repo.save(task);
+  }
+
+  async setTeam(
+    id: string,
+    actorEmployeeId: string,
+    participantEmployeeIds: string[],
+    manager = false,
+  ): Promise<MeetingPreparation & { participantEmployeeIds: string[] }> {
+    const task = await this.one(id);
+    if (!manager && task.assignedEmployeeId !== actorEmployeeId) {
+      throw new ForbiddenException('onlyPreparationResponsibleCanManageTeam');
+    }
+    if (!task.assignedEmployeeId) {
+      throw new BadRequestException('preparationResponsibleRequired');
+    }
+    if (
+      [
+        MeetingPreparationStatus.COMPLETED,
+        MeetingPreparationStatus.VERIFIED,
+      ].includes(task.status)
+    ) {
+      throw new BadRequestException('completedPreparationTeamCannotChange');
+    }
+    if (participantEmployeeIds.includes(task.assignedEmployeeId)) {
+      throw new BadRequestException('responsibleCannotBeParticipant');
+    }
+
+    const uniqueIds = [...new Set(participantEmployeeIds)];
+    const employees = uniqueIds.length
+      ? await this.employees.findBy({ id: In(uniqueIds) })
+      : [];
+    if (
+      employees.length !== uniqueIds.length ||
+      employees.some(
+        (employee) =>
+          !employee.active ||
+          employee.scope !== EmployeeScope.TARHIB ||
+          employee.branchId !== task.branchId,
+      )
+    ) {
+      throw new BadRequestException('invalidPreparationParticipant');
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(MeetingPreparationParticipant);
+      await repository.delete({ preparationId: id });
+      if (uniqueIds.length) {
+        await repository.save(
+          uniqueIds.map((employeeId) =>
+            repository.create({
+              preparationId: id,
+              employeeId,
+              addedByEmployeeId: actorEmployeeId,
+            }),
+          ),
+        );
+      }
+    });
+
+    return { ...task, participantEmployeeIds: uniqueIds };
   }
 
   async start(

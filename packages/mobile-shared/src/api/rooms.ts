@@ -65,11 +65,15 @@ export async function createBooking(
   startTime: string,
   endTime: string,
   packageId?: string,
+  participants?: number,
+  notes?: string,
 ): Promise<RoomBooking> {
   const { data } = await api.post<RoomBooking>(`/meeting-rooms/${roomId}/bookings`, {
     startTime,
     endTime,
     ...(packageId ? { packageId } : {}),
+    ...(participants ? { participants } : {}),
+    ...(notes?.trim() ? { notes: notes.trim() } : {}),
   });
   return data;
 }

@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -83,6 +84,21 @@ export class CreateBookingDto {
   @IsOptional()
   @IsUUID()
   packageId?: string;
+
+  @ApiPropertyOptional({ description: 'Nombre de participants attendus' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  participants?: number;
+
+  @ApiPropertyOptional({
+    description: 'Remarque de réservation',
+    maxLength: 300,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  notes?: string;
 }
 
 export class OrderMeetingServicesDto {

@@ -9,11 +9,13 @@ import { Company } from '../companies/entities/company.entity.js';
 import { Branch } from '../branches/entities/branch.entity.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { Order } from '../orders/entities/order.entity.js';
+import { OperationalZonesModule } from '../operational-zones/operational-zones.module.js';
 
 @Module({
   imports: [
     OrdersModule,
     NotificationsModule,
+    OperationalZonesModule,
     TypeOrmModule.forFeature([DeliveryTask, Employee, Company, Branch, Order]),
   ],
   controllers: [DeliveryController],

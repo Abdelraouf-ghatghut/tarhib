@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { Platform } from "react-native";
+import { normalizeApiError, reliabilityEvents } from "../reliability";
 
 const DEFAULT_BASE_URL = Platform.select({
   android: "http://10.0.2.2:3000",
@@ -50,6 +51,10 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
   }
+  const retriedConfig = config as InternalAxiosRequestConfig & { _retry?: boolean };
+  if ((config.method ?? "get").toLowerCase() !== "get" && !retriedConfig._retry) {
+    reliabilityEvents.mutationStarted();
+  }
   return config;
 });
 
@@ -85,7 +90,12 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if ((response.config.method ?? "get").toLowerCase() === "get")
+      reliabilityEvents.requestSucceeded();
+    else reliabilityEvents.mutationSucceeded();
+    return response;
+  },
   async (error: AxiosError) => {
     const config = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     const isAuthEndpoint = !!config?.url && AUTH_ENDPOINTS.some((e) => config.url!.includes(e));
@@ -98,6 +108,9 @@ api.interceptors.response.use(
         return api(config);
       }
     }
+    const isMutation = !!config && (config.method ?? "get").toLowerCase() !== "get";
+    if (isMutation) reliabilityEvents.mutationFailed(normalizeApiError(error, "ar"));
+    else if (!error.response) reliabilityEvents.setOnline(false);
     return Promise.reject(error);
   },
 );

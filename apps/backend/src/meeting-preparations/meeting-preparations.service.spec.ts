@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test } from '@nestjs/testing';
+import { DataSource } from 'typeorm';
 import { CleaningTask } from '../cleaning-tasks/entities/cleaning-task.entity.js';
 import { RoomBooking } from '../meeting-rooms/entities/room-booking.entity.js';
 import {
@@ -8,6 +9,11 @@ import {
   MeetingPreparationStatus,
 } from './entities/meeting-preparation.entity.js';
 import { MeetingPreparationsService } from './meeting-preparations.service.js';
+import { MeetingPreparationParticipant } from './entities/meeting-preparation-participant.entity.js';
+import {
+  Employee,
+  EmployeeScope,
+} from '../employees/entities/employee.entity.js';
 
 describe('MeetingPreparationsService', () => {
   const repo = {
@@ -17,6 +23,18 @@ describe('MeetingPreparationsService', () => {
     save: jest.fn((value: MeetingPreparation) => Promise.resolve(value)),
   };
   const bookings = { find: jest.fn(), findOne: jest.fn() };
+  const participants = { find: jest.fn() };
+  const employees = { findBy: jest.fn() };
+  const participantTransactionRepo = {
+    delete: jest.fn(),
+    create: jest.fn((value: Partial<MeetingPreparationParticipant>) => value),
+    save: jest.fn(),
+  };
+  const dataSource = {
+    transaction: jest.fn((work: (manager: object) => unknown) =>
+      work({ getRepository: () => participantTransactionRepo }),
+    ),
+  };
   const cleaningTasks = {
     findOne: jest.fn(),
     create: jest.fn((value: CleaningTask) => value),
@@ -30,8 +48,14 @@ describe('MeetingPreparationsService', () => {
       providers: [
         MeetingPreparationsService,
         { provide: getRepositoryToken(MeetingPreparation), useValue: repo },
+        {
+          provide: getRepositoryToken(MeetingPreparationParticipant),
+          useValue: participants,
+        },
         { provide: getRepositoryToken(RoomBooking), useValue: bookings },
         { provide: getRepositoryToken(CleaningTask), useValue: cleaningTasks },
+        { provide: getRepositoryToken(Employee), useValue: employees },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
     service = module.get(MeetingPreparationsService);
@@ -93,5 +117,62 @@ describe('MeetingPreparationsService', () => {
     expect(cleaningTasks.save).toHaveBeenCalledWith(
       expect.objectContaining({ sourceBookingId: 'b', roomId: 'room' }),
     );
+  });
+
+  it('lets the responsible define the preparation team', async () => {
+    repo.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
+      branchId: '00000000-0000-4000-8000-000000000010',
+      assignedEmployeeId: '00000000-0000-4000-8000-000000000020',
+      status: MeetingPreparationStatus.ASSIGNED,
+    });
+    employees.findBy.mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000030',
+        branchId: '00000000-0000-4000-8000-000000000010',
+        scope: EmployeeScope.TARHIB,
+        active: true,
+      },
+    ]);
+
+    const result = await service.setTeam(
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000020',
+      ['00000000-0000-4000-8000-000000000030'],
+    );
+
+    expect(result.participantEmployeeIds).toEqual([
+      '00000000-0000-4000-8000-000000000030',
+    ]);
+    expect(participantTransactionRepo.delete).toHaveBeenCalledWith({
+      preparationId: '00000000-0000-4000-8000-000000000001',
+    });
+    expect(participantTransactionRepo.save).toHaveBeenCalled();
+  });
+
+  it('rejects a participant from another branch', async () => {
+    repo.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
+      branchId: '00000000-0000-4000-8000-000000000010',
+      assignedEmployeeId: '00000000-0000-4000-8000-000000000020',
+      status: MeetingPreparationStatus.ASSIGNED,
+    });
+    employees.findBy.mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000030',
+        branchId: '00000000-0000-4000-8000-000000000099',
+        scope: EmployeeScope.TARHIB,
+        active: true,
+      },
+    ]);
+
+    await expect(
+      service.setTeam(
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000020',
+        ['00000000-0000-4000-8000-000000000030'],
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 });

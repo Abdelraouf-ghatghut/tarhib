@@ -427,10 +427,13 @@ describe('OrdersService', () => {
       expect(result.note).toBe('بدون سكر');
       expect(result.lines).toEqual([
         {
+          id: 'line-1',
           productId: 'prod-2',
           quantity: 3,
           validationStatus: 'REJECTED',
           rejectionReason: 'INSUFFICIENT_STOCK',
+          preparationStatus: 'PENDING',
+          preparationNote: null,
         },
       ]);
     });
@@ -712,9 +715,20 @@ describe('OrdersService', () => {
         'ord-1',
         OrderStatus.REJECTED,
         platformAdmin,
+        'Rupture confirmée par le superviseur',
       );
 
       expect(result.status).toBe(OrderStatus.REJECTED);
+    });
+
+    it('refuse un rejet sans motif', async () => {
+      const order = makeOrder(OrderPriority.P5);
+      order.status = OrderStatus.APPROVED;
+      orderRepo.findOne.mockResolvedValue(order);
+
+      await expect(
+        service.updateStatus('ord-1', OrderStatus.REJECTED, platformAdmin),
+      ).rejects.toThrow('rejectionReasonRequired');
     });
   });
 

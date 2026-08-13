@@ -11,12 +11,18 @@ import { DeliveryService } from './delivery.service.js';
 import { DeliveryTaskStatus } from './entities/delivery-task.entity.js';
 import { DeliveryIssueDto } from './dto/delivery-issue.dto.js';
 import { OrderIssueDto } from './dto/order-issue.dto.js';
+import { OperationalZonesService } from '../operational-zones/operational-zones.service.js';
+import { OperationalZoneType } from '../operational-zones/entities/operational-zone.entity.js';
+import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto.js';
 
 @ApiTags('delivery')
 @ApiBearerAuth()
 @Controller('delivery')
 export class DeliveryController {
-  constructor(private readonly service: DeliveryService) {}
+  constructor(
+    private readonly service: DeliveryService,
+    private readonly operationalZones: OperationalZonesService,
+  ) {}
 
   @Get('queue')
   @RequireAnyPermission(
@@ -24,13 +30,26 @@ export class DeliveryController {
     'order.deliver',
     'order.queue.view',
   )
-  queue(
+  async queue(
     @CurrentUser() user: JwtPayload,
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
   ) {
     const scope = constrainRequestedScope(user, { companyId, branchId });
-    return this.service.queue(scope.companyId, scope.branchId);
+    const tasks = await this.service.queue(scope.companyId, scope.branchId);
+    if (user.permissions.includes('order.queue.manage')) return tasks;
+
+    const employeeId = user.employeeId ?? user.sub;
+    const floors = await this.operationalZones.assignedFloors(
+      employeeId,
+      OperationalZoneType.DELIVERY,
+    );
+    return tasks.filter(
+      (task) =>
+        task.assignedEmployeeId === employeeId ||
+        (task.destination?.floor &&
+          floors.has(this.operationalZones.floorKey(task.destination.floor))),
+    );
   }
 
   @Patch('tasks/:id/accept')
@@ -48,10 +67,26 @@ export class DeliveryController {
   depart(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.scopedTransition(id, DeliveryTaskStatus.OUT_FOR_DELIVERY, user);
   }
+  @Patch('tasks/:id/arrive')
+  @RequireAnyPermission('order.deliver')
+  arrive(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.scopedTransition(id, DeliveryTaskStatus.ARRIVED, user);
+  }
   @Patch('tasks/:id/deliver')
   @RequireAnyPermission('order.deliver')
-  deliver(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
-    return this.scopedTransition(id, DeliveryTaskStatus.DELIVERED, user);
+  deliver(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: ConfirmDeliveryDto,
+  ) {
+    return this.scopedTransition(
+      id,
+      DeliveryTaskStatus.DELIVERED,
+      user,
+      undefined,
+      undefined,
+      dto,
+    );
   }
   @Patch('tasks/:id/issue')
   @RequireAnyPermission('order.deliver')
@@ -104,9 +139,17 @@ export class DeliveryController {
     user: JwtPayload,
     reason?: string,
     description?: string,
+    proof?: ConfirmDeliveryDto,
   ) {
     const task = await this.service.findOne(id);
     assertResourceScope(user, task);
-    return this.service.transitionAtomic(id, status, user, reason, description);
+    return this.service.transitionAtomic(
+      id,
+      status,
+      user,
+      reason,
+      description,
+      proof,
+    );
   }
 }

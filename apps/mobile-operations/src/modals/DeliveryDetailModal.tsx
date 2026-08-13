@@ -14,7 +14,7 @@ import {
 import { arOrEn, productName } from "../lib/format";
 import { operationsProductImage } from "../lib/productImages";
 
-type Action = "accept" | "pickup" | "depart" | "deliver";
+type Action = "accept" | "pickup" | "depart" | "arrive" | "deliver";
 
 export const DeliveryDetailModal = ({
   visible,
@@ -66,18 +66,21 @@ export const DeliveryDetailModal = ({
         : task.status === "PICKED_UP"
           ? ["depart", arOrEn(lang, "بدء التوصيل", "Start delivery")]
           : task.status === "OUT_FOR_DELIVERY"
-            ? ["deliver", arOrEn(lang, "تم التوصيل", "Mark as delivered")]
-            : null;
+            ? ["arrive", arOrEn(lang, "وصلت", "Arrived")]
+            : task.status === "ARRIVED"
+              ? ["deliver", arOrEn(lang, "تأكيد التسليم", "Confirm delivery")]
+              : null;
   const steps = [
     { key: "ASSIGNED", label: arOrEn(lang, "تم القبول", "Accepted"), time: task.createdAt },
     { key: "PICKED_UP", label: arOrEn(lang, "تم الاستلام", "Picked up"), time: task.pickedUpAt },
     {
       key: "OUT_FOR_DELIVERY",
       label: arOrEn(lang, "في الطريق", "On the way"),
-      time: ["OUT_FOR_DELIVERY", "ISSUE_REPORTED", "DELIVERED"].includes(task.status)
+      time: ["OUT_FOR_DELIVERY", "ARRIVED", "ISSUE_REPORTED", "DELIVERED"].includes(task.status)
         ? task.updatedAt
         : null,
     },
+    { key: "ARRIVED", label: arOrEn(lang, "وصل", "Arrived"), time: task.arrivedAt },
     { key: "DELIVERED", label: arOrEn(lang, "تم التوصيل", "Delivered"), time: task.deliveredAt },
   ];
   const order = [
@@ -85,6 +88,7 @@ export const DeliveryDetailModal = ({
     "ASSIGNED",
     "PICKED_UP",
     "OUT_FOR_DELIVERY",
+    "ARRIVED",
     "ISSUE_REPORTED",
     "DELIVERED",
   ];
@@ -262,7 +266,7 @@ export const DeliveryDetailModal = ({
               />
             </View>
           ) : null}
-          {["PICKED_UP", "OUT_FOR_DELIVERY"].includes(task.status) ? (
+          {["PICKED_UP", "OUT_FOR_DELIVERY", "ARRIVED"].includes(task.status) ? (
             <Pressable
               onPress={onReport}
               style={[styles.issueButton, { backgroundColor: theme.danger }]}
@@ -284,6 +288,7 @@ const statusLabel = (status: DeliveryTask["status"], lang: Lang) =>
     ASSIGNED: arOrEn(lang, "تم القبول", "Accepted"),
     PICKED_UP: arOrEn(lang, "تم الاستلام", "Picked up"),
     OUT_FOR_DELIVERY: arOrEn(lang, "قيد التوصيل", "In progress"),
+    ARRIVED: arOrEn(lang, "وصل", "Arrived"),
     ISSUE_REPORTED: arOrEn(lang, "مشكلة", "Issue"),
     DELIVERED: arOrEn(lang, "تم التوصيل", "Delivered"),
     RETURNED: arOrEn(lang, "مرتجع", "Returned"),

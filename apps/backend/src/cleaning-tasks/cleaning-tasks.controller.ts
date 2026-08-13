@@ -25,16 +25,21 @@ import {
   AssignCleaningTaskDto,
   CreateCleaningTaskDto,
 } from './dto/cleaning-task.dto.js';
+import { OperationalZonesService } from '../operational-zones/operational-zones.service.js';
+import { OperationalZoneType } from '../operational-zones/entities/operational-zone.entity.js';
 
 @ApiTags('cleaning-tasks')
 @ApiBearerAuth()
 @Controller('cleaning/tasks')
 export class CleaningTasksController {
-  constructor(private readonly service: CleaningTasksService) {}
+  constructor(
+    private readonly service: CleaningTasksService,
+    private readonly operationalZones: OperationalZonesService,
+  ) {}
 
   @Get()
   @RequireAnyPermission('cleaning.task.view', 'cleaning.task.manage')
-  findAll(
+  async findAll(
     @CurrentUser() user: JwtPayload,
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
@@ -43,9 +48,16 @@ export class CleaningTasksController {
     const ownOnly =
       !user.permissions.includes('cleaning.task.manage') &&
       !user.permissions.includes('cleaning.task.assign');
+    const employeeId = user.employeeId ?? user.sub;
+    const operationalZoneIds = ownOnly
+      ? (await this.operationalZones.mine(employeeId))
+          .filter((zone) => zone.type === OperationalZoneType.CLEANING)
+          .map((zone) => zone.id)
+      : undefined;
     return this.service.findAll({
       ...scope,
-      assignedEmployeeId: ownOnly ? (user.employeeId ?? user.sub) : undefined,
+      assignedEmployeeId: ownOnly ? employeeId : undefined,
+      operationalZoneIds,
     });
   }
 
@@ -81,6 +93,21 @@ export class CleaningTasksController {
   async start(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     const task = await this.service.findOne(id);
     assertResourceScope(user, task);
+    if (
+      !user.permissions.includes('cleaning.task.manage') &&
+      !task.assignedEmployeeId
+    ) {
+      const zoneIds = (
+        await this.operationalZones.mine(user.employeeId ?? user.sub)
+      )
+        .filter((zone) => zone.type === OperationalZoneType.CLEANING)
+        .map((zone) => zone.id);
+      return this.service.claimAndStart(
+        id,
+        user.employeeId ?? user.sub,
+        zoneIds,
+      );
+    }
     this.assertAssignee(user, task);
     return this.service.transition(
       id,

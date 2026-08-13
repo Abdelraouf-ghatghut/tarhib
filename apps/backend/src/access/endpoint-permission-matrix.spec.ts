@@ -18,9 +18,20 @@ const permissions = (controller: object, method: string): string[] => {
 };
 
 describe('Operations endpoint permission matrix', () => {
-  const deliveryService = { findOne: jest.fn(), transitionAtomic: jest.fn() };
-  const delivery = new DeliveryController(deliveryService as never);
-  const cleaning = new CleaningTasksController({} as never);
+  const deliveryService = {
+    findOne: jest.fn(),
+    queue: jest.fn(),
+    transitionAtomic: jest.fn(),
+  };
+  const operationalZones = {
+    assignedFloors: jest.fn(),
+    floorKey: jest.fn((floor: string) => floor.trim().toLowerCase()),
+  };
+  const delivery = new DeliveryController(
+    deliveryService as never,
+    operationalZones as never,
+  );
+  const cleaning = new CleaningTasksController({} as never, {} as never);
   const meetings = new MeetingPreparationsController({} as never);
   const procurement = new ProcurementController({} as never);
 
@@ -32,6 +43,11 @@ describe('Operations endpoint permission matrix', () => {
     [cleaning, 'assign', ['cleaning.task.assign', 'cleaning.task.manage']],
     [cleaning, 'complete', ['cleaning.task.complete', 'cleaning.task.manage']],
     [meetings, 'assign', ['meeting.preparation.manage']],
+    [
+      meetings,
+      'setTeam',
+      ['meeting.preparation.execute', 'meeting.preparation.manage'],
+    ],
     [procurement, 'receive', ['procurement.receive', 'procurement.manage']],
   ])(
     '%s.%s is protected by the exact execution permission',
@@ -57,5 +73,38 @@ describe('Operations endpoint permission matrix', () => {
       ForbiddenException,
     );
     expect(deliveryService.transitionAtomic).not.toHaveBeenCalled();
+  });
+
+  it('shows a delivery agent only assigned floors or explicitly assigned tasks', async () => {
+    deliveryService.queue.mockResolvedValue([
+      {
+        id: 'allowed',
+        assignedEmployeeId: null,
+        destination: { floor: '2' },
+      },
+      {
+        id: 'outside',
+        assignedEmployeeId: null,
+        destination: { floor: '5' },
+      },
+      {
+        id: 'exception',
+        assignedEmployeeId: 'employee-1',
+        destination: { floor: '5' },
+      },
+    ]);
+    operationalZones.assignedFloors.mockResolvedValue(new Set(['2']));
+    const user = {
+      sub: 'keycloak-1',
+      employeeId: 'employee-1',
+      companyId: 'company-1',
+      branchId: 'branch-1',
+      dataScope: 'BRANCH',
+      permissions: ['order.deliver'],
+    } as JwtPayload;
+
+    const result = await delivery.queue(user);
+
+    expect(result.map((task) => task.id)).toEqual(['allowed', 'exception']);
   });
 });

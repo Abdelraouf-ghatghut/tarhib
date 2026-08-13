@@ -57,6 +57,7 @@ export class OperationsController {
   @RequireAnyPermission(
     'cleaning.task.assign',
     'cleaning.task.manage',
+    'meeting.preparation.execute',
     'meeting.preparation.manage',
     'employee.manage',
   )

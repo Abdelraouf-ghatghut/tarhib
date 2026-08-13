@@ -20,9 +20,11 @@ import { OperationalEmptyState } from "../../components/ui";
 import { arOrEn } from "../../lib/format";
 import { DeliveryDetailModal } from "../../modals/DeliveryDetailModal";
 import { DeliveryIssueReportModal } from "../../modals/DeliveryIssueReportModal";
+import { AssignedZonesCard } from "../../components/AssignedZonesCard";
+import { useOfflineDeliveryQueue } from "../../hooks/useOfflineDeliveryQueue";
 
 type Filter = "ALL" | "AVAILABLE" | "MINE";
-type DeliveryAction = "accept" | "pickup" | "depart" | "deliver";
+type DeliveryAction = "accept" | "pickup" | "depart" | "arrive" | "deliver";
 export type DeliveryScope = {
   companies: OrganizationCompany[];
   branches: OrganizationBranch[];
@@ -56,16 +58,36 @@ export const DeliveryTab = ({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [scopePicker, setScopePicker] = useState<"company" | "branch" | null>(null);
+  const [deliveryProofTaskId, setDeliveryProofTaskId] = useState<string | null>(null);
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientCode, setRecipientCode] = useState("");
   const activeTasks = tasks.filter(
     (task) => !["DELIVERED", "RETURNED", "FAILED"].includes(task.status),
   );
   const mine = activeTasks.filter((task) => task.status !== "AVAILABLE");
-  const visible =
+  const filtered =
     filter === "ALL"
       ? activeTasks
       : filter === "AVAILABLE"
         ? activeTasks.filter((task) => task.status === "AVAILABLE")
         : mine;
+  const visible = [...filtered].sort((a, b) => {
+    const aCritical = Number(a.order.priority.replace(/\D/g, "")) <= 2;
+    const bCritical = Number(b.order.priority.replace(/\D/g, "")) <= 2;
+    if (aCritical !== bCritical) return aCritical ? -1 : 1;
+    const branch = (a.destination?.branchNameAr ?? "").localeCompare(
+      b.destination?.branchNameAr ?? "",
+      "ar",
+    );
+    if (branch !== 0) return branch;
+    const floor = (a.destination?.floor ?? "").localeCompare(
+      b.destination?.floor ?? "",
+      undefined,
+      { numeric: true },
+    );
+    if (floor !== 0) return floor;
+    return new Date(a.order.slaDeadline).getTime() - new Date(b.order.slaDeadline).getTime();
+  });
 
   const optimistic = (id: string, status: DeliveryTask["status"], reason?: string) => {
     const snapshot = queryClient.getQueriesData<DeliveryTask[]>({ queryKey: ["delivery-queue"] });
@@ -78,10 +100,26 @@ export const DeliveryTab = ({
   };
   const rollback = (snapshot?: Array<[readonly unknown[], DeliveryTask[] | undefined]>) =>
     snapshot?.forEach(([key, data]) => queryClient.setQueryData(key, data));
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: ["delivery-queue"] });
+  const refresh = React.useCallback(
+    () => void queryClient.invalidateQueries({ queryKey: ["delivery-queue"] }),
+    [queryClient],
+  );
+  const offlineQueue = useOfflineDeliveryQueue(refresh);
   const transition = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: DeliveryAction }) =>
-      transitionDeliveryTask(id, action),
+    mutationFn: ({
+      id,
+      action,
+      proof,
+    }: {
+      id: string;
+      action: DeliveryAction;
+      proof?: {
+        recipientName: string;
+        recipientCode?: string;
+        clientRequestId: string;
+        occurredAt: string;
+      };
+    }) => transitionDeliveryTask(id, action, undefined, undefined, proof),
     onMutate: ({ id, action }) =>
       optimistic(
         id,
@@ -90,11 +128,17 @@ export const DeliveryTab = ({
             accept: "ASSIGNED",
             pickup: "PICKED_UP",
             depart: "OUT_FOR_DELIVERY",
+            arrive: "ARRIVED",
             deliver: "DELIVERED",
           } as const
         )[action],
       ),
-    onError: (_error, _input, context) => rollback(context),
+    onError: (_error, input, context) => {
+      rollback(context);
+      if (input.action === "deliver" && input.proof) {
+        void offlineQueue.enqueue({ taskId: input.id, ...input.proof });
+      }
+    },
     onSettled: refresh,
   });
   const report = useMutation({
@@ -136,6 +180,21 @@ export const DeliveryTab = ({
           <Ionicons name="filter-outline" size={27} color={theme.text} />
         </Pressable>
       </View>
+      {!canManage ? <AssignedZonesCard theme={theme} lang={lang} type="DELIVERY" /> : null}
+      {offlineQueue.pendingCount > 0 ? (
+        <Pressable
+          disabled={offlineQueue.syncing}
+          onPress={() => void offlineQueue.flush()}
+          style={[styles.offlineBanner, { backgroundColor: theme.warning }]}
+        >
+          <Ionicons name="cloud-upload-outline" size={22} color="#FFFFFF" />
+          <Text style={styles.offlineBannerText}>
+            {offlineQueue.syncing
+              ? "جارٍ مزامنة عمليات التسليم…"
+              : `${offlineQueue.pendingCount} عملية تسليم محفوظة بأمان بانتظار المزامنة`}
+          </Text>
+        </Pressable>
+      ) : null}
       <View style={[styles.filters, { borderColor: theme.border }]}>
         <FilterButton
           theme={theme}
@@ -171,7 +230,11 @@ export const DeliveryTab = ({
             canManage={canManage}
             onOpen={() => setSelectedTaskId(task.id)}
             onOpenIssue={() => setIssueTaskId(task.id)}
-            onAction={(action) => transition.mutate({ id: task.id, action })}
+            onAction={(action) =>
+              action === "deliver"
+                ? setDeliveryProofTaskId(task.id)
+                : transition.mutate({ id: task.id, action })
+            }
             onResolve={(action) => resolve.mutate({ id: task.id, action })}
           />
         ))}
@@ -195,12 +258,74 @@ export const DeliveryTab = ({
         productsById={productsById}
         busy={transition.isPending || report.isPending}
         onClose={() => setSelectedTaskId(null)}
-        onAction={(action) => selectedTaskId && transition.mutate({ id: selectedTaskId, action })}
+        onAction={(action) => {
+          if (!selectedTaskId) return;
+          if (action === "deliver") setDeliveryProofTaskId(selectedTaskId);
+          else transition.mutate({ id: selectedTaskId, action });
+        }}
         onReport={() => {
           if (selectedTaskId) setIssueTaskId(selectedTaskId);
           setSelectedTaskId(null);
         }}
       />
+      <Modal
+        visible={Boolean(deliveryProofTaskId)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeliveryProofTaskId(null)}
+      >
+        <View style={styles.proofBackdrop}>
+          <View style={[styles.proofCard, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.proofTitle, { color: theme.text }]}>تأكيد تسليم الطلب</Text>
+            <Text style={[styles.proofHint, { color: theme.muted }]}>
+              أدخل اسم المستلم ثم اضغط مطولاً على زر التأكيد.
+            </Text>
+            <TextInput
+              value={recipientName}
+              onChangeText={setRecipientName}
+              placeholder="اسم المستلم"
+              placeholderTextColor={theme.muted}
+              style={[styles.proofInput, { borderColor: theme.border, color: theme.text }]}
+            />
+            <TextInput
+              value={recipientCode}
+              onChangeText={setRecipientCode}
+              placeholder="رمز الاستلام (اختياري)"
+              placeholderTextColor={theme.muted}
+              style={[styles.proofInput, { borderColor: theme.border, color: theme.text }]}
+            />
+            <Pressable
+              disabled={!recipientName.trim() || transition.isPending}
+              delayLongPress={800}
+              onLongPress={() => {
+                if (!deliveryProofTaskId || !recipientName.trim()) return;
+                transition.mutate({
+                  id: deliveryProofTaskId,
+                  action: "deliver",
+                  proof: {
+                    recipientName: recipientName.trim(),
+                    ...(recipientCode.trim() ? { recipientCode: recipientCode.trim() } : {}),
+                    clientRequestId: `delivery-${deliveryProofTaskId}-${Date.now()}`,
+                    occurredAt: new Date().toISOString(),
+                  },
+                });
+                setDeliveryProofTaskId(null);
+                setRecipientName("");
+                setRecipientCode("");
+              }}
+              style={[
+                styles.proofConfirm,
+                { backgroundColor: recipientName.trim() ? theme.success : theme.border },
+              ]}
+            >
+              <Text style={styles.proofConfirmText}>اضغط مطولاً لتأكيد التسليم</Text>
+            </Pressable>
+            <Pressable onPress={() => setDeliveryProofTaskId(null)} style={styles.proofCancel}>
+              <Text style={{ color: theme.muted }}>إلغاء</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <DeliveryIssueReportModal
         visible={Boolean(issueTaskId)}
         task={tasks.find((task) => task.id === issueTaskId) ?? null}
@@ -547,9 +672,11 @@ const DeliveryCard = ({
         : task.status === "PICKED_UP"
           ? ["depart", arOrEn(lang, "بدء التوصيل", "Start delivery")]
           : task.status === "OUT_FOR_DELIVERY"
-            ? ["deliver", arOrEn(lang, "تم التوصيل", "Mark delivered")]
-            : null;
-  const canReport = ["PICKED_UP", "OUT_FOR_DELIVERY"].includes(task.status);
+            ? ["arrive", arOrEn(lang, "وصلت", "Arrived")]
+            : task.status === "ARRIVED"
+              ? ["deliver", arOrEn(lang, "تأكيد التسليم", "Confirm delivery")]
+              : null;
+  const canReport = ["PICKED_UP", "OUT_FOR_DELIVERY", "ARRIVED"].includes(task.status);
   return (
     <Card theme={theme} style={styles.card}>
       <Pressable onPress={onOpen} style={styles.cardContent}>
@@ -852,4 +979,35 @@ const styles = createSnowStyles({
     justifyContent: "space-between",
   },
   scopeOptionText: { flex: 1, fontSize: 16, lineHeight: 23, fontWeight: "500" },
+  proofBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.55)", justifyContent: "flex-end" },
+  proofCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 12 },
+  proofTitle: { fontSize: 20, fontWeight: "700", textAlign: "right" },
+  proofHint: { fontSize: 13, lineHeight: 20, textAlign: "right" },
+  proofInput: {
+    minHeight: 52,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    textAlign: "right",
+  },
+  proofConfirm: { minHeight: 56, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  proofConfirmText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  proofCancel: { minHeight: 44, alignItems: "center", justifyContent: "center" },
+  offlineBanner: {
+    minHeight: 52,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  offlineBannerText: {
+    flex: 1,
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "right",
+  },
 });

@@ -50,10 +50,19 @@ export function useCart(products: CatalogProduct[]): Cart {
     lines,
     totalItems,
     add: (productId, quantity = 1) =>
-      setQuantities((current) => ({
-        ...current,
-        [productId]: (current[productId] ?? 0) + quantity,
-      })),
+      setQuantities((current) => {
+        const product = products.find((item) => item.id === productId);
+        const maximum = product
+          ? Math.max(
+              0,
+              Math.min(
+                product.availableQuantity,
+                product.quotaRemaining ?? Number.MAX_SAFE_INTEGER,
+              ),
+            )
+          : 0;
+        return { ...current, [productId]: Math.min((current[productId] ?? 0) + quantity, maximum) };
+      }),
     remove: (productId) =>
       setQuantities((current) => ({
         ...current,

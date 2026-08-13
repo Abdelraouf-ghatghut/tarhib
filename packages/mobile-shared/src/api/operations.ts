@@ -42,6 +42,17 @@ export interface OperationsTeamMember {
   branchId: string | null;
   activeTaskCount: number;
 }
+export type OperationalZoneType = "DELIVERY" | "CLEANING";
+export interface OperationalZone {
+  id: string;
+  companyId: string;
+  branchId: string;
+  type: OperationalZoneType;
+  nameAr: string;
+  nameEn: string | null;
+  floors: string[];
+  active: boolean;
+}
 export interface PurchaseOrderInput {
   companyId: string;
   branchId: string;
@@ -56,6 +67,10 @@ export interface CleaningTask {
   status: string;
   dueDate: string | null;
   assignedEmployeeId: string | null;
+  operationalZoneId: string | null;
+  building: string | null;
+  floor: string | null;
+  locationName: string | null;
 }
 export interface CleaningProduct {
   id: string;
@@ -94,6 +109,7 @@ export interface MeetingPreparation {
   bookingId: string;
   status: string;
   assignedEmployeeId: string | null;
+  participantEmployeeIds: string[];
   checklist: Array<{ key: string; label: string; done: boolean }>;
   booking: { startTime: string; endTime: string; roomId: string } | null;
 }
@@ -124,6 +140,18 @@ export const fetchSuppliers = async (): Promise<Supplier[]> =>
   (await api.get<Supplier[]>("/suppliers")).data;
 export const fetchOperationsTeam = async (): Promise<OperationsTeamMember[]> =>
   (await api.get<OperationsTeamMember[]>("/operations/team")).data;
+export const fetchMyOperationalZones = async (): Promise<OperationalZone[]> =>
+  (await api.get<OperationalZone[]>("/operational-zones/mine")).data;
+export const fetchOperationalZones = async (
+  type: OperationalZoneType,
+  companyId?: string | null,
+  branchId?: string | null,
+): Promise<OperationalZone[]> =>
+  (
+    await api.get<OperationalZone[]>("/operational-zones", {
+      params: { type, companyId: companyId || undefined, branchId: branchId || undefined },
+    })
+  ).data;
 export const createPurchaseOrder = async (input: PurchaseOrderInput): Promise<PurchaseOrder> =>
   (await api.post<PurchaseOrder>("/procurement", input)).data;
 export const updatePurchaseOrder = async (
@@ -154,6 +182,10 @@ export const createCleaningTask = async (input: {
   title: string;
   description?: string;
   assignedEmployeeId?: string;
+  operationalZoneId?: string;
+  building?: string;
+  floor?: string;
+  locationName?: string;
   dueDate?: string;
 }): Promise<CleaningTask> => (await api.post<CleaningTask>("/cleaning/tasks", input)).data;
 export const assignCleaningTask = async (id: string, employeeId: string): Promise<CleaningTask> =>
@@ -208,6 +240,15 @@ export const assignMeetingPreparation = async (
   employeeId: string,
 ): Promise<MeetingPreparation> =>
   (await api.patch<MeetingPreparation>(`/meeting-preparations/${id}/assign`, { employeeId })).data;
+export const updateMeetingPreparationTeam = async (
+  id: string,
+  participantEmployeeIds: string[],
+): Promise<MeetingPreparation> =>
+  (
+    await api.patch<MeetingPreparation>(`/meeting-preparations/${id}/team`, {
+      participantEmployeeIds,
+    })
+  ).data;
 export const fetchNotifications = async (): Promise<PersistentNotification[]> =>
   (await api.get<PersistentNotification[]>("/notifications")).data;
 export const markNotificationRead = async (id: string): Promise<void> => {

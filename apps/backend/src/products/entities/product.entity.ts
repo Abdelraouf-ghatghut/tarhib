@@ -73,6 +73,12 @@ export class Product {
   @Column({ name: 'image_url', type: 'text', nullable: true })
   imageUrl!: string | null;
 
+  @Column({ type: 'simple-array', nullable: true })
+  allergens!: string[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  nutrition!: Record<string, number> | null;
+
   @Column({
     name: 'unit_cost',
     type: 'decimal',

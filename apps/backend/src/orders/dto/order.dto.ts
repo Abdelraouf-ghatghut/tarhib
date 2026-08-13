@@ -71,6 +71,10 @@ export class CreateOrderDto {
  * ici en union pour éviter le cycle d'import dto ↔ entité.
  */
 export class OrderLineDto {
+  @ApiProperty()
+  @IsUUID()
+  id!: string;
+
   @ApiProperty({ example: 'a1b2c3d4-...' })
   @IsUUID()
   productId!: string;
@@ -85,6 +89,12 @@ export class OrderLineDto {
 
   @ApiProperty({ nullable: true, example: 'quotaExceeded' })
   rejectionReason!: string | null;
+
+  @ApiProperty({ enum: ['PENDING', 'DONE', 'SUBSTITUTED', 'OUT_OF_STOCK'] })
+  preparationStatus!: 'PENDING' | 'DONE' | 'SUBSTITUTED' | 'OUT_OF_STOCK';
+
+  @ApiPropertyOptional({ nullable: true })
+  preparationNote!: string | null;
 }
 
 export class OrderDto {

@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsEnum,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -72,6 +73,17 @@ export class ProductDto {
   @IsString()
   @IsOptional()
   imageUrl?: string | null;
+
+  @ApiPropertyOptional({ type: [String], nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allergens?: string[] | null;
+
+  @ApiPropertyOptional({ type: Object, nullable: true })
+  @IsOptional()
+  @IsObject()
+  nutrition?: Record<string, number> | null;
 
   @ApiProperty({ example: true, description: 'Acheté auprès d’un fournisseur' })
   @IsBoolean()
@@ -161,6 +173,17 @@ export class CreateProductDto {
   @IsString()
   @IsOptional()
   imageUrl?: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allergens?: string[];
+
+  @ApiPropertyOptional({ type: Object })
+  @IsOptional()
+  @IsObject()
+  nutrition?: Record<string, number>;
 
   @ApiPropertyOptional({ description: 'Défaut dérivé de `type` si omis' })
   @IsBoolean()

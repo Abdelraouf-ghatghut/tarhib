@@ -1,10 +1,13 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React, { useEffect, useState } from "react";
+import { Text, View } from "react-native";
 
 import { AcceptInviteScreen, LoginScreen } from "../AuthScreens";
 import { authApi } from "../api/auth";
 import { SplashScreen } from "../screens/SplashScreen";
+import { PrimaryButton } from "../components";
+import { ReliabilityBanner, useConnectivityMonitor } from "../reliability";
 import { useAuthStore } from "../store/auth-store";
 import { type AppMode, type Lang, type SnowTheme } from "../theme";
 
@@ -38,6 +41,8 @@ export function RootNavigator({
   const login = useAuthStore((s) => s.login);
   const loginWithOtp = useAuthStore((s) => s.loginWithOtp);
   const acceptInvite = useAuthStore((s) => s.acceptInvite);
+  const logout = useAuthStore((s) => s.logout);
+  const scope = useAuthStore((s) => s.scope);
   // Pas d'écran de stack dédié : juste un toggle local dans l'écran non
   // authentifié (login ↔ acceptation d'invitation), plus simple que de
   // plomber une route de navigation pour un aller-retour aussi ponctuel.
@@ -48,6 +53,9 @@ export function RootNavigator({
     // Only ever needs to run once, at mount — restoreSession is stable (Zustand action).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useConnectivityMonitor();
+
+  const appAllowed = !scope || (appMode === "employee" ? scope === "CLIENT" : scope === "TARHIB");
 
   if (isBooting) {
     return (
@@ -56,36 +64,83 @@ export function RootNavigator({
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {isAuthenticated ? (
-          <Stack.Screen name="Main">{renderMain}</Stack.Screen>
-        ) : (
-          <Stack.Screen name="Login">
-            {() =>
-              authView === "acceptInvite" ? (
-                <AcceptInviteScreen
-                  lang={lang}
-                  theme={theme}
-                  onSubmit={(payload) => acceptInvite(appMode, payload)}
-                  onBack={() => setAuthView("login")}
-                />
-              ) : (
-                <LoginScreen
-                  lang={lang}
-                  theme={theme}
-                  onLogin={(email, password) => login(appMode, email, password)}
-                  onRequestOtp={(phoneNumber, channel) =>
-                    authApi.requestOtp(phoneNumber, channel, appMode).then(() => undefined)
-                  }
-                  onOtpLogin={(phoneNumber, code) => loginWithOtp(appMode, phoneNumber, code)}
-                  onHaveInviteCode={() => setAuthView("acceptInvite")}
-                />
-              )
-            }
-          </Stack.Screen>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <View style={{ flex: 1 }}>
+      <ReliabilityBanner lang={lang} theme={theme} />
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          {isAuthenticated ? (
+            <Stack.Screen name="Main">
+              {() =>
+                appAllowed ? (
+                  renderMain()
+                ) : (
+                  <View
+                    style={{
+                      flex: 1,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 24,
+                      gap: 16,
+                      backgroundColor: theme.background,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: theme.text,
+                        fontSize: 20,
+                        fontWeight: "800",
+                        textAlign: "center",
+                      }}
+                    >
+                      {lang === "ar"
+                        ? "هذا الحساب غير مخصص لهذا التطبيق"
+                        : "This account cannot use this application"}
+                    </Text>
+                    <Text style={{ color: theme.muted, fontSize: 15, textAlign: "center" }}>
+                      {lang === "ar"
+                        ? appMode === "employee"
+                          ? "استخدم تطبيق عمليات ترحيب."
+                          : "استخدم تطبيق موظفي الشركات."
+                        : appMode === "employee"
+                          ? "Use the Tarhib Operations app."
+                          : "Use the company Employee app."}
+                    </Text>
+                    <PrimaryButton
+                      label={lang === "ar" ? "تسجيل الخروج" : "Sign out"}
+                      theme={theme}
+                      onPress={() => void logout()}
+                    />
+                  </View>
+                )
+              }
+            </Stack.Screen>
+          ) : (
+            <Stack.Screen name="Login">
+              {() =>
+                authView === "acceptInvite" ? (
+                  <AcceptInviteScreen
+                    lang={lang}
+                    theme={theme}
+                    onSubmit={(payload) => acceptInvite(appMode, payload)}
+                    onBack={() => setAuthView("login")}
+                  />
+                ) : (
+                  <LoginScreen
+                    lang={lang}
+                    theme={theme}
+                    onLogin={(email, password) => login(appMode, email, password)}
+                    onRequestOtp={(phoneNumber, channel) =>
+                      authApi.requestOtp(phoneNumber, channel, appMode).then(() => undefined)
+                    }
+                    onOtpLogin={(phoneNumber, code) => loginWithOtp(appMode, phoneNumber, code)}
+                    onHaveInviteCode={() => setAuthView("acceptInvite")}
+                  />
+                )
+              }
+            </Stack.Screen>
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </View>
   );
 }

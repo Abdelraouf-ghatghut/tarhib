@@ -7,6 +7,7 @@ import {
   constrainRequestedScope,
 } from '../common/access/request-scope.js';
 import { AssignMeetingPreparationDto } from './dto/assign-meeting-preparation.dto.js';
+import { UpdateMeetingPreparationTeamDto } from './dto/update-meeting-preparation-team.dto.js';
 import { MeetingPreparationStatus } from './entities/meeting-preparation.entity.js';
 import { MeetingPreparationsService } from './meeting-preparations.service.js';
 
@@ -38,6 +39,25 @@ export class MeetingPreparationsController {
   ) {
     await this.assertScope(user, id);
     return this.service.assign(id, dto.employeeId);
+  }
+
+  @Patch(':id/team')
+  @RequireAnyPermission(
+    'meeting.preparation.execute',
+    'meeting.preparation.manage',
+  )
+  async setTeam(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateMeetingPreparationTeamDto,
+  ) {
+    await this.assertScope(user, id);
+    return this.service.setTeam(
+      id,
+      user.employeeId ?? user.sub,
+      dto.participantEmployeeIds,
+      this.isManager(user),
+    );
   }
 
   @Patch(':id/start')

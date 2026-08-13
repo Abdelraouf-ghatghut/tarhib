@@ -112,6 +112,8 @@ interface Product {
   unit: string | null;
   purchaseUnit: string | null;
   unitsPerPurchase: number;
+  allergens: string[] | null;
+  nutrition: Record<string, number> | null;
 }
 
 interface RecipeLine {
@@ -296,6 +298,26 @@ export function ProductsPage() {
             <Form.Item name="category" label={t("category")} rules={[{ required: true }]}>
               <Input />
             </Form.Item>
+            <Form.Item name="allergens" label={t("allergens")} tooltip={t("allergensHint")}>
+              <Select mode="tags" tokenSeparators={[","]} placeholder={t("allergensPlaceholder")} />
+            </Form.Item>
+            <Row gutter={12}>
+              <Col span={8}>
+                <Form.Item name={["nutrition", "caloriesKcal"]} label={t("caloriesKcal")}>
+                  <InputNumber min={0} style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name={["nutrition", "sugarG"]} label={t("sugarG")}>
+                  <InputNumber min={0} precision={1} style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name={["nutrition", "caffeineMg"]} label={t("caffeineMg")}>
+                  <InputNumber min={0} style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+            </Row>
             <ProductFlagsFields />
             <Form.Item name="allowedRoles" label={t("allowedRoles")}>
               <Select mode="multiple" allowClear options={clientRoleOptions} />
@@ -366,6 +388,14 @@ export function ProductsPage() {
             </Descriptions.Item>
             <Descriptions.Item label={t("unitCost")}>
               {selected.unitCost != null ? selected.unitCost : "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label={t("allergens")}>
+              {selected.allergens?.length ? selected.allergens.join(", ") : t("none")}
+            </Descriptions.Item>
+            <Descriptions.Item label={t("nutrition")}>
+              {selected.nutrition
+                ? `${selected.nutrition.caloriesKcal ?? "—"} kcal · ${selected.nutrition.sugarG ?? "—"} g · ${selected.nutrition.caffeineMg ?? "—"} mg`
+                : "—"}
             </Descriptions.Item>
             <Descriptions.Item label={t("unit")}>{selected.unit ?? "—"}</Descriptions.Item>
             {selected.purchaseUnit && (

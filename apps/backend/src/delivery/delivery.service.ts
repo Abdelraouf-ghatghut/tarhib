@@ -19,6 +19,9 @@ import { Branch } from '../branches/entities/branch.entity.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { Order } from '../orders/entities/order.entity.js';
 import { assertResourceScope } from '../common/access/request-scope.js';
+import { OperationalZonesService } from '../operational-zones/operational-zones.service.js';
+import { OperationalZoneType } from '../operational-zones/entities/operational-zone.entity.js';
+import type { ConfirmDeliveryDto } from './dto/confirm-delivery.dto.js';
 
 export interface DeliveryTaskDto extends DeliveryTask {
   order: OrderDto;
@@ -47,6 +50,7 @@ export class DeliveryService {
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
     private readonly notifications: NotificationsService,
     private readonly orders: OrdersService,
+    private readonly operationalZones: OperationalZonesService,
   ) {}
 
   async queue(
@@ -232,7 +236,25 @@ export class DeliveryService {
     user: JwtPayload,
     reason?: string,
     description?: string,
+    proof?: ConfirmDeliveryDto,
   ): Promise<DeliveryTask> {
+    if (
+      status === DeliveryTaskStatus.ASSIGNED &&
+      !user.permissions.includes('order.queue.manage')
+    ) {
+      const taskWithDestination = (await this.queue(undefined, undefined)).find(
+        (item) => item.id === id,
+      );
+      const floor = taskWithDestination?.destination?.floor;
+      const employeeId = user.employeeId ?? user.sub;
+      const floors = await this.operationalZones.assignedFloors(
+        employeeId,
+        OperationalZoneType.DELIVERY,
+      );
+      if (!floor || !floors.has(this.operationalZones.floorKey(floor))) {
+        throw new ForbiddenException('deliveryOutsideAssignedZone');
+      }
+    }
     const task = await this.repo.manager.transaction(async (manager) => {
       const tasks = manager.getRepository(DeliveryTask);
       const current = await tasks.findOne({
@@ -241,6 +263,14 @@ export class DeliveryService {
       });
       if (!current)
         throw new NotFoundException(`Delivery task ${id} not found`);
+      if (
+        status === DeliveryTaskStatus.DELIVERED &&
+        proof?.clientRequestId &&
+        current.deliveryRequestId === proof.clientRequestId &&
+        current.status === DeliveryTaskStatus.DELIVERED
+      ) {
+        return current;
+      }
       const employeeId = user.employeeId ?? user.sub;
       if (status === DeliveryTaskStatus.ASSIGNED) {
         if (
@@ -264,6 +294,10 @@ export class DeliveryService {
           DeliveryTaskStatus.ISSUE_REPORTED,
         ],
         OUT_FOR_DELIVERY: [
+          DeliveryTaskStatus.ARRIVED,
+          DeliveryTaskStatus.ISSUE_REPORTED,
+        ],
+        ARRIVED: [
           DeliveryTaskStatus.DELIVERED,
           DeliveryTaskStatus.ISSUE_REPORTED,
         ],
@@ -283,13 +317,24 @@ export class DeliveryService {
       current.status = status;
       if (status === DeliveryTaskStatus.PICKED_UP)
         current.pickedUpAt = new Date();
+      if (status === DeliveryTaskStatus.ARRIVED) current.arrivedAt = new Date();
       if (status === DeliveryTaskStatus.ISSUE_REPORTED)
         current.issueReason = reason?.trim() || 'Unspecified issue';
       if (status === DeliveryTaskStatus.ISSUE_REPORTED)
         current.issueDescription =
           description?.trim() || reason?.trim() || 'Unspecified issue';
-      if (status === DeliveryTaskStatus.DELIVERED)
+      if (status === DeliveryTaskStatus.DELIVERED) {
+        if (!proof?.recipientName?.trim() || !proof.clientRequestId?.trim()) {
+          throw new BadRequestException('deliveryProofRequired');
+        }
         current.deliveredAt = new Date();
+        current.recipientName = proof.recipientName.trim();
+        current.recipientCode = proof.recipientCode?.trim() || null;
+        current.deliveryRequestId = proof.clientRequestId.trim();
+        current.deliveredClientAt = proof.occurredAt
+          ? new Date(proof.occurredAt)
+          : current.deliveredAt;
+      }
       if (
         [
           DeliveryTaskStatus.OUT_FOR_DELIVERY,
@@ -361,6 +406,10 @@ export class DeliveryService {
         DeliveryTaskStatus.ISSUE_REPORTED,
       ],
       OUT_FOR_DELIVERY: [
+        DeliveryTaskStatus.ARRIVED,
+        DeliveryTaskStatus.ISSUE_REPORTED,
+      ],
+      ARRIVED: [
         DeliveryTaskStatus.DELIVERED,
         DeliveryTaskStatus.ISSUE_REPORTED,
       ],

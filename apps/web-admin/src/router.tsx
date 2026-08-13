@@ -38,6 +38,7 @@ import { PerformanceReviewsPage } from "./pages/hr/PerformanceReviewsPage";
 import { PayslipsPage } from "./pages/hr/PayslipsPage";
 import CompanyDocumentsPage from "./pages/settings/CompanyDocumentsPage";
 import PerformanceManagementPage from "./pages/performance-management/PerformanceManagementPage";
+import OperationalZonesPage from "./pages/settings/OperationalZonesPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -55,6 +56,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission anyOf={["company.manage"]}>
             <CompanyDocumentsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "settings/operational-zones",
+        element: (
+          <RequirePermission anyOf={["order.queue.manage", "cleaning.task.manage"]}>
+            <OperationalZonesPage />
           </RequirePermission>
         ),
       },

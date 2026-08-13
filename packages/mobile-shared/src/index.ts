@@ -8,6 +8,7 @@ export * from "./notifications";
 export * from "./realtime";
 export * from "./theme";
 export * from "./query-client";
+export * from "./reliability";
 export * from "./api/client";
 export * from "./api/auth";
 export * from "./api/catalog";

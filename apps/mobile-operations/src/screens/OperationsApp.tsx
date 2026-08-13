@@ -22,8 +22,10 @@ import {
   orderStatusLabel,
   priorityRank,
   reportOrderIncident,
+  reviewOrder,
   spacing,
   startPreparation,
+  updatePreparationLine,
   t,
   useAuthStore,
   useOrderEvents,
@@ -308,6 +310,15 @@ export const OperationsApp = ({
     onError: (_error, _orderId, context) => rollbackOrder(context),
     onSettled: invalidateOps,
   });
+  const preparationLineMutation = useMutation({
+    mutationFn: (input: {
+      orderId: string;
+      lineId: string;
+      status: Order["lines"][number]["preparationStatus"];
+    }) => updatePreparationLine(input.orderId, input.lineId, input.status),
+    onSuccess: (updated) => setSelectedOrder(updated),
+    onSettled: invalidateOps,
+  });
   const deliveredMutation = useMutation({
     mutationFn: markDelivered,
     onMutate: (orderId) => optimisticallySetOrderStatus(orderId, "DELIVERED"),
@@ -322,6 +333,11 @@ export const OperationsApp = ({
       invalidateOps();
       void queryClient.invalidateQueries({ queryKey: ["delivery-queue"] });
     },
+  });
+  const reviewMutation = useMutation({
+    mutationFn: (input: { orderId: string; status: "APPROVED" | "REJECTED"; reason?: string }) =>
+      reviewOrder(input.orderId, input.status, input.reason),
+    onSettled: invalidateOps,
   });
   const stockMutation = useMutation({
     mutationFn: (input: { itemId: string; quantity: number; reason: string }) =>
@@ -531,8 +547,16 @@ export const OperationsApp = ({
             stats={dashboardQuery.data}
             ordersCount={orders.length}
             queueOrders={queueOrders}
+            pendingOrders={orders.filter((order) => order.status === "PENDING")}
+            deliveryTasks={deliveryTasks}
             lowStockCount={lowStock.length}
             productsById={productsById}
+            canReview={permissions.includes("order.approve")}
+            reviewBusy={reviewMutation.isPending}
+            onApprove={(orderId) => reviewMutation.mutate({ orderId, status: "APPROVED" })}
+            onReject={(orderId, reason) =>
+              reviewMutation.mutate({ orderId, status: "REJECTED", reason })
+            }
           />
         ) : null}
 
@@ -678,6 +702,7 @@ export const OperationsApp = ({
           <MeetingsTab
             theme={theme}
             lang={lang}
+            employeeId={employee?.id ?? null}
             canManage={permissions.includes("meeting.preparation.manage")}
           />
         ) : null}
@@ -758,6 +783,9 @@ export const OperationsApp = ({
         busy={queueBusy}
         onStart={(orderId) => startMutation.mutate(orderId)}
         onReady={(orderId) => readyMutation.mutate(orderId)}
+        onUpdatePreparationLine={(orderId, lineId, status) =>
+          preparationLineMutation.mutate({ orderId, lineId, status })
+        }
         onDeliver={(orderId) => deliveredMutation.mutate(orderId)}
         onReportIncident={(orderId, reason, description) =>
           incidentMutation.mutate({ orderId, reason, description })

@@ -55,6 +55,7 @@ import {
   BookOutlined,
   SolutionOutlined,
   LineChartOutlined,
+  EnvironmentOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -145,6 +146,13 @@ export function AdminLayout() {
         key: "/settings/company-documents",
         label: t("companyDocuments"),
         icon: <FileTextOutlined />,
+      });
+    }
+    if (hasPermission("order.queue.manage") || hasPermission("cleaning.task.manage")) {
+      config.push({
+        key: "/settings/operational-zones",
+        label: t("operationalZones"),
+        icon: <EnvironmentOutlined />,
       });
     }
     // Rôles & permissions en tête de section (demande métier)

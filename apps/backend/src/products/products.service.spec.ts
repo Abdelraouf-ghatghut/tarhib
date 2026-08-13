@@ -217,6 +217,23 @@ describe('ProductsService', () => {
       expect(result.isSold).toBe(false);
     });
 
+    it('persists and exposes allergens and nutrition in the employee catalog DTO', async () => {
+      const result = await service.create({
+        nameAr: 'قهوة بالحليب',
+        category: 'beverages',
+        type: ProductType.COMMANDABLE,
+        allergens: ['الحليب'],
+        nutrition: { caloriesKcal: 80, sugarG: 6, caffeineMg: 65 },
+      });
+
+      expect(result.allergens).toEqual(['الحليب']);
+      expect(result.nutrition).toEqual({
+        caloriesKcal: 80,
+        sugarG: 6,
+        caffeineMg: 65,
+      });
+    });
+
     it('re-derives flags on update when type changes and flags are not explicitly sent', async () => {
       repo.findOne.mockResolvedValue(
         makeProduct({ isSold: true, isVipSelfService: false }),
