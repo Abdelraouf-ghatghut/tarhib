@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.tarhib.employee",
-      "permissions": ["POST_NOTIFICATIONS"],
+      "permissions": ["POST_NOTIFICATIONS", "POST_NOTIFICATIONS"],
       "adaptiveIcon": {
         "backgroundColor": "#F7F8FC"
       }
@@ -30,7 +30,24 @@
     "plugins": [
       "expo-secure-store",
       "expo-asset",
-      ["expo-notifications", { "color": "#4056D6", "defaultChannel": "orders" }]
-    ]
+      [
+        "expo-notifications",
+        {
+          "color": "#4056D6",
+          "defaultChannel": "orders"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "943668dd-77f7-481e-a510-78e750503c9d"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/943668dd-77f7-481e-a510-78e750503c9d"
+    }
   }
 }

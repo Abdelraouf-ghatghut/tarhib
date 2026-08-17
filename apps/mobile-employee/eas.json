@@ -15,14 +15,14 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.tarhib.app"
+        "EXPO_PUBLIC_API_URL": "https://staging-api.tarhib.ly"
       }
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.tarhib.app"
+        "EXPO_PUBLIC_API_URL": "https://api.tarhib.ly"
       }
     }
   },
