@@ -16,7 +16,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { PlusOutlined, StopOutlined, SwapOutlined } from "@ant-design/icons";
+import { KeyOutlined, PlusOutlined, StopOutlined, SwapOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -70,6 +70,7 @@ interface Employee {
   floor: string | null;
   officeNumber: string | null;
   active: boolean;
+  mustChangePassword: boolean;
   // Présent uniquement via /employees/admin (employee.salary.manage)
   salary?: number | null;
   hireDate?: string | null;
@@ -370,6 +371,16 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
     }
   }
 
+  async function onRequestPasswordReset(id: string) {
+    try {
+      await employeesApi.requestPasswordReset(id);
+      void qc.invalidateQueries({ queryKey: ["employees"] });
+      void message.success(t("passwordResetRequested"));
+    } catch (err) {
+      void message.error(getErrorMessage(err, t));
+    }
+  }
+
   const label = (e: NamedEntity) => bilingualName(e.nameAr, e.nameEn, isAr);
   const fullName = (e: Employee) =>
     isAr ? `${e.firstNameAr} ${e.lastNameAr}` : `${e.firstNameEn} ${e.lastNameEn}`;
@@ -544,6 +555,21 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
                 }
               />
             )}
+            {!isClientPage && rec.active && (
+              <Button
+                size="small"
+                icon={<KeyOutlined />}
+                title={t("requestPasswordReset")}
+                onClick={() =>
+                  modal.confirm({
+                    title: t("requestPasswordResetConfirm", { name: fullName(rec) }),
+                    okText: t("confirm"),
+                    cancelText: t("cancel"),
+                    onOk: () => onRequestPasswordReset(rec.id),
+                  })
+                }
+              />
+            )}
             <Button
               size="small"
               danger
@@ -604,6 +630,18 @@ export function EmployeesPage({ scope }: { scope: EmployeeScope }) {
                     );
                     return parts.length ? parts.join(" — ") : rec.companyId.substring(0, 8);
                   },
+                },
+                {
+                  title: t("passwordStatus"),
+                  key: "passwordStatus",
+                  width: 190,
+                  render: (_: unknown, rec: Employee) => (
+                    <Tag color={rec.mustChangePassword ? "orange" : "green"}>
+                      {rec.mustChangePassword
+                        ? t("passwordChangePending")
+                        : t("passwordStatusReady")}
+                    </Tag>
+                  ),
                 },
               ]
             : []),

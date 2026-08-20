@@ -54,6 +54,7 @@ import { CompanyDocumentsModule } from './company-documents/company-documents.mo
 import { TypeOrmMetricsLogger } from './metrics/typeorm-metrics.logger.js';
 import { PerformanceManagementModule } from './performance-management/performance-management.module.js';
 import { OperationalZonesModule } from './operational-zones/operational-zones.module.js';
+import { PasswordChangeRequiredGuard } from './auth/guards/password-change-required.guard.js';
 
 @Module({
   imports: [
@@ -170,6 +171,10 @@ import { OperationalZonesModule } from './operational-zones/operational-zones.mo
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PasswordChangeRequiredGuard,
     },
     {
       provide: APP_GUARD,

@@ -164,6 +164,10 @@ export class EmployeeDto {
   @IsUUID()
   id!: string;
 
+  @ApiProperty({ default: false })
+  @IsBoolean()
+  mustChangePassword!: boolean;
+
   @ApiProperty({ nullable: true, type: String })
   @IsOptional()
   @IsUUID()

@@ -82,6 +82,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           return {
             ...base,
             employeeId: cached.employeeId,
+            mustChangePassword: cached.mustChangePassword,
             email: cached.email,
             companyId: cached.companyId,
             branchId: cached.branchId,
@@ -119,6 +120,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!employee) return base;
 
     base.employeeId = employee.id;
+    base.mustChangePassword = employee.mustChangePassword;
     base.email = employee.email || base.email;
     base.companyId = employee.companyId || base.companyId;
     base.branchId = employee.branchId || base.branchId;
@@ -172,6 +174,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!overrideRoleId && base.employeeId) {
       const toCache: CachedAccessProfile = {
         employeeId: base.employeeId,
+        mustChangePassword: base.mustChangePassword,
         email: base.email,
         companyId: base.companyId,
         branchId: base.branchId,

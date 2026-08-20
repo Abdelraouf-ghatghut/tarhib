@@ -3,6 +3,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { CompaniesController } from './companies.controller';
 import { CompaniesService } from './companies.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
+import { CompanyRegistrationService } from './company-registration.service.js';
 
 describe('CompaniesController', () => {
   let controller: CompaniesController;
@@ -15,7 +16,10 @@ describe('CompaniesController', () => {
       controllers: [CompaniesController],
       // Squelette : le service est mocké, la logique est testée dans les
       // specs de service et le smoke test de bout en bout
-      providers: [{ provide: CompaniesService, useValue: service }],
+      providers: [
+        { provide: CompaniesService, useValue: service },
+        { provide: CompanyRegistrationService, useValue: {} },
+      ],
     }).compile();
 
     controller = module.get<CompaniesController>(CompaniesController);

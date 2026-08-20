@@ -37,6 +37,10 @@ import type { ApproveRegistrationDto } from './dto/approve-registration.dto';
 import { AccessPolicyService } from '../access/access-policy.service';
 import type { AccessProfile } from '../access/access-policy.service';
 import { AuditService } from '../audit/audit.service';
+import { CompanyRegistrationService } from '../companies/company-registration.service.js';
+import { CompanyRegistrationMode } from '../companies/entities/company.entity.js';
+import { AccessCacheService } from '../access/access-cache.service.js';
+import type { ChangePasswordDto } from './dto/change-password.dto.js';
 import {
   IMPERSONATE_ROLE_KEY_PREFIX,
   IMPERSONATION_TTL_SECONDS,
@@ -83,6 +87,8 @@ export class AuthService {
     private readonly roleRepo: Repository<Role>,
     private readonly accessPolicy: AccessPolicyService,
     private readonly auditService: AuditService,
+    private readonly companyRegistration: CompanyRegistrationService,
+    private readonly accessCache: AccessCacheService,
   ) {
     this.lockDurationSeconds = config.get<number>(
       'LOGIN_LOCK_DURATION_SECONDS',
@@ -239,6 +245,12 @@ export class AuthService {
 
   // ── TARHIB-23: Réinitialisation mot de passe ─────────────────────────────
   async requestPasswordReset(dto: PasswordResetRequestDto): Promise<void> {
+    const employee = await this.employeeRepo.findOne({
+      where: { email: dto.email, active: true },
+    });
+    // Réponse publique identique, mais aucun email ni jeton pour une adresse
+    // inconnue : évite l'énumération et l'utilisation du service comme relais.
+    if (!employee?.keycloakId) return;
     const token = randomBytes(32).toString('hex');
     await this.redis.set(
       `${PWD_RESET_PREFIX}${token}`,
@@ -257,10 +269,76 @@ export class AuthService {
       throw new UnauthorizedException('resetTokenInvalidOrExpired');
     }
 
+    const employee = await this.employeeRepo.findOne({ where: { email } });
+    if (
+      employee?.scope === EmployeeScope.TARHIB &&
+      dto.newPassword.length < 12
+    ) {
+      throw new BadRequestException('operationsPasswordTooShort');
+    }
+
     // Single-use: delete before calling Keycloak to prevent race conditions
     await this.redis.del(key);
 
     await this.keycloak.resetUserPassword(email, dto.newPassword);
+    if (employee) {
+      employee.mustChangePassword = false;
+      await this.employeeRepo.save(employee);
+      await this.accessCache.invalidate(employee.keycloakId);
+    }
+  }
+
+  async changePassword(
+    employeeId: string,
+    dto: ChangePasswordDto,
+  ): Promise<void> {
+    const employee = await this.employeeRepo.findOne({
+      where: { id: employeeId, active: true },
+    });
+    if (!employee?.keycloakId) {
+      throw new UnauthorizedException('employeeNotFound');
+    }
+    const verificationTokens = await this.keycloak.loginWithPassword(
+      employee.email,
+      dto.currentPassword,
+    );
+    await this.keycloak.revokeRefreshToken(verificationTokens.refreshToken);
+    await this.keycloak.resetUserPassword(employee.email, dto.newPassword);
+    employee.mustChangePassword = false;
+    await this.employeeRepo.save(employee);
+    await this.accessCache.invalidate(employee.keycloakId);
+  }
+
+  async requestAdminPasswordReset(
+    targetId: string,
+    actor: JwtPayload,
+  ): Promise<void> {
+    const employee = await this.employeeRepo.findOne({
+      where: { id: targetId },
+    });
+    if (!employee?.keycloakId || !employee.active) {
+      throw new NotFoundException('employeeNotFound');
+    }
+    if (
+      actor.dataScope !== 'GLOBAL' &&
+      (employee.companyId !== actor.companyId ||
+        (actor.dataScope === 'BRANCH' && employee.branchId !== actor.branchId))
+    ) {
+      throw new ForbiddenException('crossTenantAccessDenied');
+    }
+    employee.mustChangePassword = true;
+    await this.employeeRepo.save(employee);
+    await this.accessCache.invalidate(employee.keycloakId);
+    await this.keycloak.revokeUserSessions(employee.email);
+    await this.requestPasswordReset({ email: employee.email });
+    await this.auditService.log({
+      userId: actor.employeeId ?? actor.sub,
+      userEmail: actor.email,
+      action: 'PASSWORD_RESET_REQUESTED',
+      entity: 'employees',
+      entityId: employee.id,
+      metadata: { targetEmail: employee.email },
+    });
   }
 
   // ── TARHIB-24: Session/Refresh/Logout ────────────────────────────────────
@@ -402,16 +480,24 @@ export class AuthService {
   }
 
   // ── Signup: auto-inscription employé ─────────────────────────────────────
-  async register(dto: RegisterDto): Promise<void> {
-    const company = await this.companyRepo.findOne({
-      where: { slug: dto.companySlug },
-    });
-    if (!company) throw new BadRequestException('companyCodeNotFound');
+  async register(
+    dto: RegisterDto,
+  ): Promise<{ status: 'PENDING' | 'ACTIVATION_REQUIRED' }> {
+    const { company, option, challengeKey } =
+      await this.companyRegistration.validateSelection(
+        dto.challenge,
+        dto.registrationOptionId,
+      );
+    await this.companyRegistration.consumePhoneVerification(
+      dto.phoneVerificationToken,
+      dto.challenge,
+      dto.phoneNumber,
+    );
 
     const existing = await this.employeeRepo.findOne({
-      where: { email: dto.email },
+      where: [{ email: dto.email }, { phoneNumber: dto.phoneNumber }],
     });
-    if (existing) throw new BadRequestException('emailAlreadyRegistered');
+    if (existing) throw new BadRequestException('registrationUnavailable');
 
     const employee = this.employeeRepo.create({
       email: dto.email,
@@ -421,19 +507,35 @@ export class AuthService {
       lastNameAr: dto.lastNameAr,
       lastNameEn: dto.lastNameEn,
       companyId: company.id,
-      branchId: null, // admin assigne la branche (et le département) à l'approbation
-      departmentId: null,
+      branchId: option.branchId,
+      departmentId: option.departmentId,
+      roleId: option.roleId,
       role: 'employee',
-      status: EmployeeStatus.PENDING,
+      scope: EmployeeScope.CLIENT,
+      status:
+        company.registrationMode === CompanyRegistrationMode.AUTO_APPROVED
+          ? EmployeeStatus.INVITED
+          : EmployeeStatus.PENDING,
       active: false,
     });
     await this.employeeRepo.save(employee);
-    // Store hashed password temporarily in Redis until admin approves
+    await this.companyRegistration.consumeChallenge(challengeKey);
+
+    if (company.registrationMode === CompanyRegistrationMode.AUTO_APPROVED) {
+      await this.issueActivationCode(employee);
+      return { status: 'ACTIVATION_REQUIRED' };
+    }
+    return { status: 'PENDING' };
+  }
+
+  private async issueActivationCode(employee: Employee): Promise<void> {
+    const code = generateInviteCode();
     await this.redis.set(
-      `pending_pwd:${employee.id}`,
-      dto.password,
+      `${INVITE_PREFIX}${code}`,
+      employee.id,
       INVITE_TOKEN_TTL_SECONDS,
     );
+    await this.email.sendInviteEmail(employee.email, code);
   }
 
   // ── Invitation par admin ──────────────────────────────────────────────────
@@ -499,13 +601,7 @@ export class AuthService {
 
     // Code court (saisie manuelle dans l'app mobile, pas de lien web — cf.
     // sendInviteEmail) plutôt que le token hexadécimal long de resetPassword.
-    const code = generateInviteCode();
-    await this.redis.set(
-      `${INVITE_PREFIX}${code}`,
-      employee.id,
-      INVITE_TOKEN_TTL_SECONDS,
-    );
-    await this.email.sendInviteEmail(dto.email, code);
+    await this.issueActivationCode(employee);
   }
 
   // ── Acceptation invitation ────────────────────────────────────────────────
@@ -540,6 +636,7 @@ export class AuthService {
     employee.phoneNumber = dto.phoneNumber;
     employee.status = EmployeeStatus.ACTIVE;
     employee.active = true;
+    employee.mustChangePassword = employee.scope === EmployeeScope.TARHIB;
     await this.employeeRepo.save(employee);
 
     return this.keycloak.loginWithPassword(employee.email, dto.password);
@@ -549,7 +646,14 @@ export class AuthService {
   async getPendingRegistrations(companyId?: string): Promise<Employee[]> {
     const where: Record<string, string> = { status: EmployeeStatus.PENDING };
     if (companyId) where['companyId'] = companyId;
-    return this.employeeRepo.find({ where });
+    return this.employeeRepo.find({
+      where,
+      relations: {
+        branch: true,
+        department: true,
+        dynamicRole: true,
+      },
+    });
   }
 
   async approveRegistration(
@@ -593,27 +697,15 @@ export class AuthService {
     employee.departmentId = dto.departmentId;
     employee.roleId = dto.roleId;
 
-    const tmpPassword = await this.redis.get(`pending_pwd:${id}`);
-    if (tmpPassword) {
-      const keycloakId = await this.keycloak.createUser(
-        employee.email,
-        tmpPassword,
-        employee.firstNameEn,
-        employee.lastNameEn,
-      );
-      employee.keycloakId = keycloakId;
-      await this.redis.del(`pending_pwd:${id}`);
-    }
-
-    employee.status = EmployeeStatus.ACTIVE;
-    employee.active = true;
+    employee.status = EmployeeStatus.INVITED;
+    employee.active = false;
     await this.employeeRepo.save(employee);
+    await this.issueActivationCode(employee);
   }
 
   async rejectRegistration(id: string): Promise<void> {
     const employee = await this.employeeRepo.findOne({ where: { id } });
     if (!employee) throw new NotFoundException('Employee not found');
-    await this.redis.del(`pending_pwd:${id}`);
     await this.employeeRepo.remove(employee);
   }
 

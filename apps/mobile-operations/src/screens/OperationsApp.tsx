@@ -43,6 +43,7 @@ import { OpsHeader } from "../components/ui";
 import { useOperationsNotifications } from "../hooks/useOperationsNotifications";
 import { arOrEn, displayEmployeeName, orderCode, productName } from "../lib/format";
 import { HistoryModal } from "../modals/HistoryModal";
+import { ChangePasswordModal } from "../modals/ChangePasswordModal";
 import { NotificationsModal } from "../modals/NotificationsModal";
 import { OrderDetailModal } from "../modals/OrderDetailModal";
 import { DashboardTab } from "./tabs/DashboardTab";
@@ -96,6 +97,7 @@ export const OperationsApp = ({
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
   const [scopeFilterOpen, setScopeFilterOpen] = useState(false);
   const [scopeFilterPicker, setScopeFilterPicker] = useState<"company" | "branch" | null>(null);
   const companyId = useAuthStore((s) => s.companyId);
@@ -105,6 +107,7 @@ export const OperationsApp = ({
   const dataScope = useAuthStore((s) => s.dataScope);
   const permissions = useAuthStore((s) => s.permissions);
   const capabilities = useAuthStore((s) => s.capabilities);
+  const changePassword = useAuthStore((s) => s.changePassword);
   const queryClient = useQueryClient();
   const primaryRole = roles.find((role) => role.primary);
   const roleLabel = primaryRole
@@ -734,6 +737,7 @@ export const OperationsApp = ({
             onOpenNotifications={() => setNotificationsOpen(true)}
             onOpenHistory={() => setHistoryOpen(true)}
             onOpenMeetingPrep={() => setTab("meetings")}
+            onOpenPasswordChange={() => setPasswordChangeOpen(true)}
             onLogout={onLogout}
           />
         ) : null}
@@ -808,6 +812,12 @@ export const OperationsApp = ({
         copy={copy}
         orders={orders}
         onClose={() => setHistoryOpen(false)}
+      />
+      <ChangePasswordModal
+        visible={passwordChangeOpen}
+        theme={theme}
+        onClose={() => setPasswordChangeOpen(false)}
+        onSubmit={changePassword}
       />
     </Screen>
   );

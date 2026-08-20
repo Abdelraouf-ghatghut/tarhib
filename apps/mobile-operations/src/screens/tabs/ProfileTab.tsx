@@ -24,6 +24,7 @@ export const ProfileTab = ({
   onOpenNotifications,
   onOpenHistory,
   onOpenMeetingPrep,
+  onOpenPasswordChange,
   onLogout,
 }: {
   theme: SnowTheme;
@@ -38,6 +39,7 @@ export const ProfileTab = ({
   onOpenNotifications: () => void;
   onOpenHistory: () => void;
   onOpenMeetingPrep: () => void;
+  onOpenPasswordChange: () => void;
   onLogout: () => void;
 }) => {
   const role = roles.find((item) => item.primary);
@@ -90,6 +92,12 @@ export const ProfileTab = ({
         {canSeeMeetingPrep ? (
           <Row theme={theme} label={copy.meetingPrep} value="" onPress={onOpenMeetingPrep} />
         ) : null}
+        <Row
+          theme={theme}
+          label={lang === "ar" ? "كلمة المرور" : "Password"}
+          value={lang === "ar" ? "تغيير" : "Change"}
+          onPress={onOpenPasswordChange}
+        />
       </View>
       <Pressable onPress={onLogout} style={styles.logout}>
         <Text style={[styles.logoutText, { color: theme.danger }]}>{copy.logout}</Text>

@@ -84,6 +84,7 @@ interface AuthState extends AuthContext {
   logout: () => Promise<void>;
   refreshAccessContext: (appMode: AppMode) => Promise<void>;
   registerDeviceToken: (token: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 async function persistContext(ctx: AuthContext): Promise<void> {
@@ -252,6 +253,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch {
       // Ignore — push registration failures shouldn't affect the login flow.
     }
+  },
+  changePassword: async (currentPassword, newPassword) => {
+    await authApi.changePassword(currentPassword, newPassword);
+    await deleteRefreshToken();
+    await AsyncStorage.removeItem(CONTEXT_STORAGE_KEY);
+    set({
+      ...EMPTY_CONTEXT,
+      accessToken: null,
+      refreshToken: null,
+      isAuthenticated: false,
+    });
   },
 }));
 

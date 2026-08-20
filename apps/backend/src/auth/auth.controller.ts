@@ -43,7 +43,12 @@ import { RegisterDto } from './dto/register.dto';
 import { InviteEmployeeDto } from './dto/invite-employee.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { ApproveRegistrationDto } from './dto/approve-registration.dto';
+import {
+  RegistrationOtpRequestDto,
+  RegistrationOtpVerifyDto,
+} from './dto/registration-otp.dto.js';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 
 /** Cookie HttpOnly portant le refresh token pour le Web Admin (anti-XSS). */
 const REFRESH_COOKIE = 'tarhib_rt';
@@ -128,6 +133,31 @@ export class AuthController {
     return this.otpService.verifyOtp(dto.phoneNumber, dto.code, dto.appMode);
   }
 
+  @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post('register/otp/request')
+  @HttpCode(204)
+  async requestRegistrationOtp(
+    @Body() dto: RegistrationOtpRequestDto,
+  ): Promise<void> {
+    await this.otpService.requestRegistrationOtp(
+      dto.challenge,
+      dto.phoneNumber,
+      dto.channel,
+    );
+  }
+
+  @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 15 } })
+  @Post('register/otp/verify')
+  verifyRegistrationOtp(@Body() dto: RegistrationOtpVerifyDto) {
+    return this.otpService.verifyRegistrationOtp(
+      dto.challenge,
+      dto.phoneNumber,
+      dto.code,
+    );
+  }
+
   // ── TARHIB-23 ────────────────────────────────────────────────────────────
   @Public()
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
@@ -153,6 +183,30 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Invalid or expired reset token' })
   async resetPassword(@Body() dto: PasswordResetDto): Promise<void> {
     await this.authService.resetPassword(dto);
+  }
+
+  @Post('password/change')
+  @HttpCode(204)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change own password and revoke active sessions' })
+  async changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    await this.authService.changePassword(user.employeeId ?? user.sub, dto);
+  }
+
+  @Post('password/admin-reset/:employeeId')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermission('employee.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Trigger an audited employee password reset' })
+  async adminResetPassword(
+    @Param('employeeId') employeeId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    await this.authService.requestAdminPasswordReset(employeeId, user);
   }
 
   // ── TARHIB-24 ────────────────────────────────────────────────────────────
@@ -299,15 +353,17 @@ export class AuthController {
   @Public()
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('register')
-  @HttpCode(204)
+  @HttpCode(201)
   @ApiOperation({
     summary: 'Self-register as employee (pending admin approval)',
   })
-  @ApiNoContentResponse({
-    description: 'Registration submitted — awaiting approval',
+  @ApiOkResponse({
+    description: 'Registration submitted or activation code sent',
   })
-  async register(@Body() dto: RegisterDto): Promise<void> {
-    await this.authService.register(dto);
+  register(
+    @Body() dto: RegisterDto,
+  ): Promise<{ status: 'PENDING' | 'ACTIVATION_REQUIRED' }> {
+    return this.authService.register(dto);
   }
 
   @Post('invite')

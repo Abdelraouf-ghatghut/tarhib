@@ -72,6 +72,10 @@ Créer quatre environnements strictement séparés :
 
 Les profils EAS actuels doivent être corrigés pour viser les URL réelles de chaque environnement. La production Tarhib utilise `https://api.tarhib.ly`, et non l'URL d'exemple actuellement déclarée dans `eas.json`.
 
+### 2.5 Chantier authentification mobile complémentaire
+
+Le parcours d'inscription Employee par code entreprise et les parcours de première connexion, changement et réinitialisation de mot de passe Operations sont détaillés dans `docs/Plan_Chantier_Inscription_Et_Mots_De_Passe_Mobile.md`. Ce chantier est une porte de sécurité obligatoire avant le pilote : il supprime notamment la conservation temporaire du mot de passe d'auto-inscription dans Redis et introduit un accès Operations bloqué jusqu'au remplacement du mot de passe initial.
+
 ## 3. Rôles cibles et définition de complétude
 
 ### 3.1 Matrice des missions

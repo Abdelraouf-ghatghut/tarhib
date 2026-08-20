@@ -37,8 +37,16 @@ interface PendingEmployee {
   email: string;
   firstNameEn: string;
   lastNameEn: string;
+  firstNameAr?: string;
+  lastNameAr?: string;
   phoneNumber: string;
   companyId: string;
+  branchId: string;
+  departmentId: string;
+  roleId: string;
+  branch?: NamedEntity;
+  department?: NamedEntity;
+  dynamicRole?: NamedEntity;
   createdAt: string;
 }
 
@@ -137,8 +145,12 @@ export function RegistrationsPage() {
   );
 
   function openApprove(rec: PendingEmployee) {
-    approveForm.resetFields();
     setApproveTarget(rec);
+    approveForm.setFieldsValue({
+      branchId: rec.branchId,
+      departmentId: rec.departmentId,
+      roleId: rec.roleId,
+    });
   }
 
   async function submitApprove() {
@@ -201,7 +213,25 @@ export function RegistrationsPage() {
         {
           title: t("name"),
           key: "name",
-          render: (_, r) => `${r.firstNameEn} ${r.lastNameEn}`.trim() || "—",
+          render: (_, r) =>
+            `${r.firstNameAr ?? ""} ${r.lastNameAr ?? ""}`.trim() ||
+            `${r.firstNameEn} ${r.lastNameEn}`.trim() ||
+            "—",
+        },
+        {
+          title: t("branch"),
+          key: "branch",
+          render: (_, r) => r.branch?.nameAr || "—",
+        },
+        {
+          title: t("department"),
+          key: "department",
+          render: (_, r) => r.department?.nameAr || "—",
+        },
+        {
+          title: t("roleLabel"),
+          key: "role",
+          render: (_, r) => r.dynamicRole?.nameAr || "—",
         },
         {
           title: t("phone"),

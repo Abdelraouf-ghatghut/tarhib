@@ -22,6 +22,8 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import { CompaniesService } from './companies.service';
+import { CompanyRegistrationService } from './company-registration.service.js';
+import { UpdateCompanyRegistrationDto } from './dto/company-registration.dto.js';
 import {
   CompanyDto,
   CreateCompanyDto,
@@ -33,7 +35,16 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller('companies')
 export class CompaniesController {
-  constructor(private readonly companiesService: CompaniesService) {}
+  constructor(
+    private readonly companiesService: CompaniesService,
+    private readonly companyRegistration: CompanyRegistrationService,
+  ) {}
+
+  private assertCompanyScope(id: string, user: JwtPayload): void {
+    if (user.dataScope !== 'GLOBAL' && id !== user.companyId) {
+      throw new ForbiddenException('Company is outside the current data scope');
+    }
+  }
 
   @Post()
   @UseGuards(PermissionsGuard)
@@ -77,8 +88,44 @@ export class CompaniesController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateCompanyDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<CompanyDto> {
+    this.assertCompanyScope(id, user);
     return this.companiesService.update(id, dto);
+  }
+
+  @Get(':id/registration-settings')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('company.manage')
+  getRegistrationSettings(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    this.assertCompanyScope(id, user);
+    return this.companyRegistration.getSettings(id);
+  }
+
+  @Patch(':id/registration-settings')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('company.manage')
+  async updateRegistrationSettings(
+    @Param('id') id: string,
+    @Body() dto: UpdateCompanyRegistrationDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    this.assertCompanyScope(id, user);
+    await this.companyRegistration.updateSettings(id, dto);
+  }
+
+  @Post(':id/registration-code/rotate')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('company.manage')
+  rotateRegistrationCode(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ code: string }> {
+    this.assertCompanyScope(id, user);
+    return this.companyRegistration.rotateCode(id);
   }
 
   @Delete(':id')
@@ -87,7 +134,11 @@ export class CompaniesController {
   @HttpCode(204)
   @ApiOperation({ summary: 'Supprimer une société' })
   @ApiResponse({ status: 204 })
-  remove(@Param('id') id: string): Promise<void> {
+  remove(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    this.assertCompanyScope(id, user);
     return this.companiesService.remove(id);
   }
 }

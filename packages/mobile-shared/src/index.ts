@@ -21,3 +21,4 @@ export * from "./api/rooms";
 export * from "./store/auth-store";
 export * from "./navigation/RootNavigator";
 export * from "./screens/SplashScreen";
+export * from "./RequiredPasswordChangeScreen";

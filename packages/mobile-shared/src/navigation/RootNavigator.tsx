@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 
 import { AcceptInviteScreen, LoginScreen } from "../AuthScreens";
+import { EmployeeRegistrationScreen } from "../EmployeeRegistrationScreen";
+import { RequiredPasswordChangeScreen } from "../RequiredPasswordChangeScreen";
 import { authApi } from "../api/auth";
 import { SplashScreen } from "../screens/SplashScreen";
 import { PrimaryButton } from "../components";
@@ -43,10 +45,12 @@ export function RootNavigator({
   const acceptInvite = useAuthStore((s) => s.acceptInvite);
   const logout = useAuthStore((s) => s.logout);
   const scope = useAuthStore((s) => s.scope);
+  const employee = useAuthStore((s) => s.employee);
+  const changePassword = useAuthStore((s) => s.changePassword);
   // Pas d'écran de stack dédié : juste un toggle local dans l'écran non
   // authentifié (login ↔ acceptation d'invitation), plus simple que de
   // plomber une route de navigation pour un aller-retour aussi ponctuel.
-  const [authView, setAuthView] = useState<"login" | "acceptInvite">("login");
+  const [authView, setAuthView] = useState<"login" | "acceptInvite" | "register">("login");
 
   useEffect(() => {
     void restoreSession(appMode);
@@ -71,7 +75,14 @@ export function RootNavigator({
           {isAuthenticated ? (
             <Stack.Screen name="Main">
               {() =>
-                appAllowed ? (
+                appMode === "operations" && employee?.mustChangePassword ? (
+                  <RequiredPasswordChangeScreen
+                    theme={theme}
+                    onSubmit={(currentPassword, newPassword) =>
+                      changePassword(currentPassword, newPassword)
+                    }
+                  />
+                ) : appAllowed ? (
                   renderMain()
                 ) : (
                   <View
@@ -124,6 +135,12 @@ export function RootNavigator({
                     onSubmit={(payload) => acceptInvite(appMode, payload)}
                     onBack={() => setAuthView("login")}
                   />
+                ) : authView === "register" && appMode === "employee" ? (
+                  <EmployeeRegistrationScreen
+                    theme={theme}
+                    onBack={() => setAuthView("login")}
+                    onActivationRequired={() => setAuthView("acceptInvite")}
+                  />
                 ) : (
                   <LoginScreen
                     lang={lang}
@@ -134,6 +151,9 @@ export function RootNavigator({
                     }
                     onOtpLogin={(phoneNumber, code) => loginWithOtp(appMode, phoneNumber, code)}
                     onHaveInviteCode={() => setAuthView("acceptInvite")}
+                    onCreateAccount={
+                      appMode === "employee" ? () => setAuthView("register") : undefined
+                    }
                   />
                 )
               }

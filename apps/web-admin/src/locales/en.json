@@ -846,6 +846,12 @@
   "cnssEmployeeRate": "CNSS — employee rate",
   "cnssEmployerRate": "CNSS — employer rate",
   "downloadPdf": "Download PDF",
+  "requestPasswordReset": "Request password reset",
+  "requestPasswordResetConfirm": "Require {{name}} to reset their password? Their current sessions will be closed and a reset link will be sent by email.",
+  "passwordResetRequested": "The password reset request was sent.",
+  "passwordStatus": "Password status",
+  "passwordChangePending": "Password change pending",
+  "passwordStatusReady": "Active",
   "errors": {
     "contractDocumentRequired": "Select a scanned contract.",
     "invalidContractDocument": "The stored contract document reference is invalid.",

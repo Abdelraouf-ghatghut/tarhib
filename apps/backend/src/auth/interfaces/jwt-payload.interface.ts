@@ -6,6 +6,7 @@ export interface JwtPayload {
    * utiliser `employeeId ?? sub` (fallback pour les tokens de test/seed).
    */
   employeeId?: string;
+  mustChangePassword?: boolean;
   email: string;
   /** Legacy role string kept for backward compatibility; use permissions[] for logic. */
   role: string;

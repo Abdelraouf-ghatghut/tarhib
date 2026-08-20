@@ -39,6 +39,7 @@ import { PayslipsPage } from "./pages/hr/PayslipsPage";
 import CompanyDocumentsPage from "./pages/settings/CompanyDocumentsPage";
 import PerformanceManagementPage from "./pages/performance-management/PerformanceManagementPage";
 import OperationalZonesPage from "./pages/settings/OperationalZonesPage";
+import CompanyRegistrationSettingsPage from "./pages/settings/CompanyRegistrationSettingsPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -56,6 +57,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission anyOf={["company.manage"]}>
             <CompanyDocumentsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "settings/company-registration",
+        element: (
+          <RequirePermission anyOf={["company.manage"]}>
+            <CompanyRegistrationSettingsPage />
           </RequirePermission>
         ),
       },

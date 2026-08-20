@@ -133,6 +133,9 @@ export class Employee {
   @Column({ default: true })
   active!: boolean;
 
+  @Column({ name: 'must_change_password', type: 'boolean', default: false })
+  mustChangePassword!: boolean;
+
   @Column({
     type: 'varchar',
     length: 20,

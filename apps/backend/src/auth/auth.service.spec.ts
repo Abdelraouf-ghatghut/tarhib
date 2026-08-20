@@ -17,6 +17,8 @@ import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { TokenResponseDto } from './dto/token-response.dto';
 import { AccessPolicyService } from '../access/access-policy.service';
 import { AuditService } from '../audit/audit.service';
+import { CompanyRegistrationService } from '../companies/company-registration.service.js';
+import { AccessCacheService } from '../access/access-cache.service.js';
 
 const TOKEN: TokenResponseDto = {
   accessToken: 'access-token',
@@ -42,6 +44,7 @@ const makeKeycloak = (
     loginWithPassword: jest.fn().mockResolvedValue(TOKEN),
     refreshToken: jest.fn().mockResolvedValue(TOKEN),
     revokeRefreshToken: jest.fn().mockResolvedValue(undefined),
+    revokeUserSessions: jest.fn().mockResolvedValue(undefined),
     resetUserPassword: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   }) as unknown as KeycloakService;
@@ -49,6 +52,7 @@ const makeKeycloak = (
 const makeEmail = (): EmailService =>
   ({
     sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+    sendInviteEmail: jest.fn().mockResolvedValue(undefined),
   }) as unknown as EmailService;
 
 async function buildService(
@@ -96,6 +100,18 @@ async function buildService(
       {
         provide: AuditService,
         useValue: { log: jest.fn().mockResolvedValue(undefined) },
+      },
+      {
+        provide: CompanyRegistrationService,
+        useValue: {
+          validateSelection: jest.fn(),
+          consumeChallenge: jest.fn().mockResolvedValue(undefined),
+          consumePhoneVerification: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+      {
+        provide: AccessCacheService,
+        useValue: { invalidate: jest.fn().mockResolvedValue(undefined) },
       },
     ],
   }).compile();
@@ -148,6 +164,84 @@ describe('AuthService.getCurrentUser', () => {
     expect(employeeRepo.findOne).toHaveBeenCalledWith({
       where: { id: payload.employeeId },
     });
+  });
+});
+
+describe('AuthService.register', () => {
+  const payload = {
+    email: 'employee@client.ly',
+    challenge: 'a'.repeat(43),
+    registrationOptionId: '10000000-0000-4000-8000-000000000001',
+    phoneVerificationToken: 'v'.repeat(43),
+    firstNameAr: 'أحمد',
+    firstNameEn: 'Ahmed',
+    lastNameAr: 'علي',
+    lastNameEn: 'Ali',
+    phoneNumber: '+218912345678',
+  };
+
+  it('creates a pending request without storing a password', async () => {
+    const redis = makeRedis();
+    const service = await buildService(redis, makeKeycloak());
+    const internals = service as unknown as {
+      companyRegistration: {
+        validateSelection: jest.Mock;
+        consumeChallenge: jest.Mock;
+      };
+      employeeRepo: { findOne: jest.Mock; save: jest.Mock };
+    };
+    internals.companyRegistration.validateSelection.mockResolvedValue({
+      company: {
+        id: 'company-1',
+        registrationMode: 'APPROVAL_REQUIRED',
+      },
+      option: {
+        branchId: 'branch-1',
+        departmentId: 'department-1',
+        roleId: 'role-1',
+      },
+      challengeKey: 'company_registration_challenge:challenge',
+    });
+
+    await expect(service.register(payload)).resolves.toEqual({
+      status: 'PENDING',
+    });
+    expect(redis.set).not.toHaveBeenCalled();
+    expect(internals.employeeRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'PENDING', active: false }),
+    );
+    expect(internals.companyRegistration.consumeChallenge).toHaveBeenCalled();
+  });
+
+  it('issues an activation code immediately in automatic mode', async () => {
+    const redis = makeRedis();
+    const email = makeEmail();
+    const service = await buildService(redis, makeKeycloak(), email);
+    const internals = service as unknown as {
+      companyRegistration: { validateSelection: jest.Mock };
+    };
+    internals.companyRegistration.validateSelection.mockResolvedValue({
+      company: { id: 'company-1', registrationMode: 'AUTO_APPROVED' },
+      option: {
+        branchId: 'branch-1',
+        departmentId: 'department-1',
+        roleId: 'role-1',
+      },
+      challengeKey: 'company_registration_challenge:challenge',
+    });
+
+    await expect(service.register(payload)).resolves.toEqual({
+      status: 'ACTIVATION_REQUIRED',
+    });
+    expect(redis.set).toHaveBeenCalledWith(
+      expect.stringMatching(/^invite:/),
+      undefined,
+      604800,
+    );
+    expect(email.sendInviteEmail).toHaveBeenCalledWith(
+      payload.email,
+      expect.stringMatching(/^[A-Z2-9]{8}$/),
+    );
   });
 });
 
@@ -274,6 +368,14 @@ describe('AuthService.requestPasswordReset (TARHIB-23)', () => {
     const redis = makeRedis();
     const email = makeEmail();
     const svc = await buildService(redis, makeKeycloak(), email);
+    const employeeRepo = (
+      svc as unknown as { employeeRepo: { findOne: jest.Mock } }
+    ).employeeRepo;
+    employeeRepo.findOne.mockResolvedValue({
+      email: 'u@t.com',
+      active: true,
+      keycloakId: 'kc-1',
+    });
     await svc.requestPasswordReset({ email: 'u@t.com' });
     expect(redis.set).toHaveBeenCalledWith(
       expect.stringContaining('pwd_reset:'),
@@ -336,6 +438,78 @@ describe('AuthService.resetPassword (TARHIB-23)', () => {
     const svc = await buildService(redis, keycloak);
     await svc.resetPassword({ token: 'tok', newPassword: 'NewP@ss1!' });
     expect(callOrder).toEqual(['del', 'reset']);
+  });
+});
+
+describe('AuthService Operations password lifecycle', () => {
+  it('verifies the current password, changes it and clears the mandatory flag', async () => {
+    const keycloak = makeKeycloak();
+    const svc = await buildService(makeRedis(), keycloak);
+    const employeeRepo = (
+      svc as unknown as {
+        employeeRepo: { findOne: jest.Mock; save: jest.Mock };
+      }
+    ).employeeRepo;
+    const employee = {
+      id: 'employee-1',
+      email: 'ops@tarhib.ly',
+      active: true,
+      keycloakId: 'kc-1',
+      mustChangePassword: true,
+    };
+    employeeRepo.findOne.mockResolvedValue(employee);
+
+    await svc.changePassword('employee-1', {
+      currentPassword: 'Temporary123!',
+      newPassword: 'NewOperations123!',
+    });
+
+    expect(keycloak.loginWithPassword).toHaveBeenCalledWith(
+      employee.email,
+      'Temporary123!',
+    );
+    expect(keycloak.resetUserPassword).toHaveBeenCalledWith(
+      employee.email,
+      'NewOperations123!',
+    );
+    expect(employee.mustChangePassword).toBe(false);
+    expect(employeeRepo.save).toHaveBeenCalledWith(employee);
+  });
+
+  it('marks an employee for reset, revokes sessions and sends a reset email', async () => {
+    const keycloak = makeKeycloak();
+    const email = makeEmail();
+    const svc = await buildService(makeRedis(), keycloak, email);
+    const employeeRepo = (
+      svc as unknown as {
+        employeeRepo: { findOne: jest.Mock; save: jest.Mock };
+      }
+    ).employeeRepo;
+    const employee = {
+      id: 'employee-2',
+      email: 'employee@tarhib.ly',
+      active: true,
+      keycloakId: 'kc-2',
+      companyId: null,
+      branchId: null,
+      mustChangePassword: false,
+    };
+    employeeRepo.findOne.mockResolvedValue(employee);
+
+    await svc.requestAdminPasswordReset('employee-2', {
+      sub: 'admin-kc',
+      employeeId: 'admin-1',
+      email: 'admin@tarhib.ly',
+      dataScope: 'GLOBAL',
+      permissions: ['employee.manage'],
+    });
+
+    expect(employee.mustChangePassword).toBe(true);
+    expect(keycloak.revokeUserSessions).toHaveBeenCalledWith(employee.email);
+    expect(email.sendPasswordResetEmail).toHaveBeenCalledWith(
+      employee.email,
+      expect.any(String),
+    );
   });
 });
 

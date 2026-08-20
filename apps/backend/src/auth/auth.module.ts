@@ -19,6 +19,7 @@ import { OtpDeliveryService } from './sms/sms.service';
 import { EmailService } from './email/email.service';
 import { AccessModule } from '../access/access.module';
 import { AuditModule } from '../audit/audit.module';
+import { CompaniesModule } from '../companies/companies.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AuditModule } from '../audit/audit.module';
     HttpModule,
     AccessModule,
     AuditModule,
+    CompaniesModule,
     TypeOrmModule.forFeature([Employee, Company, Role, Branch, Department]),
   ],
   providers: [

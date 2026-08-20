@@ -143,6 +143,11 @@ export function AdminLayout() {
     const config: NavItem[] = [];
     if (hasPermission("company.manage")) {
       config.push({
+        key: "/settings/company-registration",
+        label: "إعدادات تسجيل الموظفين",
+        icon: <UserAddOutlined />,
+      });
+      config.push({
         key: "/settings/company-documents",
         label: t("companyDocuments"),
         icon: <FileTextOutlined />,

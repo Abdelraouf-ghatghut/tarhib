@@ -43,6 +43,8 @@ describe('AuthService — impersonation guards anti-escalade (§3 sécurité)', 
       {} as never, // roleRepo
       accessPolicy as never,
       auditService as never,
+      {} as never, // companyRegistration
+      {} as never, // accessCache
     );
   });
 

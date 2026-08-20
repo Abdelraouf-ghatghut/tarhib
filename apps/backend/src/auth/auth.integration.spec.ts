@@ -28,6 +28,8 @@ import jwt from 'jsonwebtoken';
 import { EmployeeRole } from '../employees/dto/employee.dto';
 import { Employee } from '../employees/entities/employee.entity';
 import { Company } from '../companies/entities/company.entity';
+import { CompanyRegistrationOption } from '../companies/entities/company-registration-option.entity';
+import { CompanyRegistrationService } from '../companies/company-registration.service';
 import { Role } from '../roles/entities/role.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { Department } from '../departments/entities/department.entity';
@@ -121,6 +123,8 @@ describe('Auth guards (integration)', () => {
       .useValue({ getCurrentUser: (p: JwtPayload) => p })
       .overrideProvider(OtpService)
       .useValue({})
+      .overrideProvider(CompanyRegistrationService)
+      .useValue({})
       .overrideProvider(JwtStrategy)
       .useClass(TestJwtStrategy)
       // AccessModule instancie réellement ses providers même si JwtStrategy
@@ -135,6 +139,8 @@ describe('Auth guards (integration)', () => {
       .overrideProvider(getRepositoryToken(Employee))
       .useValue(repoStub)
       .overrideProvider(getRepositoryToken(Company))
+      .useValue(repoStub)
+      .overrideProvider(getRepositoryToken(CompanyRegistrationOption))
       .useValue(repoStub)
       .overrideProvider(getRepositoryToken(Role))
       .useValue(repoStub)
@@ -153,7 +159,7 @@ describe('Auth guards (integration)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   describe('GET /auth/me', () => {

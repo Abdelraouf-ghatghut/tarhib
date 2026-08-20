@@ -18,6 +18,7 @@ import type { DataScope } from './access-policy.service.js';
  */
 export interface CachedAccessProfile {
   employeeId: string;
+  mustChangePassword?: boolean;
   email: string;
   companyId: string;
   branchId?: string;

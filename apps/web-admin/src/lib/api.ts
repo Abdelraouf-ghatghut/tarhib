@@ -25,6 +25,11 @@ export const companiesApi = {
   create: (d: unknown) => api.post("/companies", d),
   update: (id: string, d: unknown) => api.patch(`/companies/${id}`, d),
   remove: (id: string) => api.delete(`/companies/${id}`),
+  registrationSettings: (id: string) => api.get(`/companies/${id}/registration-settings`),
+  updateRegistrationSettings: (id: string, data: unknown) =>
+    api.patch(`/companies/${id}/registration-settings`, data),
+  rotateRegistrationCode: (id: string) =>
+    api.post<{ code: string }>(`/companies/${id}/registration-code/rotate`),
 };
 
 export const branchesApi = {
@@ -47,6 +52,7 @@ export const employeesApi = {
   update: (id: string, d: unknown) => api.patch(`/employees/${id}`, d),
   remove: (id: string) => api.delete(`/employees/${id}`),
   deactivate: (id: string) => api.patch(`/employees/${id}/deactivate`),
+  requestPasswordReset: (id: string) => api.post(`/auth/password/admin-reset/${id}`),
 };
 
 export const operationalZonesApi = {

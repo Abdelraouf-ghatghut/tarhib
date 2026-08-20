@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { randomBytes } from 'node:crypto';
 import {
   Employee,
   EmployeeScope,
@@ -21,10 +22,13 @@ import {
   OtpDeliveryService,
   type OtpDeliveryChallenge,
 } from '../sms/sms.service';
+import { CompanyRegistrationService } from '../../companies/company-registration.service.js';
 
 const OTP_SESSION_PREFIX = 'otp:session:';
 const OTP_COOLDOWN_PREFIX = 'otp:cooldown:';
 const OTP_HOURLY_PREFIX = 'otp:hour:';
+const REGISTRATION_OTP_PREFIX = 'otp:registration:';
+const PHONE_VERIFICATION_PREFIX = 'company_registration_phone_verified:';
 
 interface OtpSession {
   employeeId: string;
@@ -50,6 +54,7 @@ export class OtpService {
     private readonly config: ConfigService,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
+    private readonly companyRegistration: CompanyRegistrationService,
   ) {
     this.ttlSeconds = this.positiveInt('OTP_TTL_SECONDS', 300);
     this.resendSeconds = this.positiveInt('OTP_RESEND_SECONDS', 60);
@@ -143,6 +148,69 @@ export class OtpService {
 
     await this.redis.del(key);
     return this.keycloak.loginWithPhoneOtp(employee.keycloakId!);
+  }
+
+  async requestRegistrationOtp(
+    challenge: string,
+    phoneNumber: string,
+    channel: OtpChannel,
+  ): Promise<void> {
+    this.assertChannelEnabled(channel);
+    await this.companyRegistration.assertChallenge(challenge);
+    await this.assertRequestAllowed(phoneNumber);
+    await this.redis.set(
+      `${OTP_COOLDOWN_PREFIX}${phoneNumber}`,
+      '1',
+      this.resendSeconds,
+    );
+    const deliveryChallenge = await this.delivery.send(phoneNumber, channel);
+    await this.redis.set(
+      `${REGISTRATION_OTP_PREFIX}${challenge}:${phoneNumber}`,
+      JSON.stringify({ attempts: 0, challenge: deliveryChallenge }),
+      this.ttlSeconds,
+    );
+  }
+
+  async verifyRegistrationOtp(
+    challenge: string,
+    phoneNumber: string,
+    code: string,
+  ): Promise<{ verificationToken: string }> {
+    await this.companyRegistration.assertChallenge(challenge);
+    const key = `${REGISTRATION_OTP_PREFIX}${challenge}:${phoneNumber}`;
+    const raw = await this.redis.get(key);
+    if (!raw) throw new UnauthorizedException('otpExpiredOrNotRequested');
+    const session = JSON.parse(raw) as {
+      attempts: number;
+      challenge: OtpDeliveryChallenge;
+    };
+    session.attempts += 1;
+    const approved = await this.delivery.check(
+      phoneNumber,
+      code,
+      session.challenge,
+    );
+    if (!approved) {
+      if (session.attempts >= this.maxAttempts) {
+        await this.redis.del(key);
+        throw new BadRequestException('tooManyOtpAttempts');
+      }
+      const remainingTtl = await this.redis.ttl(key);
+      if (remainingTtl <= 0) {
+        await this.redis.del(key);
+        throw new UnauthorizedException('otpExpiredOrNotRequested');
+      }
+      await this.redis.set(key, JSON.stringify(session), remainingTtl);
+      throw new UnauthorizedException('invalidOtpCode');
+    }
+    await this.redis.del(key);
+    const verificationToken = randomBytes(32).toString('base64url');
+    await this.redis.set(
+      `${PHONE_VERIFICATION_PREFIX}${verificationToken}`,
+      JSON.stringify({ challenge, phoneNumber }),
+      this.ttlSeconds,
+    );
+    return { verificationToken };
   }
 
   private isEligible(employee: Employee, appMode: OtpAppMode): boolean {

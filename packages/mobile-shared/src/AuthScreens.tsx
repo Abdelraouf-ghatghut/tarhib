@@ -36,6 +36,7 @@ export const LoginScreen = ({
   onRequestOtp,
   onOtpLogin,
   onHaveInviteCode,
+  onCreateAccount,
 }: {
   lang: Lang;
   theme: SnowTheme;
@@ -43,6 +44,7 @@ export const LoginScreen = ({
   onRequestOtp: (phoneNumber: string, channel: OtpChannel) => Promise<void>;
   onOtpLogin: (phoneNumber: string, code: string) => Promise<void>;
   onHaveInviteCode: () => void;
+  onCreateAccount?: () => void;
 }) => {
   const copy = t(lang);
   const isArabic = lang === "ar";
@@ -590,18 +592,21 @@ export const LoginScreen = ({
             </Text>
           ) : null}
 
-          <Text
+          <Pressable
+            disabled={!onCreateAccount}
+            onPress={onCreateAccount}
             style={[
-              styles.footerHint,
+              { minHeight: 44, justifyContent: "center" },
               theme.app === "operations" && styles.hidden,
-              { color: theme.muted },
             ]}
           >
-            {isArabic ? "ليس لديك حساب؟ " : "Don't have an account? "}
-            <Text style={{ color: theme.primaryStrong, fontWeight: "600" }}>
-              {isArabic ? "تواصل مع مسؤول الشركة" : "Contact your company admin"}
+            <Text style={[styles.footerHint, { color: theme.muted }]}>
+              {isArabic ? "ليس لديك حساب؟ " : "Don't have an account? "}
+              <Text style={{ color: theme.primaryStrong, fontWeight: "600" }}>
+                {isArabic ? "إنشاء حساب" : "Create account"}
+              </Text>
             </Text>
-          </Text>
+          </Pressable>
 
           <Pressable onPress={onHaveInviteCode}>
             <Text style={[styles.footerHint, { color: theme.primaryStrong, fontWeight: "600" }]}>

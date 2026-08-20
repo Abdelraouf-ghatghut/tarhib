@@ -109,6 +109,9 @@ export class EmployeesService {
       scope: dto.scope ?? EmployeeScope.CLIENT,
       active: dto.active ?? true,
       keycloakId,
+      mustChangePassword:
+        (dto.scope ?? primaryRole?.scope) === EmployeeScope.TARHIB &&
+        Boolean(dto.password),
       // Salaire : ignoré si l'appelant ne détient pas employee.salary.manage,
       // même si le payload en contient un (jamais fiable côté UI seule).
       salary: callerPermissions.includes(SALARY_PERMISSION)
@@ -410,6 +413,7 @@ export class EmployeesService {
   private toDto(e: Employee): EmployeeDto {
     const dto = new EmployeeDto();
     dto.id = e.id;
+    dto.mustChangePassword = e.mustChangePassword;
     dto.companyId = e.companyId;
     dto.branchId = e.branchId;
     dto.departmentId = e.departmentId;

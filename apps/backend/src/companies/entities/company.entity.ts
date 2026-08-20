@@ -6,6 +6,13 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+export enum CompanyRegistrationMode {
+  CLOSED = 'CLOSED',
+  APPROVAL_REQUIRED = 'APPROVAL_REQUIRED',
+  AUTO_APPROVED = 'AUTO_APPROVED',
+  INVITE_ONLY = 'INVITE_ONLY',
+}
+
 @Entity('companies')
 export class Company {
   @PrimaryGeneratedColumn('uuid')
@@ -26,6 +33,31 @@ export class Company {
 
   @Column({ default: true })
   active!: boolean;
+
+  @Column({
+    name: 'registration_mode',
+    type: 'varchar',
+    length: 30,
+    default: CompanyRegistrationMode.CLOSED,
+  })
+  registrationMode!: CompanyRegistrationMode;
+
+  @Column({ name: 'registration_code_hash', type: 'varchar', nullable: true })
+  registrationCodeHash!: string | null;
+
+  @Column({
+    name: 'registration_code_rotated_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  registrationCodeRotatedAt!: Date | null;
+
+  @Column({
+    name: 'registration_code_expires_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  registrationCodeExpiresAt!: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

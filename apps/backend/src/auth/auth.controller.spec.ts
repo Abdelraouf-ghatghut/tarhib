@@ -32,11 +32,17 @@ const mockAuthService: Partial<AuthService> = {
   logout: jest.fn().mockResolvedValue(undefined),
   requestPasswordReset: jest.fn().mockResolvedValue(undefined),
   resetPassword: jest.fn().mockResolvedValue(undefined),
+  changePassword: jest.fn().mockResolvedValue(undefined),
+  requestAdminPasswordReset: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockOtpService: Partial<OtpService> = {
   requestOtp: jest.fn().mockResolvedValue(undefined),
   verifyOtp: jest.fn().mockResolvedValue(TOKEN),
+  requestRegistrationOtp: jest.fn().mockResolvedValue(undefined),
+  verifyRegistrationOtp: jest
+    .fn()
+    .mockResolvedValue({ verificationToken: 'verification-token' }),
 };
 
 function mockRes(): Response {
@@ -145,5 +151,39 @@ describe('AuthController', () => {
     expect(res.clearCookie).toHaveBeenCalledWith('tarhib_rt', {
       path: '/auth',
     });
+  });
+
+  it('changes the password of the authenticated employee', async () => {
+    const user = { ...MOCK_PAYLOAD, employeeId: 'employee-uuid' };
+    await controller.changePassword(user, {
+      currentPassword: 'Temporary123!',
+      newPassword: 'NewOperations123!',
+    });
+    expect(mockAuthService.changePassword).toHaveBeenCalledWith(
+      'employee-uuid',
+      {
+        currentPassword: 'Temporary123!',
+        newPassword: 'NewOperations123!',
+      },
+    );
+  });
+
+  it('uses the JWT subject when no employee id is available', async () => {
+    await controller.changePassword(MOCK_PAYLOAD, {
+      currentPassword: 'Temporary123!',
+      newPassword: 'NewOperations123!',
+    });
+    expect(mockAuthService.changePassword).toHaveBeenCalledWith(
+      MOCK_PAYLOAD.sub,
+      expect.any(Object),
+    );
+  });
+
+  it('delegates an administrative reset with the acting administrator', async () => {
+    await controller.adminResetPassword('target-employee', MOCK_PAYLOAD);
+    expect(mockAuthService.requestAdminPasswordReset).toHaveBeenCalledWith(
+      'target-employee',
+      MOCK_PAYLOAD,
+    );
   });
 });

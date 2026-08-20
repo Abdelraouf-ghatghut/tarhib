@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString, IsUUID, Length } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -6,9 +6,23 @@ export class RegisterDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: 'acme' })
+  @ApiProperty({
+    description: 'Challenge opaque obtenu après validation du code entreprise',
+  })
   @IsString()
-  companySlug!: string;
+  @Length(32, 128)
+  challenge!: string;
+
+  @ApiProperty({ description: 'Combinaison branche/département/rôle publiée' })
+  @IsUUID()
+  registrationOptionId!: string;
+
+  @ApiProperty({
+    description: 'Jeton opaque obtenu après vérification OTP du téléphone',
+  })
+  @IsString()
+  @Length(32, 128)
+  phoneVerificationToken!: string;
 
   @ApiProperty()
   @IsString()
@@ -29,9 +43,4 @@ export class RegisterDto {
   @ApiProperty({ example: '+218912345678' })
   @IsString()
   phoneNumber!: string;
-
-  @ApiProperty({ minLength: 8 })
-  @IsString()
-  @MinLength(8)
-  password!: string;
 }

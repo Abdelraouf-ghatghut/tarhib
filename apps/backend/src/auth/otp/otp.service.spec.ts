@@ -14,6 +14,7 @@ import { OtpAppMode, OtpChannel } from '../dto/otp-request.dto';
 import { KeycloakService } from '../keycloak/keycloak.service';
 import { OtpDeliveryService } from '../sms/sms.service';
 import { OtpService } from './otp.service';
+import { CompanyRegistrationService } from '../../companies/company-registration.service.js';
 
 const TOKEN: TokenResponseDto = {
   accessToken: 'at',
@@ -75,6 +76,10 @@ async function build({
       { provide: KeycloakService, useValue: keycloak },
       { provide: ConfigService, useValue: config },
       { provide: getRepositoryToken(Employee), useValue: employeeRepo },
+      {
+        provide: CompanyRegistrationService,
+        useValue: { assertChallenge: jest.fn().mockResolvedValue('company-1') },
+      },
     ],
   }).compile();
 
@@ -87,6 +92,34 @@ async function build({
 }
 
 describe('OtpService', () => {
+  it('verifies a phone for registration and returns an opaque proof', async () => {
+    const redis = makeRedis({
+      get: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          attempts: 0,
+          challenge: { provider: 'infobip-2fa', pinId: 'registration-pin' },
+        }),
+      ),
+    });
+    const { service } = await build({ redis, approved: true });
+
+    const result = await service.verifyRegistrationOtp(
+      'registration-challenge',
+      '+218912345678',
+      '123456',
+    );
+
+    expect(result.verificationToken).toHaveLength(43);
+    expect(redis.set).toHaveBeenCalledWith(
+      expect.stringMatching(/^company_registration_phone_verified:/),
+      JSON.stringify({
+        challenge: 'registration-challenge',
+        phoneNumber: '+218912345678',
+      }),
+      300,
+    );
+  });
+
   it('starts an SMS verification for an eligible employee', async () => {
     const redis = makeRedis();
     const { service, delivery } = await build({ redis });

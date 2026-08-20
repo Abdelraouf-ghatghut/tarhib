@@ -35,6 +35,7 @@ export interface AccessProfile {
     lastNameAr: string;
     lastNameEn: string;
     phoneNumber: string;
+    mustChangePassword: boolean;
     companyId: string | null;
     branchId: string | null;
     departmentId: string | null;
@@ -255,6 +256,7 @@ export class AccessPolicyService {
         lastNameAr: employee.lastNameAr,
         lastNameEn: employee.lastNameEn,
         phoneNumber: employee.phoneNumber,
+        mustChangePassword: employee.mustChangePassword,
         companyId: employee.companyId,
         branchId: employee.branchId,
         departmentId: employee.departmentId,

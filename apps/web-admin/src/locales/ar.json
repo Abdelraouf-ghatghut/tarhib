@@ -846,6 +846,12 @@
   "cnssEmployeeRate": "الضمان الاجتماعي — نسبة الموظف",
   "cnssEmployerRate": "الضمان الاجتماعي — نسبة صاحب العمل",
   "downloadPdf": "تنزيل PDF",
+  "requestPasswordReset": "طلب إعادة تعيين كلمة المرور",
+  "requestPasswordResetConfirm": "هل تريد فرض إعادة تعيين كلمة المرور للموظف {{name}}؟ سيتم إنهاء جلساته الحالية وإرسال رابط إعادة التعيين إلى بريده الإلكتروني.",
+  "passwordResetRequested": "تم إرسال طلب إعادة تعيين كلمة المرور.",
+  "passwordStatus": "حالة كلمة المرور",
+  "passwordChangePending": "في انتظار تغيير كلمة المرور",
+  "passwordStatusReady": "مفعّلة",
   "errors": {
     "contractDocumentRequired": "اختر نسخة العقد الممسوحة.",
     "invalidContractDocument": "مرجع مستند العقد المخزن غير صالح.",
