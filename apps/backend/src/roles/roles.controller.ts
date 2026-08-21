@@ -34,6 +34,18 @@ export class RolesController {
     return this.service.findAll(caller);
   }
 
+  @Get('current-ui-config')
+  getCurrentUiConfig(@CurrentUser() caller: JwtPayload) {
+    return this.service.getAdminUiConfig(
+      caller.roleIds?.length
+        ? caller.roleIds
+        : caller.roleId
+          ? [caller.roleId]
+          : [],
+      caller.roleId,
+    );
+  }
+
   @Get(':id')
   @RequirePermission('role.manage')
   findOne(@Param('id') id: string) {

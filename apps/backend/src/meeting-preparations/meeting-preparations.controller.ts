@@ -21,13 +21,24 @@ export class MeetingPreparationsController {
     'meeting.preparation.execute',
     'meeting.preparation.manage',
   )
-  list(
+  async list(
     @CurrentUser() user: JwtPayload,
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
   ) {
     const scope = constrainRequestedScope(user, { companyId, branchId });
-    return this.service.list(scope.companyId, scope.branchId);
+    const tasks = await this.service.list(scope.companyId, scope.branchId);
+    if (this.isManager(user)) return tasks;
+
+    // Un exécutant ne reçoit que les préparations dont il est responsable ou
+    // membre d'équipe. Ce filtrage backend protège aussi les agrégats du Web
+    // Admin : masquer un widget côté React ne constitue jamais une autorisation.
+    const employeeId = user.employeeId ?? user.sub;
+    return tasks.filter(
+      (task) =>
+        task.assignedEmployeeId === employeeId ||
+        task.participantEmployeeIds.includes(employeeId),
+    );
   }
 
   @Patch(':id/assign')

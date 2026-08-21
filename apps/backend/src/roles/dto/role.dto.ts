@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  ArrayMaxSize,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -29,6 +30,22 @@ export class RoleQuotaInputDto {
   @IsInt()
   @Min(1)
   maxQuantity!: number;
+}
+
+export class AdminUiConfigDto {
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  menuItems?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  dashboardWidgets?: string[];
 }
 
 export class CreateRoleDto {
@@ -102,6 +119,12 @@ export class CreateRoleDto {
   @IsArray()
   @IsUUID(undefined, { each: true })
   roomIds?: string[];
+
+  @ApiPropertyOptional({ type: AdminUiConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdminUiConfigDto)
+  adminUiConfig?: AdminUiConfigDto;
 }
 
 export class UpdateRoleDto {
@@ -158,6 +181,12 @@ export class UpdateRoleDto {
   @IsArray()
   @IsUUID(undefined, { each: true })
   roomIds?: string[];
+
+  @ApiPropertyOptional({ type: AdminUiConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdminUiConfigDto)
+  adminUiConfig?: AdminUiConfigDto;
 }
 
 export class RoleQuotaDto {
@@ -209,6 +238,9 @@ export class RoleDto {
 
   @ApiProperty({ type: [String] })
   permissions!: string[];
+
+  @ApiProperty({ type: AdminUiConfigDto })
+  adminUiConfig!: AdminUiConfigDto;
 
   @ApiProperty({ type: [RoleQuotaDto] })
   quotas!: RoleQuotaDto[];

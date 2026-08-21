@@ -56,14 +56,20 @@ import {
   SolutionOutlined,
   LineChartOutlined,
   EnvironmentOutlined,
+  CoffeeOutlined,
+  CarOutlined,
+  ClearOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { localizedPersonName } from "../lib/personName";
 import { RightRail } from "../components/RightRail";
 import { RAIL_WIDTH, useAdminNotifications } from "../hooks/useAdminNotifications";
+import { rolesApi } from "../lib/api";
+import type { AdminUiConfig } from "../lib/adminUiConfig";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -91,6 +97,7 @@ export function AdminLayout() {
     lastNameEn,
     hasPermission,
     isSuperadmin,
+    roleId,
     impersonation,
     stopImpersonation,
   } = useAuth();
@@ -102,6 +109,10 @@ export function AdminLayout() {
   const searchRef = useRef<InputRef>(null);
   const isAr = i18n.language.startsWith("ar");
   const notifications = useAdminNotifications();
+  const { data: adminUiConfig } = useQuery({
+    queryKey: ["current-role-ui-config", roleId, impersonation?.label],
+    queryFn: () => rolesApi.currentUiConfig().then((response) => response.data as AdminUiConfig),
+  });
 
   // Breakpoints : mobile < lg (sidebar off-canvas), tablette < xl (rail en
   // surimpression, recherche et scope repliés en popovers)
@@ -134,27 +145,27 @@ export function AdminLayout() {
   const navGroups: NavGroup[] = useMemo(() => {
     const groups: NavGroup[] = [
       {
-        key: "favorites",
-        label: t("favorites"),
+        key: "home",
+        label: t("homeGroup"),
         items: [{ key: "/", label: t("dashboard"), icon: <HomeOutlined /> }],
       },
     ];
 
-    const config: NavItem[] = [];
+    const administration: NavItem[] = [];
     if (hasPermission("company.manage")) {
-      config.push({
+      administration.push({
         key: "/settings/company-registration",
-        label: "إعدادات تسجيل الموظفين",
+        label: t("companyRegistrationSettings"),
         icon: <UserAddOutlined />,
       });
-      config.push({
+      administration.push({
         key: "/settings/company-documents",
         label: t("companyDocuments"),
         icon: <FileTextOutlined />,
       });
     }
     if (hasPermission("order.queue.manage") || hasPermission("cleaning.task.manage")) {
-      config.push({
+      administration.push({
         key: "/settings/operational-zones",
         label: t("operationalZones"),
         icon: <EnvironmentOutlined />,
@@ -162,38 +173,65 @@ export function AdminLayout() {
     }
     // Rôles & permissions en tête de section (demande métier)
     if (hasPermission("role.manage")) {
-      config.push({ key: "/roles", label: t("rolesPermissions"), icon: <SafetyOutlined /> });
+      administration.push({
+        key: "/roles",
+        label: t("rolesPermissions"),
+        icon: <SafetyOutlined />,
+      });
     }
     if (hasPermission("company.manage")) {
-      config.push({ key: "/companies", label: t("companies"), icon: <BankOutlined /> });
+      administration.push({ key: "/audit", label: t("audit.title"), icon: <AuditOutlined /> });
+    }
+    const operations: NavItem[] = [];
+    if (
+      hasPermission("order.queue.view") ||
+      hasPermission("order.queue.manage") ||
+      hasPermission("order.prepare") ||
+      hasPermission("order.deliver") ||
+      hasPermission("company.manage") ||
+      hasPermission("branch.manage")
+    ) {
+      operations.push({ key: "/orders", label: t("orders"), icon: <FileTextOutlined /> });
+    }
+    if (hasPermission("order.prepare") || hasPermission("order.queue.manage")) {
+      operations.push({
+        key: "/operations/kitchen",
+        label: t("kitchenSupervision"),
+        icon: <CoffeeOutlined />,
+      });
+    }
+    if (
+      hasPermission("order.delivery.queue.view") ||
+      hasPermission("order.deliver") ||
+      hasPermission("order.queue.manage")
+    ) {
+      operations.push({
+        key: "/operations/delivery",
+        label: t("deliverySupervision"),
+        icon: <CarOutlined />,
+      });
+    }
+    if (hasPermission("cleaning.task.view") || hasPermission("cleaning.task.manage")) {
+      operations.push({
+        key: "/operations/cleaning",
+        label: t("cleaningSupervision"),
+        icon: <ClearOutlined />,
+      });
+    }
+    if (
+      hasPermission("meeting.preparation.view") ||
+      hasPermission("meeting.preparation.execute") ||
+      hasPermission("meeting.preparation.manage")
+    ) {
+      operations.push({
+        key: "/operations/meeting-preparations",
+        label: t("meetingPreparationSupervision"),
+        icon: <CalendarOutlined />,
+      });
     }
     if (hasPermission("company.manage") || hasPermission("branch.manage")) {
-      config.push(
-        { key: "/branches", label: t("branches"), icon: <BranchesOutlined /> },
-        { key: "/departments", label: t("departments"), icon: <ApartmentOutlined /> },
-      );
+      operations.push({ key: "/quotas", label: t("quotas"), icon: <PercentageOutlined /> });
     }
-    if (hasPermission("employee.manage")) {
-      config.push(
-        { key: "/employees/client", label: t("employeesClient"), icon: <TeamOutlined /> },
-        { key: "/employees/internal", label: t("employeesInternal"), icon: <IdcardOutlined /> },
-        { key: "/registrations", label: t("pendingRegistrations"), icon: <UserAddOutlined /> },
-      );
-    }
-    if (hasPermission("company.manage")) {
-      config.push({ key: "/products", label: t("products"), icon: <ShoppingOutlined /> });
-    }
-    if (hasPermission("company.manage")) {
-      config.push({ key: "/audit", label: t("audit.title"), icon: <AuditOutlined /> });
-    }
-    if (config.length > 0) {
-      groups.push({ key: "config", label: t("configuration"), items: config });
-    }
-
-    const operations: NavItem[] = [
-      { key: "/orders", label: t("orders"), icon: <FileTextOutlined /> },
-      { key: "/quotas", label: t("quotas"), icon: <PercentageOutlined /> },
-    ];
     if (hasPermission("branch.manage") || hasPermission("company.manage")) {
       operations.push(
         { key: "/meeting-rooms-admin", label: t("meetingRoomsAdmin"), icon: <CalendarOutlined /> },
@@ -204,7 +242,33 @@ export function AdminLayout() {
         },
       );
     }
-    groups.push({ key: "operations", label: t("operations"), items: operations });
+    if (hasPermission("company.manage")) {
+      operations.push({ key: "/products", label: t("products"), icon: <ShoppingOutlined /> });
+    }
+    if (operations.length > 0) {
+      groups.push({ key: "operations", label: t("operations"), items: operations });
+    }
+
+    const organization: NavItem[] = [];
+    if (hasPermission("company.manage")) {
+      organization.push({ key: "/companies", label: t("companies"), icon: <BankOutlined /> });
+    }
+    if (hasPermission("company.manage") || hasPermission("branch.manage")) {
+      organization.push(
+        { key: "/branches", label: t("branches"), icon: <BranchesOutlined /> },
+        { key: "/departments", label: t("departments"), icon: <ApartmentOutlined /> },
+      );
+    }
+    if (hasPermission("employee.manage")) {
+      organization.push(
+        { key: "/employees/internal", label: t("employeesInternal"), icon: <IdcardOutlined /> },
+        { key: "/employees/client", label: t("employeesClient"), icon: <TeamOutlined /> },
+        { key: "/registrations", label: t("pendingRegistrations"), icon: <UserAddOutlined /> },
+      );
+    }
+    if (organization.length > 0) {
+      groups.push({ key: "organization", label: t("organizationGroup"), items: organization });
+    }
 
     if (hasPermission("inventory.manage") || hasPermission("company.manage")) {
       groups.push({
@@ -314,8 +378,33 @@ export function AdminLayout() {
       });
     }
 
-    return groups;
-  }, [t, hasPermission]);
+    if (administration.length > 0) {
+      groups.push({
+        key: "administration",
+        label: t("administrationGroup"),
+        items: administration,
+      });
+    }
+
+    const configuredItems = adminUiConfig?.menuItems;
+    if (configuredItems === undefined) return groups;
+    const order = new Map(configuredItems.map((key, index) => [key, index]));
+    return groups
+      .map((group) => ({
+        ...group,
+        items:
+          group.key === "home"
+            ? group.items
+            : group.items
+                .filter((item) => order.has(item.key))
+                .sort(
+                  (left, right) =>
+                    (order.get(left.key) ?? Number.MAX_SAFE_INTEGER) -
+                    (order.get(right.key) ?? Number.MAX_SAFE_INTEGER),
+                ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [t, hasPermission, adminUiConfig]);
 
   const menuItems: MenuProps["items"] = useMemo(
     () =>

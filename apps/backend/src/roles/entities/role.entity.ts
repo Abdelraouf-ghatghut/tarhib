@@ -25,6 +25,11 @@ export enum SlaPriority {
   P5 = 'P5',
 }
 
+export interface AdminUiConfig {
+  menuItems?: string[];
+  dashboardWidgets?: string[];
+}
+
 @Entity('roles')
 export class Role {
   @PrimaryGeneratedColumn('uuid')
@@ -59,6 +64,15 @@ export class Role {
    */
   @Column({ name: 'all_rooms_allowed', type: 'boolean', default: true })
   allRoomsAllowed!: boolean;
+
+  /** Préférences d'affichage uniquement. Elles ne peuvent jamais accorder une
+   * permission absente du rôle. L'ordre des tableaux est conservé. */
+  @Column({
+    name: 'admin_ui_config',
+    type: 'jsonb',
+    default: () => "'{}'::jsonb",
+  })
+  adminUiConfig!: AdminUiConfig;
 
   @ManyToMany(() => MeetingRoom)
   @JoinTable({

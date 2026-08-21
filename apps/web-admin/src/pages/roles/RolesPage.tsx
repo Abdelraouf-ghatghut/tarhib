@@ -200,6 +200,7 @@ export function RolesPage() {
         void message.success(t("roleCreated"));
       }
       void qc.invalidateQueries({ queryKey: ["roles"] });
+      void qc.invalidateQueries({ queryKey: ["current-role-ui-config"] });
       setView({ mode: "list" });
     } catch (err) {
       void message.error(getErrorMessage(err, t));

@@ -147,6 +147,16 @@ export const ordersApi = {
   updateStatus: (id: string, status: string) => api.patch(`/orders/${id}/status`, { status }),
 };
 
+/** Données opérationnelles déjà filtrées côté backend par permissions,
+ * tenant, branche, affectation et zones de l'utilisateur connecté. */
+export const operationsDashboardApi = {
+  kitchenQueue: (params?: Record<string, string>) => api.get("/kitchen/queue", { params }),
+  deliveryQueue: (params?: Record<string, string>) => api.get("/delivery/queue", { params }),
+  cleaningTasks: (params?: Record<string, string>) => api.get("/cleaning/tasks", { params }),
+  meetingPreparations: (params?: Record<string, string>) =>
+    api.get("/meeting-preparations", { params }),
+};
+
 export const quotasApi = {
   list: (params?: Record<string, string>) => api.get("/quotas", { params }),
   create: (d: unknown) => api.post("/quotas", d),
@@ -169,6 +179,7 @@ export const reportingApi = {
 
 export const rolesApi = {
   list: () => api.get("/roles"),
+  currentUiConfig: () => api.get("/roles/current-ui-config"),
   create: (d: unknown) => api.post("/roles", d),
   update: (id: string, d: unknown) => api.patch(`/roles/${id}`, d),
   remove: (id: string) => api.delete(`/roles/${id}`),

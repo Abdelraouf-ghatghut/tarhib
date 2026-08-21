@@ -24,6 +24,7 @@ export interface Role {
   allRoomsAllowed: boolean;
   roomIds: string[];
   permissions: string[];
+  adminUiConfig: import("../../lib/adminUiConfig").AdminUiConfig;
   quotas: RoleQuota[];
   createdAt: string;
   updatedAt: string;

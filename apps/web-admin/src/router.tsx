@@ -40,6 +40,7 @@ import CompanyDocumentsPage from "./pages/settings/CompanyDocumentsPage";
 import PerformanceManagementPage from "./pages/performance-management/PerformanceManagementPage";
 import OperationalZonesPage from "./pages/settings/OperationalZonesPage";
 import CompanyRegistrationSettingsPage from "./pages/settings/CompanyRegistrationSettingsPage";
+import { OperationalWorkPage } from "./pages/operations/OperationalWorkPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -174,6 +175,46 @@ export const router = createBrowserRouter([
         ),
       },
       { path: "orders", element: <OrdersPage /> },
+      {
+        path: "operations/kitchen",
+        element: (
+          <RequirePermission anyOf={["order.queue.view", "order.prepare", "order.queue.manage"]}>
+            <OperationalWorkPage kind="kitchen" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "operations/delivery",
+        element: (
+          <RequirePermission
+            anyOf={["order.delivery.queue.view", "order.deliver", "order.queue.manage"]}
+          >
+            <OperationalWorkPage kind="delivery" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "operations/cleaning",
+        element: (
+          <RequirePermission anyOf={["cleaning.task.view", "cleaning.task.manage"]}>
+            <OperationalWorkPage kind="cleaning" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "operations/meeting-preparations",
+        element: (
+          <RequirePermission
+            anyOf={[
+              "meeting.preparation.view",
+              "meeting.preparation.execute",
+              "meeting.preparation.manage",
+            ]}
+          >
+            <OperationalWorkPage kind="meetings" />
+          </RequirePermission>
+        ),
+      },
       { path: "quotas", element: <QuotasPage /> },
       {
         path: "reports",

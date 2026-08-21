@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Role, RoleScope, SlaPriority } from './entities/role.entity.js';
 import { Permission } from './entities/permission.entity.js';
 import { RoleQuota } from './entities/role-quota.entity.js';
@@ -61,6 +61,42 @@ export class RolesService {
     return this.toDto(role);
   }
 
+  async getAdminUiConfig(roleIds?: string[], primaryRoleId?: string) {
+    const uniqueRoleIds = [...new Set(roleIds ?? [])];
+    if (uniqueRoleIds.length === 0) return {};
+    const roles = await this.roleRepo.find({
+      where: { id: In(uniqueRoleIds), scope: RoleScope.TARHIB },
+    });
+    const orderedRoles = [...roles].sort((left, right) => {
+      if (left.id === primaryRoleId) return -1;
+      if (right.id === primaryRoleId) return 1;
+      return uniqueRoleIds.indexOf(left.id) - uniqueRoleIds.indexOf(right.id);
+    });
+
+    return {
+      menuItems: this.mergeUiSelection(orderedRoles, 'menuItems'),
+      dashboardWidgets: this.mergeUiSelection(orderedRoles, 'dashboardWidgets'),
+    };
+  }
+
+  /** Le premier ordre est celui du rôle principal, puis chaque rôle
+   * supplémentaire apporte ses éléments manquants. Une configuration absente
+   * signifie « comportement par défaut » et doit donc rester `undefined`. */
+  private mergeUiSelection(
+    roles: Role[],
+    key: 'menuItems' | 'dashboardWidgets',
+  ): string[] | undefined {
+    if (roles.length === 0) return undefined;
+    if (roles.some((role) => role.adminUiConfig?.[key] === undefined)) {
+      return undefined;
+    }
+    const merged = new Set<string>();
+    for (const role of roles) {
+      for (const item of role.adminUiConfig[key] ?? []) merged.add(item);
+    }
+    return [...merged];
+  }
+
   async create(dto: CreateRoleDto, caller: JwtPayload): Promise<RoleDto> {
     const isTarhibAdmin = caller.permissions?.includes('role.manage');
 
@@ -104,6 +140,8 @@ export class RolesService {
         dto.roomIds,
       ),
       permissions,
+      adminUiConfig:
+        dto.scope === RoleScope.TARHIB ? (dto.adminUiConfig ?? {}) : {},
     });
 
     const saved = await this.roleRepo.save(role);
@@ -124,6 +162,12 @@ export class RolesService {
     if (dto.nameAr) role.nameAr = dto.nameAr;
     if (dto.nameEn !== undefined) role.nameEn = dto.nameEn?.trim() || null;
     if (dto.slaPriority) role.slaPriority = dto.slaPriority;
+    if (dto.adminUiConfig && role.scope === RoleScope.TARHIB) {
+      role.adminUiConfig = {
+        menuItems: dto.adminUiConfig.menuItems,
+        dashboardWidgets: dto.adminUiConfig.dashboardWidgets,
+      };
+    }
 
     if (dto.permissionKeys) {
       role.permissions = await this.permissionRepo.find({
@@ -283,6 +327,7 @@ export class RolesService {
     allRoomsAllowed: role.allRoomsAllowed ?? true,
     roomIds: (role.allowedRooms ?? []).map((r) => r.id),
     permissions: (role.permissions ?? []).map((p) => p.key),
+    adminUiConfig: role.adminUiConfig ?? {},
     quotas: (role.quotas ?? []).map((q) => ({
       id: q.id,
       productId: q.productId,

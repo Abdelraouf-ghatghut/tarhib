@@ -128,6 +128,31 @@ describe('RolesService', () => {
   });
 
   describe('update', () => {
+    it('persists the TARHIB role UI allowlists without granting permissions', async () => {
+      roleRepo.findOne.mockResolvedValue({
+        id: 'role-1',
+        scope: RoleScope.TARHIB,
+        nameAr: 'operations',
+        permissions: [],
+        quotas: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await service.update('role-1', {
+        adminUiConfig: {
+          menuItems: ['/operations/kitchen'],
+          dashboardWidgets: ['operations'],
+        },
+      });
+
+      expect(result.adminUiConfig).toEqual({
+        menuItems: ['/operations/kitchen'],
+        dashboardWidgets: ['operations'],
+      });
+      expect(result.permissions).toEqual([]);
+    });
+
     it('replaces quotas and recomputes quotasEnabled', async () => {
       roleRepo.findOne.mockResolvedValue({
         id: 'role-1',
@@ -162,6 +187,77 @@ describe('RolesService', () => {
 
       const result = await service.update('role-default', { nameAr: 'x' });
       expect(result.nameAr).toBe('x');
+    });
+  });
+
+  describe('getAdminUiConfig', () => {
+    it('returns the configuration of a TARHIB role', async () => {
+      roleRepo.find.mockResolvedValue([
+        {
+          id: 'role-1',
+          scope: RoleScope.TARHIB,
+          adminUiConfig: {
+            menuItems: ['/orders'],
+            dashboardWidgets: ['latest-orders'],
+          },
+        },
+      ]);
+      await expect(
+        service.getAdminUiConfig(['role-1'], 'role-1'),
+      ).resolves.toEqual({
+        menuItems: ['/orders'],
+        dashboardWidgets: ['latest-orders'],
+      });
+    });
+
+    it('merges additional roles after the primary role without duplicates', async () => {
+      roleRepo.find.mockResolvedValue([
+        {
+          id: 'additional',
+          scope: RoleScope.TARHIB,
+          adminUiConfig: {
+            menuItems: ['/inventory', '/orders'],
+            dashboardWidgets: ['stock-alerts', 'latest-orders'],
+          },
+        },
+        {
+          id: 'primary',
+          scope: RoleScope.TARHIB,
+          adminUiConfig: {
+            menuItems: ['/orders'],
+            dashboardWidgets: ['latest-orders'],
+          },
+        },
+      ]);
+
+      await expect(
+        service.getAdminUiConfig(['primary', 'additional'], 'primary'),
+      ).resolves.toEqual({
+        menuItems: ['/orders', '/inventory'],
+        dashboardWidgets: ['latest-orders', 'stock-alerts'],
+      });
+    });
+
+    it('keeps default behavior when one effective role is not configured', async () => {
+      roleRepo.find.mockResolvedValue([
+        {
+          id: 'primary',
+          scope: RoleScope.TARHIB,
+          adminUiConfig: { menuItems: ['/orders'] },
+        },
+        {
+          id: 'additional',
+          scope: RoleScope.TARHIB,
+          adminUiConfig: {},
+        },
+      ]);
+
+      await expect(
+        service.getAdminUiConfig(['primary', 'additional'], 'primary'),
+      ).resolves.toEqual({
+        menuItems: undefined,
+        dashboardWidgets: undefined,
+      });
     });
   });
 
