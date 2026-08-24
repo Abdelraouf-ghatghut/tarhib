@@ -512,3 +512,18 @@ Après chaque chantier ou déploiement :
 6. ne jamais inscrire de mot de passe, token, clé SSH, clé R2, identifiant secret ou IP privée ;
 7. valider avec `git diff --check` ;
 8. commiter la mise à jour avec un message `docs:`.
+
+## 19. Décision sur la vue d'ensemble Web Admin — 24 août 2026
+
+- **نظرة عامة** n'est plus configurable par l'administrateur ni par l'utilisateur ;
+- le formulaire des rôles ne permet plus de sélectionner ou de réordonner les widgets du dashboard ;
+- le dashboard est composé et ordonné automatiquement à partir des permissions effectives, y compris les permissions obtenues par les rôles supplémentaires ;
+- la configuration par rôle reste applicable uniquement aux pages et à l'ordre du menu latéral ;
+- les anciennes valeurs `admin_ui_config.dashboardWidgets` restent tolérées pour compatibilité, mais le Web Admin ne les utilise plus ;
+- un centre de décision présente les alertes réellement actionnables dans le périmètre courant : dépassements et risques SLA, stocks critiques, incidents de livraison et tâches de nettoyage en retard ;
+- les KPI, graphiques, files opérationnelles, alertes de stock et dernières commandes ne sont chargés que lorsque les permissions du rôle les autorisent ;
+- le dashboard doit aider à comprendre la situation et à décider ; les raccourcis de navigation restent secondaires et sont affichés après les informations métier.
+- des profils de dashboard distincts sont maintenant définis pour la direction, le management opérationnel, la cuisine, la livraison, le ménage, la préparation des réunions, le stock, les achats, les RH et la finance ;
+- le rôle principal détermine le profil prioritaire et les permissions effectives limitent ensuite strictement les données et actions réellement affichables ;
+- les rôles personnalisés non reconnaissables par leur libellé reçoivent automatiquement le profil métier correspondant à leur combinaison de permissions ;
+- la page Profil n'affiche plus la liste technique des permissions effectives ; celles-ci restent consultables et administrables uniquement dans la gestion des rôles et permissions.

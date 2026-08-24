@@ -45,15 +45,147 @@ export const ADMIN_MENU_OPTIONS = [
   "/audit",
 ] as const;
 
-export const DASHBOARD_WIDGET_OPTIONS = [
-  "quick-actions",
-  "operations",
-  "business-kpis",
-  "sla-kpis",
-  "charts",
-  "stock-alerts",
-  "latest-orders",
-] as const;
+/**
+ * The overview is deliberately not user-configurable. Its content and order
+ * are derived from effective permissions so that every role receives the
+ * same decision-support view defined by Tarhib's operating rules.
+ */
+export type DashboardProfileKey =
+  | "executive"
+  | "manager"
+  | "kitchen"
+  | "delivery"
+  | "cleaning"
+  | "meetings"
+  | "stock"
+  | "procurement"
+  | "hr"
+  | "finance"
+  | "generic";
+
+export interface DashboardProfile {
+  key: DashboardProfileKey;
+  widgets: string[];
+}
+
+export function resolveDashboardProfile(
+  role: string | null,
+  hasPermission: (permission: string) => boolean,
+): DashboardProfile {
+  const normalizedRole = (role ?? "").trim().toLocaleLowerCase();
+  const roleContains = (...values: string[]) =>
+    values.some((value) => normalizedRole.includes(value));
+  const canViewReports =
+    hasPermission("report.view") ||
+    hasPermission("company.manage") ||
+    hasPermission("branch.manage");
+  const canViewKitchen = hasPermission("order.prepare") || hasPermission("order.queue.manage");
+  const canViewDelivery =
+    hasPermission("order.deliver") ||
+    hasPermission("order.delivery.queue.view") ||
+    hasPermission("order.queue.manage");
+  const canViewCleaning =
+    hasPermission("cleaning.task.view") || hasPermission("cleaning.task.manage");
+  const canViewMeetingPreparations =
+    hasPermission("meeting.preparation.view") ||
+    hasPermission("meeting.preparation.execute") ||
+    hasPermission("meeting.preparation.manage");
+  const canViewOperations =
+    canViewKitchen || canViewDelivery || canViewCleaning || canViewMeetingPreparations;
+  const canViewInventory = hasPermission("inventory.manage") || hasPermission("company.manage");
+  const canViewOrders =
+    canViewReports ||
+    ["order.queue.view", "order.queue.manage", "order.prepare", "order.deliver"].some(
+      hasPermission,
+    );
+
+  let key: DashboardProfileKey;
+  if (roleContains("superadmin", "director", "directeur", "المدير العام", "مدير النظام")) {
+    key = "executive";
+  } else if (roleContains("finance", "comptab", "مالي", "محاسب")) {
+    key = "finance";
+  } else if (roleContains("human resource", "ressources humaines", "rh", "موارد بشرية")) {
+    key = "hr";
+  } else if (roleContains("procurement", "purchase", "achat", "مشتريات")) {
+    key = "procurement";
+  } else if (roleContains("stock", "inventory", "مخزون", "مستودع")) {
+    key = "stock";
+  } else if (roleContains("kitchen", "cook", "cuisin", "مطبخ", "طباخ")) {
+    key = "kitchen";
+  } else if (roleContains("delivery", "driver", "livreur", "توصيل", "مندوب")) {
+    key = "delivery";
+  } else if (roleContains("clean", "ménage", "menage", "نظافة")) {
+    key = "cleaning";
+  } else if (roleContains("meeting", "réunion", "reunion", "اجتماع")) {
+    key = "meetings";
+  } else if (roleContains("manager", "admin branche", "مدير", "مشرف")) {
+    key = "manager";
+  } else if (hasPermission("hr.contract.manage") || hasPermission("hr.leave.approve")) {
+    key = "hr";
+  } else if (hasPermission("finance.manage") || hasPermission("accounting.manage")) {
+    key = "finance";
+  } else if (hasPermission("procurement.manage")) {
+    key = "procurement";
+  } else if (canViewKitchen && !canViewDelivery && !canViewCleaning) {
+    key = "kitchen";
+  } else if (canViewDelivery && !canViewKitchen && !canViewCleaning) {
+    key = "delivery";
+  } else if (canViewCleaning && !canViewKitchen && !canViewDelivery) {
+    key = "cleaning";
+  } else if (canViewMeetingPreparations && !canViewKitchen && !canViewDelivery) {
+    key = "meetings";
+  } else if (canViewInventory && !canViewReports && !canViewOperations) {
+    key = "stock";
+  } else if (canViewReports || canViewOperations) {
+    key = "manager";
+  } else {
+    key = "generic";
+  }
+
+  const requestedByProfile: Record<DashboardProfileKey, string[]> = {
+    executive: [
+      "business-kpis",
+      "sla-kpis",
+      "charts",
+      "operations",
+      "stock-alerts",
+      "latest-orders",
+      "quick-actions",
+    ],
+    manager: [
+      "operations",
+      "business-kpis",
+      "sla-kpis",
+      "stock-alerts",
+      "latest-orders",
+      "charts",
+      "quick-actions",
+    ],
+    kitchen: ["operations", "latest-orders", "stock-alerts", "quick-actions"],
+    delivery: ["operations", "latest-orders", "quick-actions"],
+    cleaning: ["operations", "quick-actions"],
+    meetings: ["operations", "quick-actions"],
+    stock: ["stock-alerts", "quick-actions"],
+    procurement: ["stock-alerts", "quick-actions"],
+    hr: ["quick-actions"],
+    finance: ["business-kpis", "charts", "quick-actions"],
+    generic: ["quick-actions"],
+  };
+  const available = new Set<string>(["quick-actions"]);
+  if (canViewOperations) available.add("operations");
+  if (canViewReports) {
+    available.add("business-kpis");
+    available.add("sla-kpis");
+    available.add("charts");
+  }
+  if (canViewInventory) available.add("stock-alerts");
+  if (canViewOrders) available.add("latest-orders");
+
+  return {
+    key,
+    widgets: requestedByProfile[key].filter((widget) => available.has(widget)),
+  };
+}
 
 export const ADMIN_MENU_LABEL_KEYS: Record<string, string> = {
   "/orders": "orders",
@@ -150,34 +282,6 @@ export const ADMIN_MENU_PERMISSION_REQUIREMENTS: Record<string, string[]> = {
   "/audit": ["company.manage"],
 };
 
-export const DASHBOARD_WIDGET_PERMISSION_REQUIREMENTS: Record<string, string[]> = {
-  "quick-actions": [],
-  operations: [
-    "order.prepare",
-    "order.deliver",
-    "order.delivery.queue.view",
-    "order.queue.manage",
-    "cleaning.task.view",
-    "cleaning.task.manage",
-    "meeting.preparation.view",
-    "meeting.preparation.execute",
-    "meeting.preparation.manage",
-  ],
-  "business-kpis": ["report.view", "company.manage", "branch.manage"],
-  "sla-kpis": ["report.view", "company.manage", "branch.manage"],
-  charts: ["report.view", "company.manage", "branch.manage"],
-  "stock-alerts": ["inventory.manage", "company.manage"],
-  "latest-orders": [
-    "report.view",
-    "company.manage",
-    "branch.manage",
-    "order.queue.view",
-    "order.queue.manage",
-    "order.prepare",
-    "order.deliver",
-  ],
-};
-
 export function isCompatibleWithPermissions(
   requirements: Record<string, string[]>,
   key: string,
@@ -190,7 +294,6 @@ export function isCompatibleWithPermissions(
 export interface AdminUiPreset {
   labelKey: string;
   menuItems: string[];
-  dashboardWidgets: string[];
 }
 
 export const ADMIN_UI_PRESETS: Record<string, AdminUiPreset> = {
@@ -204,34 +307,22 @@ export const ADMIN_UI_PRESETS: Record<string, AdminUiPreset> = {
       "/branches",
       "/audit",
     ],
-    dashboardWidgets: [
-      "quick-actions",
-      "business-kpis",
-      "sla-kpis",
-      "charts",
-      "stock-alerts",
-      "latest-orders",
-    ],
   },
   manager: {
     labelKey: "adminUiPreset.manager",
     menuItems: [...ADMIN_MENU_OPTIONS],
-    dashboardWidgets: [...DASHBOARD_WIDGET_OPTIONS],
   },
   kitchen: {
     labelKey: "adminUiPreset.kitchen",
     menuItems: ["/operations/kitchen", "/orders", "/inventory"],
-    dashboardWidgets: ["quick-actions", "operations", "latest-orders", "stock-alerts"],
   },
   delivery: {
     labelKey: "adminUiPreset.delivery",
     menuItems: ["/operations/delivery", "/orders", "/settings/operational-zones"],
-    dashboardWidgets: ["quick-actions", "operations", "latest-orders"],
   },
   cleaning: {
     labelKey: "adminUiPreset.cleaning",
     menuItems: ["/operations/cleaning", "/settings/operational-zones"],
-    dashboardWidgets: ["quick-actions", "operations"],
   },
   meetings: {
     labelKey: "adminUiPreset.meetings",
@@ -240,17 +331,14 @@ export const ADMIN_UI_PRESETS: Record<string, AdminUiPreset> = {
       "/meeting-rooms-admin",
       "/meeting-service-packages",
     ],
-    dashboardWidgets: ["quick-actions", "operations"],
   },
   stock: {
     labelKey: "adminUiPreset.stock",
     menuItems: ["/inventory", "/inventory-transfers", "/vip-tasks", "/procurement", "/suppliers"],
-    dashboardWidgets: ["quick-actions", "stock-alerts"],
   },
   procurement: {
     labelKey: "adminUiPreset.procurement",
     menuItems: ["/procurement", "/suppliers", "/inventory", "/inventory-transfers"],
-    dashboardWidgets: ["quick-actions", "stock-alerts"],
   },
   hr: {
     labelKey: "adminUiPreset.hr",
@@ -261,7 +349,6 @@ export const ADMIN_UI_PRESETS: Record<string, AdminUiPreset> = {
       "/hr/performance-reviews",
       "/hr/payslips",
     ],
-    dashboardWidgets: ["quick-actions"],
   },
   finance: {
     labelKey: "adminUiPreset.finance",
@@ -276,7 +363,6 @@ export const ADMIN_UI_PRESETS: Record<string, AdminUiPreset> = {
       "/accounting/journal-entries",
       "/accounting/reports",
     ],
-    dashboardWidgets: ["quick-actions", "business-kpis", "charts"],
   },
 };
 

@@ -36,18 +36,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import dayjs, { type Dayjs } from "dayjs";
-import {
-  inventoryApi,
-  operationsDashboardApi,
-  ordersApi,
-  reportingApi,
-  rolesApi,
-} from "../lib/api";
-import {
-  DASHBOARD_WIDGET_OPTIONS,
-  isAdminUiItemEnabled,
-  type AdminUiConfig,
-} from "../lib/adminUiConfig";
+import { inventoryApi, operationsDashboardApi, ordersApi, reportingApi } from "../lib/api";
+import { resolveDashboardProfile } from "../lib/adminUiConfig";
 import { useAuth } from "../hooks/useAuth";
 import { useScope } from "../contexts/ScopeContext";
 import { ScopeFilterBar } from "../components/ScopeFilterBar";
@@ -80,15 +70,12 @@ interface OperationalTask {
 
 export function DashboardPage() {
   const { t, i18n } = useTranslation();
-  const { companyId: authCompanyId, hasPermission, role, roleId, impersonation } = useAuth();
-  const { data: adminUiConfig } = useQuery({
-    queryKey: ["current-role-ui-config", roleId, impersonation?.label],
-    queryFn: () => rolesApi.currentUiConfig().then((response) => response.data as AdminUiConfig),
-  });
-  const widgetEnabled = (key: string) => isAdminUiItemEnabled(adminUiConfig?.dashboardWidgets, key);
+  const { companyId: authCompanyId, hasPermission, role } = useAuth();
+  const dashboardProfile = resolveDashboardProfile(role, hasPermission);
+  const dashboardWidgets = dashboardProfile.widgets;
+  const widgetEnabled = (key: string) => dashboardWidgets.includes(key);
   const widgetOrder = (key: string) => {
-    const configured = adminUiConfig?.dashboardWidgets;
-    const index = (configured ?? [...DASHBOARD_WIDGET_OPTIONS]).indexOf(key);
+    const index = dashboardWidgets.indexOf(key);
     return index < 0 ? Number.MAX_SAFE_INTEGER : index;
   };
   const canViewReports =
@@ -113,6 +100,15 @@ export function DashboardPage() {
     hasPermission("meeting.preparation.view") ||
     hasPermission("meeting.preparation.execute") ||
     hasPermission("meeting.preparation.manage");
+  const broadOperationalProfile = ["executive", "manager"].includes(dashboardProfile.key);
+  const showKitchen =
+    canViewKitchen && (broadOperationalProfile || dashboardProfile.key === "kitchen");
+  const showDelivery =
+    canViewDelivery && (broadOperationalProfile || dashboardProfile.key === "delivery");
+  const showCleaning =
+    canViewCleaning && (broadOperationalProfile || dashboardProfile.key === "cleaning");
+  const showMeetingPreparations =
+    canViewMeetingPreparations && (broadOperationalProfile || dashboardProfile.key === "meetings");
   const { companyId: scopeCompanyId, branchId: scopeBranchId } = useScope();
   const navigate = useNavigate();
   const isAr = i18n.language.startsWith("ar");
@@ -219,7 +215,7 @@ export function DashboardPage() {
     queryKey: ["dash", "kitchen", companyId, scopeBranchId],
     queryFn: () =>
       operationsDashboardApi.kitchenQueue(scope).then((r) => r.data as OperationalTask[]),
-    enabled: canViewKitchen,
+    enabled: showKitchen,
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
@@ -227,7 +223,7 @@ export function DashboardPage() {
     queryKey: ["dash", "delivery", companyId, scopeBranchId],
     queryFn: () =>
       operationsDashboardApi.deliveryQueue(scope).then((r) => r.data as OperationalTask[]),
-    enabled: canViewDelivery,
+    enabled: showDelivery,
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
@@ -235,7 +231,7 @@ export function DashboardPage() {
     queryKey: ["dash", "cleaning", companyId, scopeBranchId],
     queryFn: () =>
       operationsDashboardApi.cleaningTasks(scope).then((r) => r.data as OperationalTask[]),
-    enabled: canViewCleaning,
+    enabled: showCleaning,
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
@@ -243,7 +239,7 @@ export function DashboardPage() {
     queryKey: ["dash", "meeting-preparations", companyId, scopeBranchId],
     queryFn: () =>
       operationsDashboardApi.meetingPreparations(scope).then((r) => r.data as OperationalTask[]),
-    enabled: canViewMeetingPreparations,
+    enabled: showMeetingPreparations,
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
@@ -302,7 +298,7 @@ export function DashboardPage() {
   ];
 
   const focusActions = [
-    ...(canViewKitchen
+    ...(showKitchen
       ? [
           {
             key: "kitchen",
@@ -312,7 +308,7 @@ export function DashboardPage() {
           },
         ]
       : []),
-    ...(canViewDelivery
+    ...(showDelivery
       ? [
           {
             key: "delivery",
@@ -322,7 +318,7 @@ export function DashboardPage() {
           },
         ]
       : []),
-    ...(canViewCleaning
+    ...(showCleaning
       ? [
           {
             key: "cleaning",
@@ -332,7 +328,7 @@ export function DashboardPage() {
           },
         ]
       : []),
-    ...(canViewMeetingPreparations
+    ...(showMeetingPreparations
       ? [
           {
             key: "meeting-preparations",
@@ -445,6 +441,75 @@ export function DashboardPage() {
     },
   ];
 
+  const decisionSignals = [
+    ...(canViewReports && (slaReport?.openOverdue ?? 0) > 0
+      ? [
+          {
+            key: "sla-overdue",
+            label: t("decisionSlaOverdue", { count: slaReport?.openOverdue ?? 0 }),
+            color: "red",
+            path: "/orders",
+          },
+        ]
+      : []),
+    ...(canViewReports && (slaReport?.openAtRisk ?? 0) > 0
+      ? [
+          {
+            key: "sla-risk",
+            label: t("decisionSlaAtRisk", { count: slaReport?.openAtRisk ?? 0 }),
+            color: "orange",
+            path: "/orders",
+          },
+        ]
+      : []),
+    ...(canViewInventory && criticalCount > 0
+      ? [
+          {
+            key: "critical-stock",
+            label: t("decisionCriticalStock", { count: criticalCount }),
+            color: "red",
+            path: "/inventory?alert=critical",
+          },
+        ]
+      : []),
+    ...(showDelivery && (deliveryQueue ?? []).some((task) => task.status === "ISSUE_REPORTED")
+      ? [
+          {
+            key: "delivery-issues",
+            label: t("decisionDeliveryIssues", {
+              count: (deliveryQueue ?? []).filter((task) => task.status === "ISSUE_REPORTED")
+                .length,
+            }),
+            color: "red",
+            path: "/operations/delivery",
+          },
+        ]
+      : []),
+    ...(showCleaning &&
+    (cleaningTasks ?? []).some(
+      (task) =>
+        task.dueDate &&
+        dayjs(task.dueDate).isBefore(dayjs()) &&
+        !["DONE", "VERIFIED", "CANCELLED"].includes(task.status),
+    )
+      ? [
+          {
+            key: "cleaning-overdue",
+            label: t("decisionCleaningOverdue", {
+              count: (cleaningTasks ?? []).filter(
+                (task) =>
+                  task.dueDate &&
+                  dayjs(task.dueDate).isBefore(dayjs()) &&
+                  !["DONE", "VERIFIED", "CANCELLED"].includes(task.status),
+              ).length,
+            }),
+            color: "orange",
+            path: "/operations/cleaning",
+          },
+        ]
+      : []),
+  ];
+
   return (
     <>
       {/* En-tête : Vue d'ensemble + scope + période — un seul contrôle
@@ -460,14 +525,46 @@ export function DashboardPage() {
         }}
       >
         <Title level={3} style={{ margin: 0 }}>
-          {t("overview")}
+          {t(`dashboardProfile.${dashboardProfile.key}.title`)}
         </Title>
-        {chartPeriodControls(period, setPeriod, customRange, setCustomRange)}
+        {canViewReports && chartPeriodControls(period, setPeriod, customRange, setCustomRange)}
       </div>
+
+      <Text type="secondary" style={{ display: "block", marginBlock: "-6px 14px" }}>
+        {t(`dashboardProfile.${dashboardProfile.key}.description`)}
+      </Text>
 
       <ScopeFilterBar />
 
       <div style={{ display: "flex", flexDirection: "column" }}>
+        <Card
+          title={t("decisionCenter")}
+          extra={<Tag color="blue">{role || t("assignedRole")}</Tag>}
+          style={{ marginBlockEnd: 16, order: -1 }}
+        >
+          <Text type="secondary" style={{ display: "block", marginBlockEnd: 12 }}>
+            {t("automaticDashboardExplanation")}
+          </Text>
+          {decisionSignals.length > 0 ? (
+            <Space wrap>
+              {decisionSignals.map((signal) => (
+                <Button
+                  key={signal.key}
+                  danger={signal.color === "red"}
+                  onClick={() => navigate(signal.path)}
+                >
+                  <Tag color={signal.color}>{signal.label}</Tag>
+                </Button>
+              ))}
+            </Space>
+          ) : (
+            <Space>
+              <CheckCircleOutlined style={{ color: "var(--fg-success)" }} />
+              <Text>{t("noDecisionAlerts")}</Text>
+            </Space>
+          )}
+        </Card>
+
         {widgetEnabled("quick-actions") && (
           <Card style={{ marginBlockEnd: 16, order: widgetOrder("quick-actions") }}>
             <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -500,9 +597,9 @@ export function DashboardPage() {
         )}
 
         {widgetEnabled("operations") &&
-          (canViewKitchen || canViewDelivery || canViewCleaning || canViewMeetingPreparations) && (
+          (showKitchen || showDelivery || showCleaning || showMeetingPreparations) && (
             <Row gutter={[16, 16]} style={{ marginBlockEnd: 16, order: widgetOrder("operations") }}>
-              {canViewKitchen && (
+              {showKitchen && (
                 <Col xs={24} sm={12} xl={6}>
                   <StatCard
                     tone="brand"
@@ -518,7 +615,7 @@ export function DashboardPage() {
                   />
                 </Col>
               )}
-              {canViewDelivery && (
+              {showDelivery && (
                 <Col xs={24} sm={12} xl={6}>
                   <StatCard
                     tone="violet"
@@ -538,7 +635,7 @@ export function DashboardPage() {
                   />
                 </Col>
               )}
-              {canViewCleaning && (
+              {showCleaning && (
                 <Col xs={24} sm={12} xl={6}>
                   <StatCard
                     tone="success"
@@ -561,7 +658,7 @@ export function DashboardPage() {
                   />
                 </Col>
               )}
-              {canViewMeetingPreparations && (
+              {showMeetingPreparations && (
                 <Col xs={24} sm={12} xl={6}>
                   <StatCard
                     tone="brand"

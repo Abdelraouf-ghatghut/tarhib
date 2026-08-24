@@ -1,21 +1,13 @@
-import { Avatar, Card, Col, Descriptions, Divider, Row, Space, Tag, Typography } from "antd";
+import { Avatar, Card, Col, Descriptions, Row, Space, Tag, Typography } from "antd";
 import { SafetyOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { permissionsApi, rolesApi, companiesApi, branchesApi } from "../lib/api";
+import { rolesApi, companiesApi, branchesApi } from "../lib/api";
 import { bilingualName } from "../lib/bilingualName";
-import { permissionLabel } from "../lib/permissionLabel";
 import { localizedPersonName } from "../lib/personName";
-import { permissionGroupLabel } from "./roles/shared";
 
 const { Title, Text } = Typography;
-
-interface Permission {
-  key: string;
-  nameAr: string;
-  nameEn: string;
-}
 
 interface DynamicRole {
   id: string;
@@ -31,27 +23,14 @@ interface NamedEntity {
 
 /**
  * Profil de l'utilisateur connecté au portail (personnel interne) :
- * identité, rôle, lieu d'affectation et permissions effectives.
+ * identité, rôle et lieu d'affectation. Les permissions techniques restent
+ * réservées à l'administration des rôles.
  */
 export function ProfilePage() {
   const { t, i18n } = useTranslation();
   const isAr = i18n.language.startsWith("ar");
-  const {
-    email,
-    roleId,
-    permissions,
-    companyId,
-    branchId,
-    firstNameAr,
-    firstNameEn,
-    lastNameAr,
-    lastNameEn,
-  } = useAuth();
-
-  const { data: allPermissions = [] } = useQuery({
-    queryKey: ["permissions"],
-    queryFn: () => permissionsApi.list().then((r) => r.data as Permission[]),
-  });
+  const { email, roleId, companyId, branchId, firstNameAr, firstNameEn, lastNameAr, lastNameEn } =
+    useAuth();
 
   const { data: roles = [] } = useQuery({
     queryKey: ["roles"],
@@ -87,16 +66,6 @@ export function ProfilePage() {
       ? `${label(company)} — ${label(branch)}`
       : label(company)
     : t("notAssigned");
-
-  // Permissions effectives groupées par module, avec libellés traduits
-  const byKey = new Map(allPermissions.map((p) => [p.key, p]));
-  const permGroupsMap = permissions.reduce<Record<string, string[]>>((acc, key) => {
-    const group = key.split(".")[0];
-    const perm = byKey.get(key);
-    acc[group] = [...(acc[group] ?? []), perm ? permissionLabel(perm, isAr) : key];
-    return acc;
-  }, {});
-  const permGroups = Object.entries(permGroupsMap);
 
   return (
     <>
@@ -150,39 +119,6 @@ export function ProfilePage() {
                 },
               ]}
             />
-
-            <Divider titlePlacement="start" style={{ fontSize: 13 }}>
-              {t("permissionsLabel")} ({permissions.length})
-            </Divider>
-            {permGroups.length === 0 ? (
-              <Text type="secondary">{t("noPermissions")}</Text>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {permGroups.map(([group, labels]) => (
-                  <div key={group}>
-                    <Text
-                      strong
-                      style={{
-                        display: "block",
-                        fontSize: 12,
-                        textTransform: "capitalize",
-                        color: "var(--fg-body-subtle)",
-                        marginBlockEnd: 6,
-                      }}
-                    >
-                      {permissionGroupLabel(group, t)}
-                    </Text>
-                    <Space size={6} wrap>
-                      {labels.map((label) => (
-                        <Tag key={label} bordered={false} color="blue">
-                          {label}
-                        </Tag>
-                      ))}
-                    </Space>
-                  </div>
-                ))}
-              </div>
-            )}
           </Card>
         </Col>
       </Row>

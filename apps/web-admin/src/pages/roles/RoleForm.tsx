@@ -46,8 +46,6 @@ import {
   ADMIN_MENU_LABEL_KEYS,
   ADMIN_MENU_PERMISSION_REQUIREMENTS,
   ADMIN_UI_PRESETS,
-  DASHBOARD_WIDGET_OPTIONS,
-  DASHBOARD_WIDGET_PERMISSION_REQUIREMENTS,
   isCompatibleWithPermissions,
   type AdminUiConfig,
 } from "../../lib/adminUiConfig";
@@ -157,21 +155,11 @@ export function RoleForm({
   const [adminMenuItems, setAdminMenuItems] = useState<string[] | undefined>(
     () => editing?.adminUiConfig?.menuItems,
   );
-  const [dashboardWidgets, setDashboardWidgets] = useState<string[] | undefined>(
-    () => editing?.adminUiConfig?.dashboardWidgets,
-  );
   const [selectedUiPreset, setSelectedUiPreset] = useState<string>();
   const eligibleMenuItems = useMemo<string[]>(
     () =>
       ADMIN_MENU_OPTIONS.filter((key) =>
         isCompatibleWithPermissions(ADMIN_MENU_PERMISSION_REQUIREMENTS, key, selectedPerms),
-      ),
-    [selectedPerms],
-  );
-  const eligibleDashboardWidgets = useMemo<string[]>(
-    () =>
-      DASHBOARD_WIDGET_OPTIONS.filter((key) =>
-        isCompatibleWithPermissions(DASHBOARD_WIDGET_PERMISSION_REQUIREMENTS, key, selectedPerms),
       ),
     [selectedPerms],
   );
@@ -196,9 +184,6 @@ export function RoleForm({
     const preset = ADMIN_UI_PRESETS[selectedUiPreset];
     if (!preset) return;
     setAdminMenuItems(preset.menuItems.filter((key) => eligibleMenuItems.includes(key)));
-    setDashboardWidgets(
-      preset.dashboardWidgets.filter((key) => eligibleDashboardWidgets.includes(key)),
-    );
   }
 
   // Seuls les produits vendus peuvent recevoir un quota ; les VIP
@@ -331,9 +316,6 @@ export function RoleForm({
         payload.permissionKeys = [...selectedPerms];
         payload.adminUiConfig = {
           menuItems: adminMenuItems?.filter((key) => eligibleMenuItems.includes(key)),
-          dashboardWidgets: dashboardWidgets?.filter((key) =>
-            eligibleDashboardWidgets.includes(key),
-          ),
         };
       } else {
         payload.slaPriority = values.slaPriority;
@@ -842,70 +824,12 @@ export function RoleForm({
               <Button
                 onClick={() => {
                   setAdminMenuItems(undefined);
-                  setDashboardWidgets(undefined);
                   setSelectedUiPreset(undefined);
                 }}
               >
                 {t("restoreDefaultUi")}
               </Button>
             </Space>
-            <Form.Item label={t("dashboardWidgetsLabel")}>
-              <Select
-                mode="multiple"
-                allowClear
-                value={(dashboardWidgets ?? eligibleDashboardWidgets).filter((key) =>
-                  eligibleDashboardWidgets.includes(key),
-                )}
-                onChange={setDashboardWidgets}
-                options={eligibleDashboardWidgets.map((key) => ({
-                  value: key,
-                  label: t(`dashboardWidget.${key}`),
-                }))}
-              />
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 6, marginBlockStart: 10 }}
-              >
-                {(dashboardWidgets ?? eligibleDashboardWidgets)
-                  .filter((key) => eligibleDashboardWidgets.includes(key))
-                  .map((key, index, items) => (
-                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <Text style={{ flex: 1 }}>{t(`dashboardWidget.${key}`)}</Text>
-                      <Button
-                        size="small"
-                        type="text"
-                        icon={<ArrowUpOutlined />}
-                        disabled={index === 0}
-                        aria-label={t("moveUp")}
-                        onClick={() =>
-                          moveSelection(
-                            dashboardWidgets,
-                            eligibleDashboardWidgets,
-                            key,
-                            -1,
-                            setDashboardWidgets,
-                          )
-                        }
-                      />
-                      <Button
-                        size="small"
-                        type="text"
-                        icon={<ArrowDownOutlined />}
-                        disabled={index === items.length - 1}
-                        aria-label={t("moveDown")}
-                        onClick={() =>
-                          moveSelection(
-                            dashboardWidgets,
-                            eligibleDashboardWidgets,
-                            key,
-                            1,
-                            setDashboardWidgets,
-                          )
-                        }
-                      />
-                    </div>
-                  ))}
-              </div>
-            </Form.Item>
             <Form.Item label={t("sidebarPagesLabel")}>
               <Select
                 mode="multiple"
