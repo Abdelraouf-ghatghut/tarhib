@@ -1,0 +1,49 @@
+cat > .gitignore << 'EOF'
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.iml
+
+# Tests
+coverage/
+
+# Mobile — Flutter / Dart (apps/mobile)
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache/
+**/.pub/
+ios/Pods/
+ios/.symlinks/
+android/.gradle/
+
+# Client Dart généré depuis OpenAPI
+# apps/backend/openapi/openapi.json est intentionnellement committé (contrat d'API lisible dans les diffs)
+apps/mobile/packages/tarhib_api_client/
+EOF

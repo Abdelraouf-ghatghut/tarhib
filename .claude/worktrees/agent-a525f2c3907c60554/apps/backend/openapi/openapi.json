@@ -1,0 +1,1658 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "AppController_getHello",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/companies": {
+      "post": {
+        "operationId": "CompaniesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCompanyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Créer une société cliente (tenant)",
+        "tags": [
+          "companies"
+        ]
+      },
+      "get": {
+        "operationId": "CompaniesController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompanyDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lister les sociétés clientes",
+        "tags": [
+          "companies"
+        ]
+      }
+    },
+    "/companies/{id}": {
+      "get": {
+        "operationId": "CompaniesController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Récupérer une société par ID",
+        "tags": [
+          "companies"
+        ]
+      },
+      "patch": {
+        "operationId": "CompaniesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mettre à jour une société",
+        "tags": [
+          "companies"
+        ]
+      },
+      "delete": {
+        "operationId": "CompaniesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Supprimer une société",
+        "tags": [
+          "companies"
+        ]
+      }
+    },
+    "/branches": {
+      "post": {
+        "operationId": "BranchesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBranchDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Créer une branche",
+        "tags": [
+          "branches"
+        ]
+      },
+      "get": {
+        "operationId": "BranchesController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BranchDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lister les branches",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/branches/{id}": {
+      "get": {
+        "operationId": "BranchesController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Récupérer une branche par ID",
+        "tags": [
+          "branches"
+        ]
+      },
+      "patch": {
+        "operationId": "BranchesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mettre à jour une branche",
+        "tags": [
+          "branches"
+        ]
+      },
+      "delete": {
+        "operationId": "BranchesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Supprimer une branche",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/departments": {
+      "post": {
+        "operationId": "DepartmentsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDepartmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepartmentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Créer un département",
+        "tags": [
+          "departments"
+        ]
+      },
+      "get": {
+        "operationId": "DepartmentsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DepartmentDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lister les départements",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/departments/{id}": {
+      "get": {
+        "operationId": "DepartmentsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepartmentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Récupérer un département par ID",
+        "tags": [
+          "departments"
+        ]
+      },
+      "patch": {
+        "operationId": "DepartmentsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepartmentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mettre à jour un département",
+        "tags": [
+          "departments"
+        ]
+      },
+      "delete": {
+        "operationId": "DepartmentsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Supprimer un département",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/employees": {
+      "post": {
+        "operationId": "EmployeesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEmployeeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Créer un employé",
+        "tags": [
+          "employees"
+        ]
+      },
+      "get": {
+        "operationId": "EmployeesController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EmployeeDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lister les employés",
+        "tags": [
+          "employees"
+        ]
+      }
+    },
+    "/employees/{id}": {
+      "get": {
+        "operationId": "EmployeesController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Récupérer un employé par ID",
+        "tags": [
+          "employees"
+        ]
+      },
+      "patch": {
+        "operationId": "EmployeesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mettre à jour un employé",
+        "tags": [
+          "employees"
+        ]
+      },
+      "delete": {
+        "operationId": "EmployeesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Supprimer un employé",
+        "tags": [
+          "employees"
+        ]
+      }
+    },
+    "/products": {
+      "post": {
+        "operationId": "ProductsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Créer un produit",
+        "tags": [
+          "products"
+        ]
+      },
+      "get": {
+        "operationId": "ProductsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lister les produits (filtrés selon le rôle appelant)",
+        "tags": [
+          "products"
+        ]
+      }
+    },
+    "/products/{id}": {
+      "get": {
+        "operationId": "ProductsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Récupérer un produit par ID",
+        "tags": [
+          "products"
+        ]
+      },
+      "patch": {
+        "operationId": "ProductsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mettre à jour un produit",
+        "tags": [
+          "products"
+        ]
+      },
+      "delete": {
+        "operationId": "ProductsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Supprimer un produit",
+        "tags": [
+          "products"
+        ]
+      }
+    },
+    "/orders": {
+      "post": {
+        "operationId": "OrdersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Créer une commande (déclenche le moteur de validation)",
+        "tags": [
+          "orders"
+        ]
+      },
+      "get": {
+        "operationId": "OrdersController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lister les commandes",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "operationId": "OrdersController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Récupérer une commande par ID",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/quotas": {
+      "post": {
+        "operationId": "QuotasController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateQuotaDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotaDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Définir un quota produit pour un employé",
+        "tags": [
+          "quotas"
+        ]
+      },
+      "get": {
+        "operationId": "QuotasController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuotaDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lister les quotas",
+        "tags": [
+          "quotas"
+        ]
+      }
+    },
+    "/quotas/{id}": {
+      "get": {
+        "operationId": "QuotasController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotaDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Récupérer un quota par ID",
+        "tags": [
+          "quotas"
+        ]
+      },
+      "delete": {
+        "operationId": "QuotasController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Supprimer un quota",
+        "tags": [
+          "quotas"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Tarhib API",
+    "description": "Contrat API — source de vérité pour la génération du client Dart mobile",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "CreateCompanyDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Sonatrach SA"
+          },
+          "slug": {
+            "type": "string",
+            "example": "sonatrach-sa",
+            "description": "Identifiant URL-safe unique (kebab-case)"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ]
+      },
+      "CompanyDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+          },
+          "name": {
+            "type": "string",
+            "example": "Sonatrach SA"
+          },
+          "slug": {
+            "type": "string",
+            "example": "sonatrach-sa"
+          },
+          "active": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "active"
+        ]
+      },
+      "CreateBranchDto": {
+        "type": "object",
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0854"
+          },
+          "nameAr": {
+            "type": "string",
+            "example": "فرع الجزائر العاصمة"
+          },
+          "nameEn": {
+            "type": "string",
+            "example": "Algiers HQ"
+          }
+        },
+        "required": [
+          "companyId",
+          "nameAr",
+          "nameEn"
+        ]
+      },
+      "BranchDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+          },
+          "companyId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0854"
+          },
+          "nameAr": {
+            "type": "string",
+            "example": "فرع الجزائر العاصمة"
+          },
+          "nameEn": {
+            "type": "string",
+            "example": "Algiers HQ"
+          },
+          "active": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "id",
+          "companyId",
+          "nameAr",
+          "nameEn",
+          "active"
+        ]
+      },
+      "CreateDepartmentDto": {
+        "type": "object",
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0854"
+          },
+          "branchId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0853"
+          },
+          "nameAr": {
+            "type": "string",
+            "example": "قسم المالية"
+          },
+          "nameEn": {
+            "type": "string",
+            "example": "Finance Department"
+          }
+        },
+        "required": [
+          "companyId",
+          "branchId",
+          "nameAr",
+          "nameEn"
+        ]
+      },
+      "DepartmentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+          },
+          "companyId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0854"
+          },
+          "branchId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0853"
+          },
+          "nameAr": {
+            "type": "string",
+            "example": "قسم المالية"
+          },
+          "nameEn": {
+            "type": "string",
+            "example": "Finance Department"
+          },
+          "active": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "id",
+          "companyId",
+          "branchId",
+          "nameAr",
+          "nameEn",
+          "active"
+        ]
+      },
+      "CreateEmployeeDto": {
+        "type": "object",
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0854"
+          },
+          "branchId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0853"
+          },
+          "departmentId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0852"
+          },
+          "firstNameAr": {
+            "type": "string",
+            "example": "محمد"
+          },
+          "firstNameEn": {
+            "type": "string",
+            "example": "Mohamed"
+          },
+          "lastNameAr": {
+            "type": "string",
+            "example": "علي"
+          },
+          "lastNameEn": {
+            "type": "string",
+            "example": "Ali"
+          },
+          "email": {
+            "type": "string",
+            "example": "m.ali@company.com"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "example": "+213555000000",
+            "description": "Format E.164 international"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "EMPLOYEE",
+              "DEPARTMENT_MANAGER",
+              "INVENTORY_MANAGER",
+              "HOSPITALITY_AGENT",
+              "ADMIN"
+            ]
+          }
+        },
+        "required": [
+          "companyId",
+          "branchId",
+          "departmentId",
+          "firstNameAr",
+          "firstNameEn",
+          "lastNameAr",
+          "lastNameEn",
+          "email",
+          "phoneNumber",
+          "role"
+        ]
+      },
+      "EmployeeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+          },
+          "companyId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0854"
+          },
+          "branchId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0853"
+          },
+          "departmentId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0852"
+          },
+          "firstNameAr": {
+            "type": "string",
+            "example": "محمد"
+          },
+          "firstNameEn": {
+            "type": "string",
+            "example": "Mohamed"
+          },
+          "lastNameAr": {
+            "type": "string",
+            "example": "علي"
+          },
+          "lastNameEn": {
+            "type": "string",
+            "example": "Ali"
+          },
+          "email": {
+            "type": "string",
+            "example": "m.ali@company.com"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "example": "+213555000000"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "EMPLOYEE",
+              "DEPARTMENT_MANAGER",
+              "INVENTORY_MANAGER",
+              "HOSPITALITY_AGENT",
+              "ADMIN"
+            ]
+          },
+          "active": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "id",
+          "companyId",
+          "branchId",
+          "departmentId",
+          "firstNameAr",
+          "firstNameEn",
+          "lastNameAr",
+          "lastNameEn",
+          "email",
+          "phoneNumber",
+          "role",
+          "active"
+        ]
+      },
+      "CreateProductDto": {
+        "type": "object",
+        "properties": {
+          "nameAr": {
+            "type": "string",
+            "example": "قهوة"
+          },
+          "nameEn": {
+            "type": "string",
+            "example": "Coffee"
+          },
+          "category": {
+            "type": "string",
+            "example": "beverages"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COMMANDABLE",
+              "LIBRE_SERVICE_VIP"
+            ]
+          },
+          "allowedRoles": {
+            "example": [
+              "EMPLOYEE",
+              "DEPARTMENT_MANAGER"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "imageUrl": {
+            "type": "string",
+            "example": "https://cdn.example.com/coffee.jpg"
+          }
+        },
+        "required": [
+          "nameAr",
+          "nameEn",
+          "category",
+          "type"
+        ]
+      },
+      "ProductDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+          },
+          "nameAr": {
+            "type": "string",
+            "example": "قهوة"
+          },
+          "nameEn": {
+            "type": "string",
+            "example": "Coffee"
+          },
+          "category": {
+            "type": "string",
+            "example": "beverages"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COMMANDABLE",
+              "LIBRE_SERVICE_VIP"
+            ]
+          },
+          "allowedRoles": {
+            "example": [
+              "EMPLOYEE",
+              "DEPARTMENT_MANAGER"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "active": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "id",
+          "nameAr",
+          "nameEn",
+          "category",
+          "type",
+          "active"
+        ]
+      },
+      "CreateOrderLineDto": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "example": "a1b2c3d4-..."
+          },
+          "quantity": {
+            "type": "number",
+            "example": 2,
+            "minimum": 1
+          }
+        },
+        "required": [
+          "productId",
+          "quantity"
+        ]
+      },
+      "CreateOrderDto": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateOrderLineDto"
+            }
+          }
+        },
+        "required": [
+          "lines"
+        ]
+      },
+      "OrderDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+          },
+          "employeeId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0852"
+          },
+          "branchId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0853"
+          },
+          "companyId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0854"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "IN_PROGRESS",
+              "DELIVERED",
+              "REJECTED"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4",
+              "P5"
+            ],
+            "description": "Dérivée du rôle employé et du contexte (réunion, urgence)"
+          },
+          "slaDeadline": {
+            "type": "string",
+            "example": "2026-06-26T14:00:00.000Z",
+            "description": "Recalculée en temps réel côté Agent"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-06-26T12:00:00.000Z"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateOrderLineDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "employeeId",
+          "branchId",
+          "companyId",
+          "status",
+          "priority",
+          "slaDeadline",
+          "createdAt",
+          "lines"
+        ]
+      },
+      "CreateQuotaDto": {
+        "type": "object",
+        "properties": {
+          "employeeId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+          },
+          "productId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0852"
+          },
+          "periodStart": {
+            "type": "string",
+            "example": "2026-06-01"
+          },
+          "periodEnd": {
+            "type": "string",
+            "example": "2026-06-30"
+          },
+          "maxQuantity": {
+            "type": "number",
+            "example": 10,
+            "minimum": 1
+          },
+          "companyId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0854"
+          }
+        },
+        "required": [
+          "employeeId",
+          "productId",
+          "periodStart",
+          "periodEnd",
+          "maxQuantity",
+          "companyId"
+        ]
+      },
+      "QuotaDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0850"
+          },
+          "employeeId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+          },
+          "productId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0852"
+          },
+          "periodStart": {
+            "type": "string",
+            "example": "2026-06-01"
+          },
+          "periodEnd": {
+            "type": "string",
+            "example": "2026-06-30"
+          },
+          "maxQuantity": {
+            "type": "number",
+            "example": 10,
+            "minimum": 1
+          },
+          "usedQuantity": {
+            "type": "number",
+            "example": 3,
+            "minimum": 0
+          },
+          "companyId": {
+            "type": "string",
+            "example": "d290f1ee-6c54-4b01-90e6-d701748f0854"
+          }
+        },
+        "required": [
+          "id",
+          "employeeId",
+          "productId",
+          "periodStart",
+          "periodEnd",
+          "maxQuantity",
+          "usedQuantity",
+          "companyId"
+        ]
+      }
+    }
+  }
+}

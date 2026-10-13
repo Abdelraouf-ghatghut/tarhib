@@ -60,7 +60,7 @@ export class OtpService {
     this.resendSeconds = this.positiveInt('OTP_RESEND_SECONDS', 60);
     this.maxAttempts = this.positiveInt('OTP_MAX_ATTEMPTS', 3);
     this.maxRequestsPerHour = this.positiveInt('OTP_MAX_REQUESTS_PER_HOUR', 5);
-    this.smsEnabled = this.flag('OTP_SMS_ENABLED', true);
+    this.smsEnabled = this.flag('OTP_SMS_ENABLED', false);
     this.whatsappEnabled = this.flag('OTP_WHATSAPP_ENABLED', true);
   }
 
@@ -155,6 +155,9 @@ export class OtpService {
     phoneNumber: string,
     channel: OtpChannel,
   ): Promise<void> {
+    if (channel !== OtpChannel.WHATSAPP) {
+      throw new BadRequestException('registrationOtpWhatsappOnly');
+    }
     this.assertChannelEnabled(channel);
     await this.companyRegistration.assertChallenge(challenge);
     await this.assertRequestAllowed(phoneNumber);

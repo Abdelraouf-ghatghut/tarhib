@@ -6,14 +6,11 @@ import { OtpDeliveryService } from './sms.service';
 
 const CONFIG: Record<string, string> = {
   NODE_ENV: 'test',
-  INFOBIP_BASE_URL: 'https://example.api.infobip.com',
-  INFOBIP_API_KEY: 'secret-key',
-  INFOBIP_2FA_APPLICATION_ID: 'application-id',
-  INFOBIP_2FA_MESSAGE_ID: 'message-id',
-  INFOBIP_SMS_SENDER: '447491163443',
-  INFOBIP_WHATSAPP_SENDER: '447860099299',
-  INFOBIP_WHATSAPP_TEMPLATE: 'tarhib_login_code',
-  INFOBIP_WHATSAPP_LANGUAGE: 'ar',
+  WHATSAPP_GRAPH_VERSION: 'v23.0',
+  WHATSAPP_ACCESS_TOKEN: 'meta-access-token',
+  WHATSAPP_PHONE_NUMBER_ID: '123456789',
+  WHATSAPP_OTP_TEMPLATE: 'tarhib_registration_otp',
+  WHATSAPP_TEMPLATE_LANGUAGE: 'ar',
   OTP_HASH_SECRET: 'test-hash-secret',
   OTP_DEV_CODE: '000000',
 };
@@ -34,49 +31,7 @@ const build = (values: Record<string, string> = CONFIG) => {
   };
 };
 
-describe('OtpDeliveryService (Infobip)', () => {
-  it('sends an SMS PIN and returns the Infobip pinId', async () => {
-    const { service, http } = build();
-    http.post.mockReturnValue(of({ data: { pinId: 'pin-id' } }));
-
-    await expect(service.send('+33782201206', OtpChannel.SMS)).resolves.toEqual(
-      { provider: 'infobip-2fa', pinId: 'pin-id' },
-    );
-
-    expect(http.post).toHaveBeenCalledWith(
-      'https://example.api.infobip.com/2fa/2/pin',
-      {
-        applicationId: 'application-id',
-        messageId: 'message-id',
-        from: '447491163443',
-        to: '33782201206',
-      },
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'App secret-key',
-        }) as unknown,
-      }),
-    );
-  });
-
-  it('verifies an SMS PIN using the stored pinId', async () => {
-    const { service, http } = build();
-    http.post.mockReturnValue(of({ data: { verified: true } }));
-
-    await expect(
-      service.check('+33782201206', '847291', {
-        provider: 'infobip-2fa',
-        pinId: 'pin-id',
-      }),
-    ).resolves.toBe(true);
-
-    expect(http.post).toHaveBeenCalledWith(
-      'https://example.api.infobip.com/2fa/2/pin/pin-id/verify',
-      { pin: '847291' },
-      expect.any(Object),
-    );
-  });
-
+describe('OtpDeliveryService (Meta WhatsApp Cloud API)', () => {
   it('sends a WhatsApp authentication template and verifies its local hash', async () => {
     const { service, http } = build();
     http.post.mockReturnValue(
@@ -87,14 +42,28 @@ describe('OtpDeliveryService (Infobip)', () => {
     expect(challenge.provider).toBe('local-hash');
 
     const body = (http.post.mock.calls as unknown[][])[0]?.[1] as {
-      messages: Array<{
-        content: {
-          templateData: { body: { placeholders: string[] } };
-        };
-      }>;
+      template: {
+        components: Array<{
+          type: string;
+          parameters: Array<{ text: string }>;
+        }>;
+      };
     };
-    const code = body.messages[0]?.content.templateData.body.placeholders[0];
+    const code = body.template.components[0]?.parameters[0]?.text;
     expect(code).toMatch(/^\d{6}$/);
+    expect(http.post).toHaveBeenCalledWith(
+      'https://graph.facebook.com/v23.0/123456789/messages',
+      expect.objectContaining({
+        messaging_product: 'whatsapp',
+        to: '33782201206',
+        type: 'template',
+      }),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer meta-access-token',
+        }) as unknown,
+      }),
+    );
     await expect(service.check('+33782201206', code, challenge)).resolves.toBe(
       true,
     );

@@ -21,7 +21,7 @@
 
 ```text
 ┌─────────────────┐     ┌─────────────────┐
-│ App Mobile Flutter│     │  Web Admin React │
+│  App Mobile RN   │     │  Web Admin React │
 │ (Employé / Agent)│     │ (rôles gestion)  │
 └────────┬─────────┘     └────────┬─────────┘
          │                        │
@@ -101,7 +101,7 @@ Points d'attention :
 ## 3. Phasage du développement
 
 ### Phase 0 — Socle technique (2-3 semaines)
-- Setup monorepo (Nx ou Turborepo) pour le backend NestJS et le web admin React ; app mobile Flutter gérée dans `apps/mobile` avec son propre tooling Dart/Flutter (pub, FVM), orchestrée depuis la CI globale mais hors du graphe de tâches Nx/Turborepo (voir `Guide_Git_CICD.md` §2)
+- Setup monorepo (Nx ou Turborepo) : backend NestJS, app mobile RN, web admin React
 - CI/CD de base (lint, build, tests, déploiement staging)
 - Auth (Keycloak) + RBAC de base
 - i18n FR... non, AR/EN + RTL configuré dès le squelette d'écran
@@ -137,7 +137,7 @@ Points d'attention :
 
 ### Phase 5 — Durcissement & lancement (2-3 semaines)
 - Tests de charge (file d'attente cuisine, pics de commande)
-- Mode offline mobile pour l'Agent d'Hospitalité (Flutter, persistance locale Drift/SQLite ou Hive, synchronisation à la reconnexion)
+- Mode offline mobile pour l'Agent d'Hospitalité
 - Revue sécurité (RBAC, isolation tenant, chiffrement)
 - Recette métier complète AR + EN, RTL
 

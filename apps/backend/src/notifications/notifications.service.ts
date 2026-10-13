@@ -2,15 +2,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Twilio } from 'twilio';
 import { Employee } from '../employees/entities/employee.entity.js';
 import { Notification } from './entities/notification.entity.js';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface.js';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { WhatsAppService } from './whatsapp.service.js';
 
 /**
  * NotificationsService — TARHIB-9
- * SMS via Twilio (mock si TWILIO_ACCOUNT_SID absent).
+ * WhatsApp via Infobip pour les notifications métier occasionnelles.
  * FCM push via firebase-admin (mock si FIREBASE_SERVICE_ACCOUNT_JSON absent).
  *
  * Setup FCM : définir FIREBASE_SERVICE_ACCOUNT_JSON dans .env avec le contenu
@@ -19,8 +19,6 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly twilioClient: Twilio | null;
-  private readonly twilioFrom: string | undefined;
   private fcmApp: unknown = null;
 
   constructor(
@@ -29,19 +27,8 @@ export class NotificationsService {
     private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(Notification)
     private readonly notificationRepo: Repository<Notification>,
+    private readonly whatsapp: WhatsAppService,
   ) {
-    const sid = config.get<string>('TWILIO_ACCOUNT_SID');
-    const token = config.get<string>('TWILIO_AUTH_TOKEN');
-    this.twilioFrom = config.get<string>('TWILIO_PHONE_NUMBER');
-
-    if (sid && token) {
-      this.twilioClient = new Twilio(sid, token);
-      this.logger.log('Twilio SMS client initialized');
-    } else {
-      this.twilioClient = null;
-      this.logger.warn('TWILIO_ACCOUNT_SID absent — SMS en mode mock');
-    }
-
     this._initFcm();
   }
 
@@ -103,27 +90,10 @@ export class NotificationsService {
     }
   }
 
-  private async sendSms(to: string, body: string): Promise<void> {
-    if (this.twilioClient && this.twilioFrom) {
-      try {
-        await this.twilioClient.messages.create({
-          body,
-          from: this.twilioFrom,
-          to,
-        });
-        this.logger.log(`SMS envoyé à ${to}`);
-      } catch (err) {
-        this.logger.error(`Échec SMS à ${to}: ${String(err)}`);
-      }
-    } else {
-      this.logger.log(`[SMS-mock] ${body} → ${to}`);
-    }
-  }
-
   /**
    * Notifie un employé précis (par ID) — utilisé par la chaîne de
    * validation des achats (§ التنبيهات) : responsable stock, validateur,
-   * responsable achats. SMS si téléphone renseigné + push si FCM connu.
+   * responsable achats. WhatsApp si téléphone renseigné + push si FCM connu.
    */
   async notifyEmployee(
     employeeId: string,
@@ -157,7 +127,7 @@ export class NotificationsService {
         readAt: null,
       }),
     );
-    await this.sendSms(employee.phoneNumber, `[Tarhib] ${title} — ${body}`);
+    await this.whatsapp.sendNotification(employee.phoneNumber, title, body);
     if (employee.fcmToken) {
       await this.sendPush(employee.fcmToken, title, body);
     }
@@ -250,23 +220,11 @@ export class NotificationsService {
     employeePhone: string,
   ): Promise<void> {
     const body = `[Tarhib] Commande #${orderId.slice(0, 8)} — nouveau statut : ${status}`;
-
-    if (this.twilioClient && this.twilioFrom) {
-      try {
-        await this.twilioClient.messages.create({
-          body,
-          from: this.twilioFrom,
-          to: employeePhone,
-        });
-        this.logger.log(
-          `SMS envoyé à ${employeePhone} — ordre ${orderId} → ${status}`,
-        );
-      } catch (err) {
-        this.logger.error(`Échec SMS ordre ${orderId}: ${String(err)}`);
-      }
-    } else {
-      this.logger.log(`[SMS-mock] ${body} → ${employeePhone}`);
-    }
+    await this.whatsapp.sendNotification(
+      employeePhone,
+      'Mise à jour de commande',
+      body,
+    );
 
     // FCM géré séparément via sendPush() par l'appelant (OrdersService, etc.)
   }
@@ -287,19 +245,8 @@ export class NotificationsService {
       `Low stock alert — product: ${productId}, branch: ${branchId}, qty: ${quantity}`,
     );
 
-    if (managerPhone && this.twilioClient && this.twilioFrom) {
-      try {
-        await this.twilioClient.messages.create({
-          body,
-          from: this.twilioFrom,
-          to: managerPhone,
-        });
-        this.logger.log(`SMS alerte stock envoyé à ${managerPhone}`);
-      } catch (err) {
-        this.logger.error(`Échec SMS alerte stock: ${String(err)}`);
-      }
-    } else {
-      this.logger.log(`[SMS-mock] ${body}`);
+    if (managerPhone) {
+      await this.whatsapp.sendNotification(managerPhone, 'Alerte stock', body);
     }
   }
 }

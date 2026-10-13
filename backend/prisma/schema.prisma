@@ -1,0 +1,568 @@
+// Schéma Prisma — généré à partir de docs/schema.sql (source de vérité).
+// Toute modification de structure doit être reportée dans docs/schema.sql.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StatutCommande {
+  en_attente
+  en_attente_approbation
+  validee
+  refusee
+  en_preparation
+  en_livraison
+  livree
+  annulee
+
+  @@map("statut_commande")
+}
+
+enum TypeMouvementStock {
+  entree
+  sortie
+  ajustement
+
+  @@map("type_mouvement_stock")
+}
+
+enum TypeEmplacementStock {
+  cuisine
+  stockage_site
+  entrepot_general
+
+  @@map("type_emplacement_stock")
+}
+
+enum TypeNotification {
+  nouvelle_commande
+  validation
+  refus
+  preparation
+  livraison
+  quota_depasse
+  rupture_stock
+  reapprovisionnement
+
+  @@map("type_notification")
+}
+
+enum PeriodeQuota {
+  jour
+  semaine
+  mois
+
+  @@map("periode_quota")
+}
+
+enum StatutCommandeFournisseur {
+  brouillon
+  envoyee
+  partiellement_recue
+  recue
+  annulee
+
+  @@map("statut_commande_fournisseur")
+}
+
+enum CodeRefusCommande {
+  produit_indisponible
+  stock_insuffisant
+  quota_depasse
+  horaire_ferme
+  role_non_autorise
+
+  @@map("code_refus_commande")
+}
+
+// =====================================================================
+// 1. ORGANISATION : ENTREPRISE > SITE > DEPARTEMENT > SERVICE
+// =====================================================================
+
+model Entreprise {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nom               String   @db.VarChar(150)
+  identifiant_legal String?  @db.VarChar(50)
+  adresse           String?  @db.VarChar(255)
+  actif             Boolean  @default(true)
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime @default(now()) @db.Timestamptz(6)
+
+  sites              Site[]             @relation("EntrepriseSites")
+  utilisateurs       Utilisateur[]      @relation("EntrepriseUtilisateurs")
+  emplacements_stock EmplacementStock[]
+  fournisseurs       Fournisseur[]
+
+  @@map("entreprises")
+}
+
+model Site {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entreprise_id String   @db.Uuid
+  nom           String   @db.VarChar(150)
+  adresse       String?  @db.VarChar(255)
+  actif         Boolean  @default(true)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  entreprise         Entreprise         @relation("EntrepriseSites", fields: [entreprise_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  departements       Departement[]
+  utilisateurs       Utilisateur[]      @relation("SiteUtilisateurs")
+  produits_sites     ProduitSite[]
+  emplacements_stock EmplacementStock[]
+  commandes          Commande[]
+
+  @@unique([entreprise_id, nom])
+  @@index([entreprise_id], map: "idx_sites_entreprise")
+  @@map("sites")
+}
+
+model Departement {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  site_id    String   @db.Uuid
+  nom        String   @db.VarChar(150)
+  actif      Boolean  @default(true)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  site         Site          @relation(fields: [site_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  services     Service[]
+  utilisateurs Utilisateur[] @relation("DepartementUtilisateurs")
+  commandes    Commande[]
+
+  @@unique([site_id, nom])
+  @@index([site_id], map: "idx_departements_site")
+  @@map("departements")
+}
+
+model Service {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  departement_id  String    @db.Uuid
+  nom             String    @db.VarChar(150)
+  heure_ouverture DateTime? @db.Time(6)
+  heure_fermeture DateTime? @db.Time(6)
+  actif           Boolean   @default(true)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  departement Departement @relation(fields: [departement_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  commandes   Commande[]
+
+  @@unique([departement_id, nom])
+  @@index([departement_id], map: "idx_services_departement")
+  @@map("services")
+}
+
+// =====================================================================
+// 2. ROLES, PERMISSIONS, UTILISATEURS, AUTHENTIFICATION
+// =====================================================================
+
+model Role {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String   @unique @db.VarChar(50)
+  nom             String   @db.VarChar(100)
+  niveau_priorite Int      @default(4) @db.SmallInt
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  roles_permissions RolePermission[]
+  utilisateurs      Utilisateur[]
+  produits_roles    ProduitRole[]
+  quotas            Quota[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String  @unique @db.VarChar(100)
+  description String? @db.VarChar(255)
+
+  roles_permissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  role_id       String @db.Uuid
+  permission_id String @db.Uuid
+
+  role       Role       @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([role_id, permission_id])
+  @@map("roles_permissions")
+}
+
+model Utilisateur {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entreprise_id      String    @db.Uuid
+  site_id            String?   @db.Uuid
+  departement_id     String?   @db.Uuid
+  role_id            String    @db.Uuid
+  nom                String    @db.VarChar(100)
+  prenom             String    @db.VarChar(100)
+  email              String?   @unique @db.VarChar(150)
+  telephone          String?   @unique @db.VarChar(30)
+  mot_de_passe_hash  String    @db.VarChar(255)
+  actif              Boolean   @default(true)
+  derniere_connexion DateTime? @db.Timestamptz(6)
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @default(now()) @db.Timestamptz(6)
+
+  entreprise  Entreprise   @relation("EntrepriseUtilisateurs", fields: [entreprise_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  site        Site?        @relation("SiteUtilisateurs", fields: [site_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  departement Departement? @relation("DepartementUtilisateurs", fields: [departement_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  role        Role         @relation(fields: [role_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  refresh_tokens        RefreshToken[]
+  mouvements_stock      MouvementStock[]
+  quotas_consommation   QuotaConsommation[]
+  commandes             Commande[]            @relation("CommandeDemandeur")
+  commandes_validees    Commande[]            @relation("CommandeValidateur")
+  commandes_agent       Commande[]            @relation("CommandeAgent")
+  commandes_fournisseur CommandeFournisseur[]
+  notifications         Notification[]
+  audit_logs            AuditLog[]
+
+  @@index([entreprise_id], map: "idx_utilisateurs_entreprise")
+  @@index([site_id], map: "idx_utilisateurs_site")
+  @@index([role_id], map: "idx_utilisateurs_role")
+  @@map("utilisateurs")
+}
+
+model RefreshToken {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  utilisateur_id String   @db.Uuid
+  token_hash     String   @db.VarChar(255)
+  expire_at      DateTime @db.Timestamptz(6)
+  revoque        Boolean  @default(false)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  utilisateur Utilisateur @relation(fields: [utilisateur_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([utilisateur_id], map: "idx_refresh_tokens_utilisateur")
+  @@map("refresh_tokens")
+}
+
+// =====================================================================
+// 3. CATALOGUE PRODUITS
+// =====================================================================
+
+model CategorieProduit {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nom_ar         String  @unique @db.VarChar(100)
+  nom_en         String  @unique @db.VarChar(100)
+  description_ar String? @db.VarChar(255)
+  description_en String? @db.VarChar(255)
+
+  produits Produit[]
+
+  @@map("categories_produits")
+}
+
+model Produit {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categorie_id   String?  @db.Uuid
+  nom_ar         String   @db.VarChar(150)
+  nom_en         String   @db.VarChar(150)
+  description_ar String?  @db.VarChar(255)
+  description_en String?  @db.VarChar(255)
+  unite_mesure   String   @default("unite") @db.VarChar(20)
+  prix_unitaire  Decimal  @default(0) @db.Decimal(10, 2)
+  image_url      String?  @db.VarChar(255)
+  actif          Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  categorie CategorieProduit? @relation(fields: [categorie_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  produits_roles              ProduitRole[]
+  produits_sites              ProduitSite[]
+  stocks                      Stock[]
+  quotas                      Quota[]
+  lignes_commande             LigneCommande[]
+  lignes_commande_fournisseur LigneCommandeFournisseur[]
+
+  @@index([categorie_id], map: "idx_produits_categorie")
+  @@map("produits")
+}
+
+model ProduitRole {
+  produit_id String @db.Uuid
+  role_id    String @db.Uuid
+
+  produit Produit @relation(fields: [produit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  role    Role    @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([produit_id, role_id])
+  @@map("produits_roles")
+}
+
+model ProduitSite {
+  produit_id String  @db.Uuid
+  site_id    String  @db.Uuid
+  disponible Boolean @default(true)
+
+  produit Produit @relation(fields: [produit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site    Site    @relation(fields: [site_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([produit_id, site_id])
+  @@map("produits_sites")
+}
+
+// =====================================================================
+// 4. STOCKS ET MOUVEMENTS
+// =====================================================================
+
+model EmplacementStock {
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entreprise_id String               @db.Uuid
+  site_id       String?              @db.Uuid
+  type          TypeEmplacementStock
+  nom           String               @db.VarChar(100)
+  created_at    DateTime             @default(now()) @db.Timestamptz(6)
+
+  entreprise Entreprise @relation(fields: [entreprise_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site       Site?      @relation(fields: [site_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  stocks                Stock[]
+  commandes_fournisseur CommandeFournisseur[]
+
+  @@index([site_id], map: "idx_emplacements_site")
+  @@map("emplacements_stock")
+}
+
+model Stock {
+  id                        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  emplacement_id            String   @db.Uuid
+  produit_id                String   @db.Uuid
+  quantite                  Decimal  @default(0) @db.Decimal(12, 2)
+  seuil_minimal             Decimal  @default(0) @db.Decimal(12, 2)
+  seuil_reapprovisionnement Decimal? @db.Decimal(12, 2)
+  updated_at                DateTime @default(now()) @db.Timestamptz(6)
+
+  emplacement EmplacementStock @relation(fields: [emplacement_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  produit     Produit          @relation(fields: [produit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  mouvements_stock MouvementStock[]
+
+  @@unique([emplacement_id, produit_id])
+  @@index([produit_id], map: "idx_stocks_produit")
+  @@map("stocks")
+}
+
+model MouvementStock {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stock_id       String             @db.Uuid
+  type           TypeMouvementStock
+  quantite       Decimal            @db.Decimal(12, 2)
+  motif          String?            @db.VarChar(255)
+  utilisateur_id String?            @db.Uuid
+  commande_id    String?            @db.Uuid
+  date_mouvement DateTime           @default(now()) @db.Timestamptz(6)
+
+  stock       Stock        @relation(fields: [stock_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  utilisateur Utilisateur? @relation(fields: [utilisateur_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  commande    Commande?    @relation(fields: [commande_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_mouvements_commande")
+
+  @@index([stock_id], map: "idx_mouvements_stock_stock")
+  @@index([date_mouvement], map: "idx_mouvements_stock_date")
+  @@map("mouvements_stock")
+}
+
+// =====================================================================
+// 5. QUOTAS
+// =====================================================================
+
+model Quota {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  role_id    String?      @db.Uuid
+  produit_id String?      @db.Uuid
+  periode    PeriodeQuota
+  valeur_max Decimal      @db.Decimal(10, 2)
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+
+  role    Role?    @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  produit Produit? @relation(fields: [produit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  quotas_consommation QuotaConsommation[]
+
+  @@map("quotas")
+}
+
+model QuotaConsommation {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  utilisateur_id   String   @db.Uuid
+  quota_id         String   @db.Uuid
+  periode_debut    DateTime @db.Date
+  periode_fin      DateTime @db.Date
+  valeur_consommee Decimal  @default(0) @db.Decimal(10, 2)
+  updated_at       DateTime @default(now()) @db.Timestamptz(6)
+
+  utilisateur Utilisateur @relation(fields: [utilisateur_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  quota       Quota       @relation(fields: [quota_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([utilisateur_id, quota_id, periode_debut])
+  @@index([utilisateur_id], map: "idx_quotas_conso_utilisateur")
+  @@map("quotas_consommation")
+}
+
+// =====================================================================
+// 6. COMMANDES
+// =====================================================================
+
+model Commande {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  utilisateur_id    String             @db.Uuid
+  site_id           String             @db.Uuid
+  departement_id    String?            @db.Uuid
+  service_id        String?            @db.Uuid
+  lieu_livraison    String?            @db.VarChar(150)
+  salle             String?            @db.VarChar(100)
+  heure_souhaitee   DateTime?          @db.Timestamptz(6)
+  commentaire       String?            @db.VarChar(500)
+  statut            StatutCommande     @default(en_attente)
+  priorite          Int                @default(4) @db.SmallInt
+  code_refus        CodeRefusCommande?
+  valide_par_id     String?            @db.Uuid
+  agent_id          String?            @db.Uuid
+  date_validation   DateTime?          @db.Timestamptz(6)
+  date_preparation  DateTime?          @db.Timestamptz(6)
+  date_livraison    DateTime?          @db.Timestamptz(6)
+  date_confirmation DateTime?          @db.Timestamptz(6)
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime           @default(now()) @db.Timestamptz(6)
+
+  utilisateur Utilisateur  @relation("CommandeDemandeur", fields: [utilisateur_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  site        Site         @relation(fields: [site_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  departement Departement? @relation(fields: [departement_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  service     Service?     @relation(fields: [service_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  valide_par  Utilisateur? @relation("CommandeValidateur", fields: [valide_par_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  agent       Utilisateur? @relation("CommandeAgent", fields: [agent_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  lignes_commande  LigneCommande[]
+  mouvements_stock MouvementStock[]
+  notifications    Notification[]
+
+  @@index([utilisateur_id], map: "idx_commandes_utilisateur")
+  @@index([site_id], map: "idx_commandes_site")
+  @@index([statut], map: "idx_commandes_statut")
+  @@index([agent_id], map: "idx_commandes_agent")
+  @@map("commandes")
+}
+
+model LigneCommande {
+  id                     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  commande_id            String  @db.Uuid
+  produit_id             String  @db.Uuid
+  quantite               Decimal @db.Decimal(10, 2)
+  prix_unitaire_snapshot Decimal @db.Decimal(10, 2)
+
+  commande Commande @relation(fields: [commande_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  produit  Produit  @relation(fields: [produit_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([commande_id], map: "idx_lignes_commande_commande")
+  @@index([produit_id], map: "idx_lignes_commande_produit")
+  @@map("lignes_commande")
+}
+
+// =====================================================================
+// 7. FOURNISSEURS ET REAPPROVISIONNEMENT
+// =====================================================================
+
+model Fournisseur {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entreprise_id String   @db.Uuid
+  nom           String   @db.VarChar(150)
+  contact       String?  @db.VarChar(150)
+  email         String?  @db.VarChar(150)
+  telephone     String?  @db.VarChar(30)
+  actif         Boolean  @default(true)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  entreprise Entreprise @relation(fields: [entreprise_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  commandes_fournisseur CommandeFournisseur[]
+
+  @@map("fournisseurs")
+}
+
+model CommandeFournisseur {
+  id             String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fournisseur_id String                    @db.Uuid
+  emplacement_id String                    @db.Uuid
+  statut         StatutCommandeFournisseur @default(brouillon)
+  cree_par_id    String?                   @db.Uuid
+  date_creation  DateTime                  @default(now()) @db.Timestamptz(6)
+  date_reception DateTime?                 @db.Timestamptz(6)
+
+  fournisseur Fournisseur      @relation(fields: [fournisseur_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  emplacement EmplacementStock @relation(fields: [emplacement_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  cree_par    Utilisateur?     @relation(fields: [cree_par_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  lignes_commande_fournisseur LigneCommandeFournisseur[]
+
+  @@map("commandes_fournisseur")
+}
+
+model LigneCommandeFournisseur {
+  id                      String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  commande_fournisseur_id String  @db.Uuid
+  produit_id              String  @db.Uuid
+  quantite_commandee      Decimal @db.Decimal(12, 2)
+  quantite_recue          Decimal @default(0) @db.Decimal(12, 2)
+
+  commande_fournisseur CommandeFournisseur @relation(fields: [commande_fournisseur_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  produit              Produit             @relation(fields: [produit_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([commande_fournisseur_id], map: "idx_lignes_cf_commande")
+  @@map("lignes_commande_fournisseur")
+}
+
+// =====================================================================
+// 8. NOTIFICATIONS
+// =====================================================================
+
+model Notification {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  utilisateur_id String           @db.Uuid
+  type           TypeNotification
+  donnees        Json?            @db.JsonB
+  commande_id    String?          @db.Uuid
+  lue            Boolean          @default(false)
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+
+  utilisateur Utilisateur @relation(fields: [utilisateur_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  commande    Commande?   @relation(fields: [commande_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([utilisateur_id, lue], map: "idx_notifications_utilisateur")
+  @@map("notifications")
+}
+
+// =====================================================================
+// 9. AUDIT ET TRACABILITE
+// =====================================================================
+
+model AuditLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  utilisateur_id String?  @db.Uuid
+  action         String   @db.VarChar(100)
+  entite         String   @db.VarChar(100)
+  entite_id      String?  @db.Uuid
+  valeurs_avant  Json?    @db.JsonB
+  valeurs_apres  Json?    @db.JsonB
+  adresse_ip     String?  @db.VarChar(45)
+  user_agent     String?  @db.VarChar(255)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  utilisateur Utilisateur? @relation(fields: [utilisateur_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([entite, entite_id], map: "idx_audit_logs_entite")
+  @@index([utilisateur_id], map: "idx_audit_logs_utilisateur")
+  @@index([created_at], map: "idx_audit_logs_date")
+  @@map("audit_logs")
+}

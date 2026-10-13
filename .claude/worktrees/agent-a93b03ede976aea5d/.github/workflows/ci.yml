@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Job 1 : Backend NestJS — lint / type-check / test / build
+  #         + export du contrat OpenAPI comme artefact
+  # ──────────────────────────────────────────────────────────────
+  build-test-node:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tarhib
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: tarhib_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - name: Export OpenAPI spec
+        run: npm run export:openapi -w apps/backend
+        env:
+          DATABASE_URL: postgresql://tarhib:test@localhost:5432/tarhib_test
+
+      - name: Upload OpenAPI spec
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: apps/backend/openapi/openapi.json
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────
+  # Job 2 : Flutter mobile — génération client Dart + QA + build
+  #         Démarre seulement si build-test-node passe
+  # ──────────────────────────────────────────────────────────────
+  build-test-mobile:
+    needs: build-test-node
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download OpenAPI spec
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-spec
+          path: apps/backend/openapi
+
+      - name: Setup Java (for openapi-generator-cli)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Generate Dart API client
+        run: |
+          npx @openapitools/openapi-generator-cli generate \
+            -i apps/backend/openapi/openapi.json \
+            -g dart-dio \
+            -o apps/mobile/packages/tarhib_api_client \
+            --additional-properties=pubName=tarhib_api_client,nullSafe=true,pubAuthor=Tarhib
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: apps/mobile/.fvmrc
+
+      - name: Flutter pub get
+        run: flutter pub get
+        working-directory: apps/mobile
+
+      - name: Generate built_value code (*.g.dart)
+        run: dart run build_runner build
+        working-directory: apps/mobile/packages/tarhib_api_client
+
+      - name: Check Dart formatting
+        run: dart format --output=none --set-exit-if-changed lib
+        working-directory: apps/mobile
+
+      - name: Flutter analyze
+        run: flutter analyze
+        working-directory: apps/mobile
+
+      - name: Flutter test
+        run: flutter test --coverage
+        working-directory: apps/mobile
+
+      - name: Build APK (debug)
+        run: flutter build apk --debug
+        working-directory: apps/mobile

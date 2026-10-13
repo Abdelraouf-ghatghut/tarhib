@@ -1,0 +1,16 @@
+/* Tarhib Design System — Global styles */
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #DFE1E6; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #B3BAC5; }
+
+/* Ant Design overrides */
+.ant-layout-sider { box-shadow: none !important; }
+.ant-menu-item { border-radius: 8px !important; margin: 2px 8px !important; width: calc(100% - 16px) !important; }
+.ant-menu-item-group-title { padding-inline-start: 16px !important; font-size: 11px !important; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600 !important; }
+.ant-table-row { cursor: pointer; }
+.ant-card { border: 1px solid #EBECF0 !important; }
+.ant-statistic-title { font-size: 13px !important; color: #6B778C !important; font-weight: 500 !important; }
+.ant-statistic-content-value { font-size: 24px !important; font-weight: 700 !important; color: #172B4D !important; }

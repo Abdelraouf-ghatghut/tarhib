@@ -11,27 +11,15 @@ import { firstValueFrom } from 'rxjs';
 import { OtpChannel } from '../dto/otp-request.dto';
 
 export type OtpDeliveryChallenge =
-  | { provider: 'infobip-2fa'; pinId: string }
   | { provider: 'local-hash'; codeHash: string }
   | { provider: 'development' };
-
-interface InfobipPinResponse {
-  pinId?: string;
-}
-
-interface InfobipVerificationResponse {
-  verified?: boolean;
-}
 
 @Injectable()
 export class OtpDeliveryService {
   private readonly logger = new Logger(OtpDeliveryService.name);
-  private readonly baseUrl: string;
-  private readonly apiKey: string;
-  private readonly applicationId: string;
-  private readonly messageId: string;
-  private readonly smsSender: string;
-  private readonly whatsappSender: string;
+  private readonly graphVersion: string;
+  private readonly accessToken: string;
+  private readonly phoneNumberId: string;
   private readonly whatsappTemplate: string;
   private readonly whatsappLanguage: string;
   private readonly hashSecret: string;
@@ -41,17 +29,12 @@ export class OtpDeliveryService {
     private readonly http: HttpService,
     config: ConfigService,
   ) {
-    this.baseUrl = config
-      .get<string>('INFOBIP_BASE_URL', '')
-      .replace(/\/$/, '');
-    this.apiKey = config.get<string>('INFOBIP_API_KEY', '').trim();
-    this.applicationId = config.get<string>('INFOBIP_2FA_APPLICATION_ID', '');
-    this.messageId = config.get<string>('INFOBIP_2FA_MESSAGE_ID', '');
-    this.smsSender = config.get<string>('INFOBIP_SMS_SENDER', '');
-    this.whatsappSender = config.get<string>('INFOBIP_WHATSAPP_SENDER', '');
-    this.whatsappTemplate = config.get<string>('INFOBIP_WHATSAPP_TEMPLATE', '');
+    this.graphVersion = config.get<string>('WHATSAPP_GRAPH_VERSION', 'v23.0');
+    this.accessToken = config.get<string>('WHATSAPP_ACCESS_TOKEN', '').trim();
+    this.phoneNumberId = config.get<string>('WHATSAPP_PHONE_NUMBER_ID', '').trim();
+    this.whatsappTemplate = config.get<string>('WHATSAPP_OTP_TEMPLATE', '').trim();
     this.whatsappLanguage = config.get<string>(
-      'INFOBIP_WHATSAPP_LANGUAGE',
+      'WHATSAPP_TEMPLATE_LANGUAGE',
       'ar',
     );
     this.hashSecret = config.get<string>('OTP_HASH_SECRET', '');
@@ -78,59 +61,11 @@ export class OtpDeliveryService {
       return code === this.devCode;
     }
 
-    if (challenge.provider === 'local-hash') {
-      return this.secureEqual(challenge.codeHash, this.hashOtp(to, code));
-    }
-
-    try {
-      const response = await firstValueFrom(
-        this.http.post<InfobipVerificationResponse>(
-          `${this.baseUrl}/2fa/2/pin/${encodeURIComponent(challenge.pinId)}/verify`,
-          { pin: code },
-          { headers: this.headers() },
-        ),
-      );
-      return response.data.verified === true;
-    } catch (error) {
-      const providerId = this.providerMessageId(error);
-      if (
-        this.providerStatus(error) === 404 ||
-        providerId.includes('EXPIRED') ||
-        providerId.includes('NOT_FOUND')
-      ) {
-        return false;
-      }
-      this.logger.error(
-        `Infobip OTP check failed providerId=${providerId || 'unknown'} status=${this.providerStatus(error) ?? 'unknown'}`,
-      );
-      throw new ServiceUnavailableException('otpVerificationFailed');
-    }
+    return this.secureEqual(challenge.codeHash, this.hashOtp(to, code));
   }
 
   private async sendSms(to: string): Promise<OtpDeliveryChallenge> {
-    if (!this.smsConfigured()) return this.developmentChallenge(to, 'sms');
-
-    try {
-      const response = await firstValueFrom(
-        this.http.post<InfobipPinResponse>(
-          `${this.baseUrl}/2fa/2/pin`,
-          {
-            applicationId: this.applicationId,
-            messageId: this.messageId,
-            from: this.smsSender,
-            to: this.infobipPhone(to),
-          },
-          { headers: this.headers() },
-        ),
-      );
-      if (!response.data.pinId) {
-        throw new Error('Infobip response did not include pinId');
-      }
-      return { provider: 'infobip-2fa', pinId: response.data.pinId };
-    } catch (error) {
-      this.logDeliveryError('sms', error);
-      throw new ServiceUnavailableException('otpDeliveryFailed');
-    }
+    return this.developmentChallenge(to, 'sms-disabled');
   }
 
   private async sendWhatsapp(to: string): Promise<OtpDeliveryChallenge> {
@@ -142,22 +77,25 @@ export class OtpDeliveryService {
     try {
       await firstValueFrom(
         this.http.post(
-          `${this.baseUrl}/whatsapp/1/message/template`,
+          `https://graph.facebook.com/${this.graphVersion}/${this.phoneNumberId}/messages`,
           {
-            messages: [
-              {
-                from: this.whatsappSender,
-                to: this.infobipPhone(to),
-                content: {
-                  templateName: this.whatsappTemplate,
-                  templateData: {
-                    body: { placeholders: [code] },
-                    buttons: [{ type: 'URL', parameter: code }],
-                  },
-                  language: this.whatsappLanguage,
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: this.whatsappPhone(to),
+            type: 'template',
+            template: {
+              name: this.whatsappTemplate,
+              language: { code: this.whatsappLanguage },
+              components: [
+                { type: 'body', parameters: [{ type: 'text', text: code }] },
+                {
+                  type: 'button',
+                  sub_type: 'url',
+                  index: '0',
+                  parameters: [{ type: 'text', text: code }],
                 },
-              },
-            ],
+              ],
+            },
           },
           { headers: this.headers() },
         ),
@@ -182,21 +120,10 @@ export class OtpDeliveryService {
     return { provider: 'development' };
   }
 
-  private smsConfigured(): boolean {
-    return !!(
-      this.baseUrl &&
-      this.apiKey &&
-      this.applicationId &&
-      this.messageId &&
-      this.smsSender
-    );
-  }
-
   private whatsappConfigured(): boolean {
     return !!(
-      this.baseUrl &&
-      this.apiKey &&
-      this.whatsappSender &&
+      this.accessToken &&
+      this.phoneNumberId &&
       this.whatsappTemplate &&
       this.hashSecret
     );
@@ -204,13 +131,13 @@ export class OtpDeliveryService {
 
   private headers(): Record<string, string> {
     return {
-      Authorization: `App ${this.apiKey}`,
+      Authorization: `Bearer ${this.accessToken}`,
       Accept: 'application/json',
       'Content-Type': 'application/json',
     };
   }
 
-  private infobipPhone(phoneNumber: string): string {
+  private whatsappPhone(phoneNumber: string): string {
     return phoneNumber.replace(/^\+/, '');
   }
 
@@ -235,7 +162,7 @@ export class OtpDeliveryService {
 
   private logDeliveryError(channel: string, error: unknown): void {
     this.logger.error(
-      `Infobip OTP delivery failed channel=${channel} providerId=${this.providerMessageId(error) || 'unknown'} status=${this.providerStatus(error) ?? 'unknown'}`,
+      `WhatsApp Cloud OTP delivery failed channel=${channel} status=${this.providerStatus(error) ?? 'unknown'}`,
     );
   }
 

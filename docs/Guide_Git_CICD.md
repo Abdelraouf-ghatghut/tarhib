@@ -25,7 +25,7 @@ On démarre directement avec `main` comme branche par défaut (pas de `master`),
 tarhib/
 ├── .gitignore
 ├── .editorconfig
-├── .nvmrc                  # version Node.js fixée pour toute l'équipe (backend, web-admin)
+├── .nvmrc                  # version Node.js fixée pour toute l'équipe
 ├── README.md
 ├── CLAUDE.md               # déjà existant — contexte pour Claude Code
 ├── CONTRIBUTING.md         # renvoie vers ce guide
@@ -35,7 +35,7 @@ tarhib/
 ├── .github/
 │   └── workflows/          # pipelines CI/CD (voir §4)
 ├── apps/
-│   ├── mobile/              # Flutter (Dart) — Employé + Agent d'Hospitalité, iOS/Android — version SDK fixée via FVM (.fvmrc)
+│   ├── mobile/              # React Native (Employé + Agent d'Hospitalité)
 │   ├── web-admin/           # React + TS (rôles de gestion)
 │   └── backend/             # NestJS
 ├── packages/
@@ -60,19 +60,8 @@ build/
 *.log
 .DS_Store
 .turbo/
+.expo/
 coverage/
-
-# Flutter / Dart (apps/mobile)
-**/.dart_tool/
-**/.flutter-plugins
-**/.flutter-plugins-dependencies
-**/.packages
-**/.pub-cache/
-**/.pub/
-**/ios/Pods/
-**/ios/.symlinks/
-**/android/.gradle/
-*.iml
 ```
 
 ### 1.4 Premier commit
@@ -88,20 +77,11 @@ git push -u origin main
 ## 2. Structure du repo — pourquoi un monorepo
 
 Un monorepo (Turborepo ou Nx) est recommandé pour Tarhib car :
-- Le `shared-types` (DTOs `Order`, `Product`, `Quota`...) doit être identique entre backend et web admin, qui sont tous les deux en TypeScript — un monorepo évite la duplication ou la dérive entre repos séparés.
-- Le moteur de validation de commande (règle métier critique, voir `CLAUDE.md` §3) ne doit exister qu'à un seul endroit, partagé entre backend et web admin.
-- CI/CD unique, plus simple à maintenir qu'une orchestration multi-repos pour une équipe de cette taille — même si l'app mobile Flutter (Dart) a un toolchain distinct (`pub`, FVM) à l'intérieur de ce même repo (voir §2.1 ci-dessous).
+- Le `shared-types` (DTOs `Order`, `Product`, `Quota`...) doit être identique entre backend, mobile et web admin — un monorepo évite la duplication ou la dérive entre repos séparés.
+- Le moteur de validation de commande (règle métier critique, voir `CLAUDE.md` §3) ne doit exister qu'à un seul endroit, partagé.
+- CI/CD unique, plus simple à maintenir qu'une orchestration multi-repos pour une équipe de cette taille.
 
 > Si l'équipe grossit fortement en V2 (équipes mobile/backend totalement séparées), réévaluer un découpage multi-repos avec publication de `shared-types` en package npm interne.
-
-### 2.1 Cas particulier : contrat backend ↔ mobile Flutter (Dart)
-
-Le mobile étant en Dart et non en TypeScript, `packages/shared-types` (TS) **n'est pas directement consommable** par `apps/mobile`. Pour éviter que les DTOs Dart divergent silencieusement des DTOs TS au fil du temps :
-
-- Le backend NestJS expose un schéma OpenAPI généré automatiquement (`@nestjs/swagger`), qui devient la **source de vérité unique** des contrats d'API (au même titre que `shared-types` l'est pour TS).
-- Les modèles Dart côté `apps/mobile` sont **générés** à partir de ce schéma OpenAPI (ex. `openapi-generator-cli` cible `dart` ou `dio`, exécuté en étape de build/CI), plutôt qu'écrits/maintenus à la main.
-- Toute modification d'un DTO côté backend (`orders`, `products`, `quotas`...) doit régénérer le client Dart dans la même PR — ajouter cette vérification à la checklist de revue de code (§5.4).
-- Ne jamais dupliquer manuellement une règle de validation (ex. moteur de validation de commande) côté Dart : le mobile appelle l'API et affiche le résultat, il ne réimplémente jamais la logique métier (cohérent avec `CLAUDE.md` §3.4 — filtrage/validation toujours côté serveur).
 
 ---
 
@@ -233,8 +213,6 @@ PR ouverte/mise à jour
 
 ### 4.2 Exemple GitHub Actions — `.github/workflows/ci.yml`
 
-Deux jobs distincts : un pour le périmètre Node/TS (backend + web admin), un pour le mobile Flutter (toolchain totalement différent).
-
 ```yaml
 name: CI
 
@@ -245,7 +223,7 @@ on:
     branches: [main]
 
 jobs:
-  build-test-node:
+  build-test:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -280,33 +258,6 @@ jobs:
 
       - name: Build
         run: npx turbo run build
-
-  build-test-mobile:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/mobile
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version-file: apps/mobile/.fvmrc
-
-      - name: Régénérer les DTOs depuis le contrat OpenAPI backend
-        run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Analyse statique (flutter analyze)
-        run: flutter analyze
-
-      - name: Format check
-        run: dart format --output=none --set-exit-if-changed .
-
-      - name: Tests unitaires & widgets
-        run: flutter test --coverage
-
-      - name: Build (vérifie que l'app compile)
-        run: flutter build apk --debug
 ```
 
 ### 4.3 Déploiement
@@ -331,7 +282,7 @@ Tag de release (ex. v1.2.0) → déclenche le déploiement PRODUCTION
 ### 4.4 Branch protection à configurer (GitHub exemple)
 - Require pull request before merging
 - Require approvals: 1 minimum (2 pour les modules sensibles : `orders`, `vip-self-service`, `quotas`)
-- Require status checks to pass: `build-test-node`, `build-test-mobile`
+- Require status checks to pass: `build-test`
 - Require branches to be up to date before merging
 - Restrict force pushes
 - Require linear history (cohérent avec le squash merge)
@@ -344,22 +295,20 @@ Tag de release (ex. v1.2.0) → déclenche le déploiement PRODUCTION
 
 ```text
         ▲  E2E (peu nombreux, parcours critiques)
-       ╱ ╲    → "un employé commande et reçoit sa commande" (intégration / E2E web+mobile)
+       ╱ ╲    → "un employé commande et reçoit sa commande"
       ╱   ╲   → "un produit VIP n'apparaît jamais au catalogue"
      ╱─────╲
     ╱       ╲ Intégration (API + DB réelle de test)
    ╱         ╲  → moteur de validation, isolation multi-tenant
   ╱───────────╲
- ╱             ╲ Unitaires & widgets (nombreux, rapides)
+ ╱             ╲ Unitaires (nombreux, rapides)
 ╱_______________╲ → logique pure (calcul quota, calcul SLA, mapping DTO)
-                   → Flutter : widget tests sur les écrans critiques, golden tests pour le RTL
 ```
 
 ### 5.2 Règles de couverture
 - **Le moteur de validation de commande** (rôle → stock → quota) : couverture 100% des branches, c'est une exigence non négociable (voir `CLAUDE.md` §3 et `Guide_Implementation.md` §5).
 - Reste du backend : seuil minimum 80% sur les modules `orders`, `quotas`, `inventory`, `vip-self-service`.
-- Front web (web admin) : tests de composants React sur les écrans critiques (catalogue, panier) + au moins un test de rendu RTL.
-- Front mobile (Flutter) : widget tests sur les écrans critiques (catalogue, panier, file Agent), au moins un golden test par écran clé en mode RTL (arabe) et LTR (anglais).
+- Front (mobile/web) : tests de composants sur les écrans critiques (catalogue, panier) + au moins un test de rendu RTL.
 
 ### 5.3 Git hooks (Husky + lint-staged + commitlint)
 
@@ -399,7 +348,6 @@ module.exports = { extends: ["@commitlint/config-conventional"] };
 - [ ] Aucune chaîne de texte UI en dur (tout passe par i18n)
 - [ ] Pas de `any` non justifié en TypeScript
 - [ ] Migration DB versionnée si schéma modifié
-- [ ] Si un DTO backend (`orders`, `products`, `quotas`...) a changé : client/modèles Dart régénérés depuis OpenAPI dans la même PR (voir §2.1)
 
 ---
 
@@ -411,13 +359,6 @@ git clone git@github.com:<org>/tarhib.git && cd tarhib
 nvm use
 npm install
 npx husky init
-
-# Setup mobile Flutter (one-time, en plus du setup Node ci-dessus)
-cd apps/mobile
-dart pub global activate fvm
-fvm install               # installe la version Flutter pinnée dans .fvmrc
-fvm flutter pub get
-cd ../..
 
 # Cycle de dev quotidien
 git checkout main && git pull

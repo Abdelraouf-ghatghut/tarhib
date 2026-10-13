@@ -12,7 +12,7 @@
 
 | Couche | Technologie |
 |---|---|
-| Mobile | Flutter (Dart), Drift/SQLite ou Hive pour mode offline |
+| Mobile | React Native (ou Flutter), SQLite/WatermelonDB pour mode offline |
 | Web Admin | React + TypeScript, Ant Design / MUI (RTL natif) |
 | Backend | NestJS (Node.js/TS) ou Spring Boot (Java) |
 | Base de données | PostgreSQL (transactionnel), Redis (cache/queues) |
@@ -22,7 +22,7 @@
 | Notifications | Firebase Cloud Messaging, SendGrid/SES, Twilio SMS |
 | Stockage fichiers | AWS S3 / MinIO |
 | Infra | Docker + Kubernetes, CI/CD (GitHub Actions) |
-| i18n | i18next + CSS logical properties (RTL) côté Web Admin · `flutter_localizations` + `intl` (RTL natif) côté Mobile |
+| i18n | i18next + CSS logical properties (RTL) |
 
 ---
 
